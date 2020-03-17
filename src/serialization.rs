@@ -36,30 +36,26 @@ struct ActionData {
 }
 
 macro_rules! extract_action(
-    ($i:expr, $size:expr) => (
-        extract_action($size)($i)
+    ($i:expr, $version:expr, $size:expr) => (
+        extract_action($version, $size)($i)
     );
 );
 
 named!(
-    full_action<ActionData>,
+    full_action<Action>,
     do_parse!(
         version: be_u8
             >> data_size: be_u32
-            >> action: extract_action!(data_size as usize)
-            >> (ActionData {
-                version: version,
-                data_size: data_size,
-                action: action,
-            })
+            >> action: extract_action!(version, data_size as usize)
+            >> (action)
     )
 );
 
-fn extract_action(size: usize) -> impl Fn(&[u8]) -> IResult<&[u8], Action> {
-    move |input: &[u8]| map!(input, |i| parse_action(i, size), |v| v)
+fn extract_action(version: u8, size: usize) -> impl Fn(&[u8]) -> IResult<&[u8], Action> {
+    move |input: &[u8]| map!(input, |i| parse_action(i, version, size), |v| v)
 }
 
-fn parse_action(input: &[u8], size: usize) -> IResult<&[u8], Action> {
+fn parse_action(input: &[u8], version: u8, size: usize) -> IResult<&[u8], Action> {
     if input.len() < size {
         return Err(Err::Incomplete(Needed::Size(size)));
     }
@@ -67,10 +63,10 @@ fn parse_action(input: &[u8], size: usize) -> IResult<&[u8], Action> {
         return Err(Err::Incomplete(Needed::Size(1)));
     }
 
-    match deserialize_action(&input[..size]) {
+    match deserialize_action(&input[..size], version) {
         Ok(action) => Ok((&input[size..], action)),
         Err(e) => {
-            println!("{:?}", e);
+            println!("{:?}", e); //Write the bincode error so we get it when debugging
             Err(Err::Failure((input, ErrorKind::Verify)))
         }
     }
@@ -82,7 +78,8 @@ pub fn serialize_action(action: &Action) -> Result<Vec<u8>, Error> {
     bincode::serialize(action)
 }
 
-pub fn deserialize_action(bytes: &[u8]) -> Result<Action, Error> {
+//Version is unused for now, but I hate unversioned APIs
+pub fn deserialize_action(bytes: &[u8], _version: u8) -> Result<Action, Error> {
     bincode::deserialize(bytes)
 }
 
@@ -119,7 +116,7 @@ mod tests {
 
         let serialized = serialize_action(&action).unwrap();
         println!("AddEntity serilized as {} bytes.", serialized.len());
-        let deserialized = deserialize_action(&serialized).unwrap();
+        let deserialized = deserialize_action(&serialized, 1).unwrap();
 
         assert_eq!(action, deserialized);
 
@@ -138,7 +135,7 @@ mod tests {
 
         let serialized = serialize_action(&action).unwrap();
         println!("DefineShape serilized as {} bytes.", serialized.len());
-        let deserialized = deserialize_action(&serialized).unwrap();
+        let deserialized = deserialize_action(&serialized, 1).unwrap();
 
         assert_eq!(action, deserialized);
     }

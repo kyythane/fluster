@@ -1,7 +1,5 @@
 #![deny(clippy::all)]
 
-//TODO: Replace panic! with better error handling
-
 use super::actions::{Action, ActionList, PartDefinition};
 use super::rendering::{Bitmap, Renderer, Shape};
 use pathfinder_color::ColorU;
@@ -57,7 +55,7 @@ pub struct State {
 }
 
 pub fn play(
-    renderer: &impl Renderer,
+    renderer: &mut impl Renderer,
     actions: &mut ActionList,
     on_frame_complete: &dyn Fn(&State) -> (),
 ) -> Result<(), String> {
@@ -70,15 +68,8 @@ pub fn play(
         }
         state = execute_actions(state, actions, &mut display_list, &mut library)?;
         if let Some(Action::PresentFrame(count)) = actions.get() {
-            if *count == -1 {
-                loop {
-                    //TODO: handle input
-                    //TODO: scripts
-                    paint(renderer, &state, &display_list, &library)?;
-                    on_frame_complete(&state);
-                }
-            } else if *count == 0 {
-                return Err("Cannot display a frame 0 times! That's just silly".to_string());
+            if *count == 0 {
+                continue; //Treat PresentFrame(0) as a no-op
             } else {
                 for _ in 0..*count {
                     //TODO: handle input
@@ -266,6 +257,7 @@ fn execute_actions(
             }
             Action::Label(_) => (),
             Action::EndInitialization => (),
+            Action::Quit => state.running = false,
         }
         actions.advance();
     }
@@ -273,7 +265,7 @@ fn execute_actions(
 }
 
 fn paint(
-    renderer: &impl Renderer,
+    renderer: &mut impl Renderer,
     state: &State,
     display_list: &HashMap<Uuid, Entity>,
     library: &HashMap<Uuid, DisplayLibraryItem>,
@@ -550,6 +542,6 @@ mod tests {
             })
             .return_const(())
             .in_sequence(&mut seq);
-        paint(&mock_renderer, &state, &display_list, &library).unwrap();
+        paint(&mut mock_renderer, &state, &display_list, &library).unwrap();
     }
 }

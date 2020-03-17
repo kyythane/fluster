@@ -1,6 +1,7 @@
 #![deny(clippy::all)]
 
 use super::rendering::{Bitmap, ColorUDef, Shape, Vector2FDef};
+use core::cmp::min;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::Vector2F;
 use serde::{Deserialize, Serialize};
@@ -65,6 +66,14 @@ impl ActionList {
         Ok(new_index)
     }
 
+    pub fn back(&mut self) {
+        match self.actions.get(self.action_index - 1) {
+            Some(Action::EndInitialization) => (),
+            None => (),
+            _ => self.action_index -= 1,
+        }
+    }
+
     pub fn get_mut(&mut self) -> Option<&mut Action> {
         self.actions.get_mut(self.action_index)
     }
@@ -77,7 +86,7 @@ impl StreamingIterator for ActionList {
         if let Some(mut more) = (self.load_more)() {
             self.actions.append(&mut more);
         }
-        self.action_index += 1;
+        self.action_index = min(self.action_index + 1, self.actions.len() - 1);
         if let Some(Action::Label(name)) = self.actions.get(self.action_index) {
             self.labels.insert(name.clone(), self.action_index);
         }
@@ -146,7 +155,8 @@ pub enum Action {
         parts: Vec<PartDefinition>,
         parent: Option<Uuid>,
     },
-    PresentFrame(i32),
+    PresentFrame(u32),
+    Quit,
 }
 
 #[cfg(test)]
@@ -162,10 +172,8 @@ mod tests {
         action_list.get().expect("Did not return expected action");
         assert_eq!(action_list.current_index(), 0);
         action_list.advance();
-        assert_eq!(action_list.current_index(), 1);
-        if action_list.get().is_some() {
-            panic!("Returned unexpected action")
-        }
+        assert_eq!(action_list.current_index(), 0); //Does not advance past the end of the list
+        action_list.get().expect("Did not return expected action");
     }
 
     #[test]
