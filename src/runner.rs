@@ -235,10 +235,14 @@ fn execute_actions(
                             children: vec![],
                         };
                         parent_entity.add_child(*id);
-                        if let Some(e) = display_list.insert(*id, entity) {
+                        if let Some(old) = display_list.insert(*id, entity) {
                             // If we replace this entitiy, clear the old children out of the display list.
-                            for c in e.children {
+                            for c in old.children {
                                 display_list.remove(&c);
+                            }
+                            if old.parent != parent {
+                                let parent = display_list.get_mut(&old.parent).unwrap();
+                                parent.children.retain(|elem| elem != id);
                             }
                         }
                     }
@@ -248,6 +252,16 @@ fn execute_actions(
                             *id, parent
                         ))
                     }
+                }
+            }
+            Action::RemoveEntity { id } => {
+                //Removing an entity also removes it's children
+                if let Some(old) = display_list.remove(id) {
+                    for c in old.children {
+                        display_list.remove(&c);
+                    }
+                    let parent = display_list.get_mut(&old.parent).unwrap();
+                    parent.children.retain(|elem| elem != id);
                 }
             }
             Action::SetBackground { color } => state.background_color = *color,

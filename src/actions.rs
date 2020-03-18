@@ -155,7 +155,10 @@ pub enum Action {
         parts: Vec<PartDefinition>,
         parent: Option<Uuid>,
     },
-    PresentFrame(u32),
+    RemoveEntity {
+        id: Uuid,
+    },
+    PresentFrame(u32), //TODO: should this be a frame range so we can implement back/forward?
     Quit,
 }
 
