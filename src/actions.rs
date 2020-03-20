@@ -37,7 +37,12 @@ impl ActionList {
         self.action_index
     }
 
-    pub fn jump(&mut self, label: &str) -> Result<usize, String> {
+    pub fn jump_to_frame(&mut self, frame: u32) -> Result<(usize, u32), String> {
+        unimplemented!()
+    }
+
+    // TODO : this should return a tuple of (usize, u32) where the first is the action_index and the second is the new frame index
+    pub fn jump_to_label(&mut self, label: &str) -> Result<usize, String> {
         let new_index = match self.labels.get(label) {
             Some(index) => *index,
             None => {
@@ -127,12 +132,10 @@ pub enum PartDefinition {
     },
 }
 
-//TODO: additional actions: UpdateEntity, RemoveEntity, Text, Scripts
+//TODO: additional actions: UpdateEntity, Text, Scripts, Fonts
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Action {
-    CreateRoot {
-        id: Uuid,
-    },
+    CreateRoot(Uuid),
     SetBackground {
         #[serde(with = "ColorUDef")]
         color: ColorU,
@@ -158,7 +161,7 @@ pub enum Action {
     RemoveEntity {
         id: Uuid,
     },
-    PresentFrame(u32), //TODO: should this be a frame range so we can implement back/forward?
+    PresentFrame(u32, u32), //TODO: if frames have set indexes, then how would it be possible to load in additional frames? Clip ID?
     Quit,
 }
 
@@ -168,7 +171,7 @@ mod tests {
 
     #[test]
     fn it_advances_actions() {
-        let actions = vec![Action::PresentFrame(1)];
+        let actions = vec![Action::PresentFrame(1, 1)];
         let mut action_list = ActionList::new(Box::new(|| None), Some(&actions));
         assert_eq!(action_list.current_index(), 0);
         assert_eq!(action_list.actions.len(), 1);
@@ -181,13 +184,13 @@ mod tests {
 
     #[test]
     fn it_loads_more() {
-        let actions = vec![Action::PresentFrame(1)];
+        let actions = vec![Action::PresentFrame(1, 1)];
         let mut action_list = ActionList::new(
             Box::new(|| {
                 Some(vec![
-                    Action::PresentFrame(1),
-                    Action::PresentFrame(1),
-                    Action::PresentFrame(1),
+                    Action::PresentFrame(1, 1),
+                    Action::PresentFrame(1, 1),
+                    Action::PresentFrame(1, 1),
                 ])
             }),
             Some(&actions),
@@ -201,12 +204,12 @@ mod tests {
     #[test]
     fn it_jumps() {
         let actions = vec![
-            Action::PresentFrame(1),
+            Action::PresentFrame(1, 1),
             Action::Label(String::from("label_1")),
-            Action::PresentFrame(1),
-            Action::PresentFrame(1),
+            Action::PresentFrame(1, 1),
+            Action::PresentFrame(1, 1),
             Action::Label(String::from("label_2")),
-            Action::PresentFrame(1),
+            Action::PresentFrame(1, 1),
         ];
         let mut action_list = ActionList::new(Box::new(|| None), Some(&actions));
         action_list.advance();
@@ -214,9 +217,9 @@ mod tests {
         action_list.advance();
         assert_eq!(action_list.current_index(), 3);
         assert_eq!(action_list.labels.len(), 1);
-        action_list.jump("label_1").unwrap();
+        action_list.jump_to_label("label_1").unwrap();
         assert_eq!(action_list.current_index(), 1);
-        action_list.jump("label_2").unwrap();
+        action_list.jump_to_label("label_2").unwrap();
         assert_eq!(action_list.labels.len(), 2);
         assert_eq!(action_list.current_index(), 4);
     }

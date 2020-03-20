@@ -48,7 +48,7 @@ impl Entity {
 }
 
 pub struct State {
-    frame: usize,
+    frame: u32,
     root_entity_id: Uuid,
     background_color: ColorU,
     running: bool,
@@ -67,9 +67,11 @@ pub fn play(
             break;
         }
         state = execute_actions(state, actions, &mut display_list, &mut library)?;
-        if let Some(Action::PresentFrame(count)) = actions.get() {
+        if let Some(Action::PresentFrame(start, count)) = actions.get() {
             if *count == 0 {
-                continue; //Treat PresentFrame(0) as a no-op
+                continue; //Treat PresentFrame(_, 0) as a no-op
+            } else if state.frame > *start + *count {
+                return Err("Attempting to play incorrect frame. Frame counter and action list have gotten desynced".to_string());
             } else {
                 for _ in 0..*count {
                     //TODO: handle input
@@ -78,7 +80,7 @@ pub fn play(
                     on_frame_complete(&state);
                 }
                 state = State {
-                    frame: state.frame + *count as usize,
+                    frame: *start + *count,
                     ..state
                 };
             }
@@ -116,7 +118,7 @@ fn initialize(
     let mut background_color = ColorU::white();
     while let Some(action) = actions.get_mut() {
         match action {
-            Action::CreateRoot { id } => {
+            Action::CreateRoot(id) => {
                 root_entity_id = Some(*id);
                 if !display_list.is_empty() {
                     return Err("Attempted to create root in non-empty display list".to_string());
@@ -265,7 +267,7 @@ fn execute_actions(
                 }
             }
             Action::SetBackground { color } => state.background_color = *color,
-            Action::PresentFrame(_) => break,
+            Action::PresentFrame(_, _) => break,
             Action::CreateRoot { .. } => {
                 return Err("Attempting to define an additional Root".to_string())
             }
@@ -358,7 +360,7 @@ mod tests {
             Action::SetBackground {
                 color: ColorU::black(),
             },
-            Action::CreateRoot { id: root_id },
+            Action::CreateRoot(root_id),
             Action::EndInitialization,
         ];
         let mut action_list = ActionList::new(Box::new(|| None), Some(&actions));
@@ -423,7 +425,7 @@ mod tests {
                 }],
                 parent: Some(entity_id),
             },
-            Action::PresentFrame(1),
+            Action::PresentFrame(1, 1),
             Action::SetBackground {
                 color: ColorU::white(),
             }, // This action will not get run
@@ -453,7 +455,7 @@ mod tests {
         state = execute_actions(state, &mut action_list, &mut display_list, &mut library).unwrap();
         assert_eq!(state.background_color, ColorU::black());
         assert_eq!(action_list.current_index(), 4);
-        assert_eq!(action_list.get(), Some(&Action::PresentFrame(1)));
+        assert_eq!(action_list.get(), Some(&Action::PresentFrame(1, 1)));
         assert_eq!(library.len(), 1);
         assert_eq!(display_list.len(), 3);
         let entity1 = display_list

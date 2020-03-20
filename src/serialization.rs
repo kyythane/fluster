@@ -3,10 +3,13 @@
 use super::actions::Action;
 use bincode::Error;
 use nom::error::ErrorKind;
-use nom::number::streaming::{be_i32, be_u32, be_u8};
+use nom::number::streaming::{le_i32, le_u32, le_u8};
 use nom::{Err, IResult, Needed};
 use pathfinder_geometry::vector::Vector2I;
-use std::io::Read;
+use std::io::{Read, Write};
+
+const FILE_VERSION: u8 = 1;
+const ACTION_VERSION: u8 = 1;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Header {
@@ -18,9 +21,9 @@ named!(
     header<Header>,
     do_parse!(
         tag!("FSR")
-            >> version: be_u8
-            >> stage_height: be_i32
-            >> stage_width: be_i32
+            >> version: le_u8
+            >> stage_height: le_i32
+            >> stage_width: le_i32
             >> (Header {
                 version: version,
                 stage_size: Vector2I::new(stage_width, stage_height)
@@ -44,8 +47,8 @@ macro_rules! extract_action(
 named!(
     full_action<Action>,
     do_parse!(
-        version: be_u8
-            >> data_size: be_u32
+        version: le_u8
+            >> data_size: le_u32
             >> action: extract_action!(version, data_size as usize)
             >> (action)
     )
@@ -74,7 +77,26 @@ fn parse_action(input: &[u8], version: u8, size: usize) -> IResult<&[u8], Action
 
 pub fn deserialize_stream(stream: impl Read) {}
 
-pub fn serialize_action(action: &Action) -> Result<Vec<u8>, Error> {
+pub fn serialize_stream(
+    actions: &[Action],
+    stage_size: Vector2I,
+    out: &mut impl Write,
+) -> Result<(), Error> {
+    out.write_all(&"FSR".bytes().collect::<Vec<u8>>()[..])?;
+    out.write_all(&[FILE_VERSION, 1])?;
+    out.write_all(&stage_size.x().to_le_bytes())?;
+    out.write_all(&stage_size.y().to_le_bytes())?;
+    for action in actions {
+        out.write_all(&[ACTION_VERSION, 1])?;
+        let serialized = serialize_action(action, ACTION_VERSION)?;
+        out.write_all(&(serialized.len() as u32).to_le_bytes())?;
+        out.write_all(&serialized[..])?;
+    }
+    Ok(())
+}
+
+//Version is unused for now, but I hate unversioned APIs
+pub fn serialize_action(action: &Action, _version: u8) -> Result<Vec<u8>, Error> {
     bincode::serialize(action)
 }
 
@@ -114,7 +136,7 @@ mod tests {
             parent: None,
         };
 
-        let serialized = serialize_action(&action).unwrap();
+        let serialized = serialize_action(&action, 1).unwrap();
         println!("AddEntity serilized as {} bytes.", serialized.len());
         let deserialized = deserialize_action(&serialized, 1).unwrap();
 
@@ -133,7 +155,7 @@ mod tests {
             },
         };
 
-        let serialized = serialize_action(&action).unwrap();
+        let serialized = serialize_action(&action, 1).unwrap();
         println!("DefineShape serilized as {} bytes.", serialized.len());
         let deserialized = deserialize_action(&serialized, 1).unwrap();
 
