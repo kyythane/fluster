@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 
-use super::actions::{Action, ActionList, PartDefinition};
+use super::actions::{Action, ActionList, EntityDefinition, PartDefinition};
 use super::rendering::{Bitmap, Renderer, Shape};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectF;
@@ -10,8 +10,8 @@ use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
 
 enum DisplayLibraryItem {
-    Vector { shape: Shape },
-    Bitmap { bitmap: Bitmap },
+    Vector(Shape),
+    Bitmap(Bitmap),
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -57,7 +57,7 @@ pub struct State {
 pub fn play(
     renderer: &mut impl Renderer,
     actions: &mut ActionList,
-    on_frame_complete: &dyn Fn(&State) -> (),
+    on_frame_complete: &dyn Fn(State) -> State,
 ) -> Result<(), String> {
     let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
     let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
@@ -73,16 +73,14 @@ pub fn play(
             } else if state.frame > *start + *count {
                 return Err("Attempting to play incorrect frame. Frame counter and action list have gotten desynced".to_string());
             } else {
-                for _ in 0..*count {
+                for frame in 0..*count {
+                    state.frame = *start + frame;
                     //TODO: handle input
                     //TODO: scripts
+                    update_tweens(&state, &mut display_list);
                     paint(renderer, &state, &display_list, &library)?;
-                    on_frame_complete(&state);
+                    state = on_frame_complete(state);
                 }
-                state = State {
-                    frame: *start + *count,
-                    ..state
-                };
             }
         }
         actions.advance();
@@ -90,11 +88,13 @@ pub fn play(
     Ok(())
 }
 
+fn update_tweens(state: &State, display_list: &mut HashMap<Uuid, Entity>) {
+    unimplemented!();
+}
+
 fn define_shape(id: &Uuid, shape: &Shape, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
     if !library.contains_key(id) {
-        let item = DisplayLibraryItem::Vector {
-            shape: shape.clone(),
-        };
+        let item = DisplayLibraryItem::Vector(shape.clone());
         library.insert(*id, item);
     }
 }
@@ -102,9 +102,7 @@ fn define_shape(id: &Uuid, shape: &Shape, library: &mut HashMap<Uuid, DisplayLib
 // Note: this is destructive to the source bitmap. Bitmaps can be very large, and library loads are idempotent
 fn load_bitmap(id: &Uuid, bitmap: &mut Bitmap, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
     if !library.contains_key(id) {
-        let item = DisplayLibraryItem::Bitmap {
-            bitmap: bitmap.release_contents(),
-        };
+        let item = DisplayLibraryItem::Bitmap(bitmap.release_contents());
         library.insert(*id, item);
     }
 }
@@ -171,90 +169,8 @@ fn execute_actions(
             Action::LoadBitmap { id, ref mut bitmap } => {
                 load_bitmap(id, bitmap, library);
             }
-            Action::AddEntity {
-                id,
-                name,
-                transform,
-                depth,
-                parts,
-                parent,
-            } => {
-                let parent = match parent {
-                    Some(id) => *id,
-                    None => state.root_entity_id,
-                };
-                match display_list.get_mut(&parent) {
-                    Some(parent_entity) => {
-                        let entity = Entity {
-                            id: *id,
-                            name: name.clone(),
-                            active: true,
-                            transform: Transform2F::from_scale_rotation_translation(
-                                transform.scale,
-                                transform.theta,
-                                transform.translation,
-                            ),
-                            depth: *depth,
-                            parts: {
-                                let constructed = parts.iter()
-                                .map(|x| {
-                                    match x {
-                                        PartDefinition::Vector { item_id, transform} => {
-                                            match library.get(&item_id) {
-                                                Some(DisplayLibraryItem::Vector { .. }) => Some(Part::Vector {
-                                                    item_id: *item_id,
-                                                    transform: Transform2F::from_scale_rotation_translation(transform.scale, transform.theta, transform.translation),
-                                                    color: None
-                                                }),
-                                                _ => None,
-                                            }
-                                        },
-                                        PartDefinition::Bitmap { item_id, transform, view_rect } => {
-                                            match library.get(&item_id) {
-                                                Some(DisplayLibraryItem::Bitmap { .. }) => Some(Part::Bitmap {
-                                                    item_id: *item_id,
-                                                    transform: Transform2F::from_scale_rotation_translation(transform.scale, transform.theta, transform.translation),
-                                                    view_rect: RectF::from_points(view_rect.origin, view_rect.lower_right),
-                                                    tint: None
-                                                    }),
-                                                _ => None,
-                                            }
-                                        },
-                                    }
-                                })
-                                .filter(|e| e.is_some())
-                                .map(|e| e.unwrap())
-                                .collect::<Vec<Part>>();
-                                if constructed.len() < parts.len() {
-                                    return Err(format!(
-                                        "Some parts on {} could not be processed",
-                                        *id
-                                    ));
-                                }
-                                constructed
-                            },
-                            parent,
-                            children: vec![],
-                        };
-                        parent_entity.add_child(*id);
-                        if let Some(old) = display_list.insert(*id, entity) {
-                            // If we replace this entitiy, clear the old children out of the display list.
-                            for c in old.children {
-                                display_list.remove(&c);
-                            }
-                            if old.parent != parent {
-                                let parent = display_list.get_mut(&old.parent).unwrap();
-                                parent.children.retain(|elem| elem != id);
-                            }
-                        }
-                    }
-                    None => {
-                        return Err(format!(
-                            "Attempted to attach child {} to non-existant parent {}",
-                            *id, parent
-                        ))
-                    }
-                }
+            Action::AddEntity(entity_definition) => {
+                add_entity(&state, entity_definition, display_list, library)?;
             }
             Action::RemoveEntity { id } => {
                 //Removing an entity also removes it's children
@@ -278,6 +194,109 @@ fn execute_actions(
         actions.advance();
     }
     Ok(state)
+}
+
+fn add_entity(
+    state: &State,
+    entity_definition: &EntityDefinition,
+    display_list: &mut HashMap<Uuid, Entity>,
+    library: &HashMap<Uuid, DisplayLibraryItem>,
+) -> Result<(), String> {
+    let (id, name, transform, depth, parts, parent) = match entity_definition {
+        EntityDefinition::SimpleEntity {
+            id,
+            name,
+            transform,
+            depth,
+            parts,
+            parent,
+        } => (*id, name, transform, *depth, parts, *parent),
+    };
+
+    let parent = match parent {
+        Some(id) => id,
+        None => state.root_entity_id,
+    };
+    match display_list.get_mut(&parent) {
+        Some(parent_entity) => {
+            let entity = Entity {
+                id,
+                name: name.clone(),
+                active: true,
+                transform: Transform2F::from_scale_rotation_translation(
+                    transform.scale,
+                    transform.theta,
+                    transform.translation,
+                ),
+                depth,
+                parts: {
+                    let constructed = parts
+                        .iter()
+                        .map(|x| match x {
+                            PartDefinition::Vector { item_id, transform } => {
+                                match library.get(&item_id) {
+                                    Some(DisplayLibraryItem::Vector { .. }) => Some(Part::Vector {
+                                        item_id: *item_id,
+                                        transform: Transform2F::from_scale_rotation_translation(
+                                            transform.scale,
+                                            transform.theta,
+                                            transform.translation,
+                                        ),
+                                        color: None,
+                                    }),
+                                    _ => None,
+                                }
+                            }
+                            PartDefinition::Bitmap {
+                                item_id,
+                                transform,
+                                view_rect,
+                            } => match library.get(&item_id) {
+                                Some(DisplayLibraryItem::Bitmap { .. }) => Some(Part::Bitmap {
+                                    item_id: *item_id,
+                                    transform: Transform2F::from_scale_rotation_translation(
+                                        transform.scale,
+                                        transform.theta,
+                                        transform.translation,
+                                    ),
+                                    view_rect: RectF::from_points(
+                                        view_rect.origin,
+                                        view_rect.lower_right,
+                                    ),
+                                    tint: None,
+                                }),
+                                _ => None,
+                            },
+                        })
+                        .filter(|e| e.is_some())
+                        .map(|e| e.unwrap())
+                        .collect::<Vec<Part>>();
+                    if constructed.len() < parts.len() {
+                        return Err(format!("Some parts on {} could not be processed", id));
+                    }
+                    constructed
+                },
+                parent,
+                children: vec![],
+            };
+            parent_entity.add_child(id);
+            if let Some(old) = display_list.insert(id, entity) {
+                // If we replace this entitiy, clear the old children out of the display list.
+                for c in old.children {
+                    display_list.remove(&c);
+                }
+                if old.parent != parent {
+                    let parent = display_list.get_mut(&old.parent).unwrap();
+                    parent.children.retain(|elem| elem != &id);
+                }
+            }
+            Ok(())
+        }
+        None => Err(format!(
+            "Attempted to attach child {} to non-existant parent {}",
+            id, parent
+        )),
+    }
 }
 
 fn paint(
@@ -319,7 +338,7 @@ fn paint(
                     transform,
                     color,
                 } => {
-                    if let Some(&DisplayLibraryItem::Vector { ref shape }) = library.get(&item_id) {
+                    if let Some(&DisplayLibraryItem::Vector(ref shape)) = library.get(&item_id) {
                         renderer.draw_shape(shape, entity.transform * *transform, *color);
                     }
                 }
@@ -329,8 +348,7 @@ fn paint(
                     view_rect,
                     tint,
                 } => {
-                    if let Some(&DisplayLibraryItem::Bitmap { ref bitmap }) = library.get(&item_id)
-                    {
+                    if let Some(&DisplayLibraryItem::Bitmap(ref bitmap)) = library.get(&item_id) {
                         renderer.draw_bitmap(
                             bitmap,
                             *view_rect,
@@ -403,7 +421,7 @@ mod tests {
                     color: ColorU::white(),
                 },
             },
-            Action::AddEntity {
+            Action::AddEntity(EntityDefinition::SimpleEntity {
                 id: entity_id,
                 name: String::from("first"),
                 transform: scale_rotation_translation,
@@ -413,8 +431,8 @@ mod tests {
                     transform: scale_rotation_translation,
                 }],
                 parent: None,
-            },
-            Action::AddEntity {
+            }),
+            Action::AddEntity(EntityDefinition::SimpleEntity {
                 id: entity2_id,
                 name: String::from("second"),
                 transform: scale_rotation_translation,
@@ -424,7 +442,7 @@ mod tests {
                     transform: scale_rotation_translation,
                 }],
                 parent: Some(entity_id),
-            },
+            }),
             Action::PresentFrame(1, 1),
             Action::SetBackground {
                 color: ColorU::white(),
@@ -492,12 +510,10 @@ mod tests {
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
         library.insert(
             shape_id,
-            DisplayLibraryItem::Vector {
-                shape: Shape::FillRect {
-                    dimensions: Vector2F::new(15.0, 15.0),
-                    color: ColorU::new(0, 255, 0, 255),
-                },
-            },
+            DisplayLibraryItem::Vector(Shape::FillRect {
+                dimensions: Vector2F::new(15.0, 15.0),
+                color: ColorU::new(0, 255, 0, 255),
+            }),
         );
         let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
         display_list.insert(

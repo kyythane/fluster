@@ -132,6 +132,18 @@ pub enum PartDefinition {
     },
 }
 
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub enum EntityDefinition {
+    SimpleEntity {
+        id: Uuid,
+        name: String,
+        transform: ScaleRotationTranslation,
+        depth: u32,
+        parts: Vec<PartDefinition>,
+        parent: Option<Uuid>,
+    },
+}
+
 //TODO: additional actions: UpdateEntity, Text, Scripts, Fonts
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Action {
@@ -150,14 +162,7 @@ pub enum Action {
         id: Uuid,
         bitmap: Bitmap,
     },
-    AddEntity {
-        id: Uuid,
-        name: String,
-        transform: ScaleRotationTranslation,
-        depth: u32,
-        parts: Vec<PartDefinition>,
-        parent: Option<Uuid>,
-    },
+    AddEntity(EntityDefinition),
     RemoveEntity {
         id: Uuid,
     },

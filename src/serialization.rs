@@ -174,7 +174,7 @@ pub fn deserialize_action(bytes: &[u8], _version: u8) -> Result<Action, BinError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::{PartDefinition, ScaleRotationTranslation};
+    use crate::actions::{EntityDefinition, PartDefinition, ScaleRotationTranslation};
     use crate::rendering::Shape;
     use pathfinder_color::ColorU;
     use pathfinder_geometry::vector::Vector2F;
@@ -190,7 +190,7 @@ mod tests {
             translation: Vector2F::splat(0.0),
         };
 
-        let action = Action::AddEntity {
+        let action = Action::AddEntity(EntityDefinition::SimpleEntity {
             id: entity_id,
             name: String::from("first"),
             transform: scale_rotation_translation,
@@ -200,7 +200,7 @@ mod tests {
                 transform: scale_rotation_translation,
             }],
             parent: None,
-        };
+        });
 
         let serialized = serialize_action(&action, 1).unwrap();
         println!("AddEntity serilized as {} bytes.", serialized.len());
@@ -251,7 +251,7 @@ mod tests {
                     color: ColorU::white(),
                 },
             },
-            Action::AddEntity {
+            Action::AddEntity(EntityDefinition::SimpleEntity {
                 id: entity_id,
                 name: String::from("first"),
                 transform: scale_rotation_translation,
@@ -261,7 +261,7 @@ mod tests {
                     transform: scale_rotation_translation,
                 }],
                 parent: None,
-            },
+            }),
             Action::Label("a label".to_string()),
             Action::PresentFrame(1, 2),
             Action::Quit,
