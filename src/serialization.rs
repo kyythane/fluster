@@ -1,8 +1,10 @@
 #![deny(clippy::all)]
 
 use super::actions::Action;
-use bincode::Error;
-use nom::error::ErrorKind;
+use bincode::Error as BinError;
+use bincode::ErrorKind as BinErrorKind;
+use circular::Buffer;
+use nom::error::ErrorKind as NomErrorKind;
 use nom::number::streaming::{le_i32, le_u32, le_u8};
 use nom::{Err, IResult, Needed};
 use pathfinder_geometry::vector::Vector2I;
@@ -10,6 +12,8 @@ use std::io::{Read, Write};
 
 const FILE_VERSION: u8 = 1;
 const ACTION_VERSION: u8 = 1;
+const STARTING_BUFFER_SIZE: usize = 1000;
+const MAX_BUFFER_SIZE: usize = 4_096_000; // 1000 *(2 ^ 12) bytes ~ 4MB
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Header {
@@ -22,21 +26,14 @@ named!(
     do_parse!(
         tag!("FSR")
             >> version: le_u8
-            >> stage_height: le_i32
             >> stage_width: le_i32
+            >> stage_height: le_i32
             >> (Header {
                 version: version,
                 stage_size: Vector2I::new(stage_width, stage_height)
             })
     )
 );
-
-#[derive(Clone, Debug, PartialEq)]
-struct ActionData {
-    version: u8,
-    data_size: u32,
-    action: Action,
-}
 
 macro_rules! extract_action(
     ($i:expr, $version:expr, $size:expr) => (
@@ -45,7 +42,7 @@ macro_rules! extract_action(
 );
 
 named!(
-    full_action<Action>,
+    action<Action>,
     do_parse!(
         version: le_u8
             >> data_size: le_u32
@@ -70,24 +67,93 @@ fn parse_action(input: &[u8], version: u8, size: usize) -> IResult<&[u8], Action
         Ok(action) => Ok((&input[size..], action)),
         Err(e) => {
             println!("{:?}", e); //Write the bincode error so we get it when debugging
-            Err(Err::Failure((input, ErrorKind::Verify)))
+            Err(Err::Failure((input, NomErrorKind::Verify)))
         }
     }
 }
 
-pub fn deserialize_stream(stream: impl Read) {}
+pub struct DeserializationIterator<T: Read> {
+    stream: T,
+    buffer: Buffer,
+}
+
+//TODO: handle error cases correctly!
+impl<T: Read> Iterator for DeserializationIterator<T> {
+    type Item = Action;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match action(self.buffer.data()) {
+                Ok((remaining, action)) => {
+                    let offset = self.buffer.available_data() - remaining.len();
+                    self.buffer.consume(offset);
+                    return Some(action);
+                }
+                Err(error) => match error {
+                    Err::Incomplete(needed) => {
+                        if let nom::Needed::Size(bytes_needed) = needed {
+                            if bytes_needed > self.buffer.capacity() {
+                                if self.buffer.capacity() * 2 > MAX_BUFFER_SIZE {
+                                    return None;
+                                }
+                                self.buffer.grow(self.buffer.capacity() * 2);
+                            }
+                        } else {
+                            return None;
+                        }
+                        let bytes = self.stream.read(self.buffer.space()).unwrap();
+                        if bytes == 0 {
+                            return None;
+                        }
+                        self.buffer.fill(bytes);
+                    }
+                    _ => return None,
+                },
+            }
+        }
+    }
+}
+
+pub fn deserialize_stream<T: Read>(
+    mut stream: T,
+) -> Result<(Vector2I, DeserializationIterator<T>), BinError> {
+    let mut buffer = Buffer::with_capacity(STARTING_BUFFER_SIZE);
+
+    let bytes = stream.read(buffer.space())?;
+    buffer.fill(bytes);
+    let (remaining, header) = match header(buffer.data()) {
+        Ok(h) => h,
+        Err(_) => {
+            return Err(BinError::from(BinErrorKind::Custom(
+                "Could not parse header".to_string(),
+            )));
+        }
+    };
+    let offset = buffer.available_data() - remaining.len();
+    buffer.consume(offset);
+
+    match header.version {
+        1 => {
+            let iter = DeserializationIterator { stream, buffer };
+            Ok((header.stage_size, iter))
+        }
+        _ => Err(BinError::from(BinErrorKind::Custom(format!(
+            "Unsupported verion: {}, maximum supported version: {}",
+            header.version, FILE_VERSION
+        )))),
+    }
+}
 
 pub fn serialize_stream(
     actions: &[Action],
     stage_size: Vector2I,
     out: &mut impl Write,
-) -> Result<(), Error> {
+) -> Result<(), BinError> {
     out.write_all(&"FSR".bytes().collect::<Vec<u8>>()[..])?;
-    out.write_all(&[FILE_VERSION, 1])?;
+    out.write_all(&[FILE_VERSION])?;
     out.write_all(&stage_size.x().to_le_bytes())?;
     out.write_all(&stage_size.y().to_le_bytes())?;
     for action in actions {
-        out.write_all(&[ACTION_VERSION, 1])?;
+        out.write_all(&[ACTION_VERSION])?;
         let serialized = serialize_action(action, ACTION_VERSION)?;
         out.write_all(&(serialized.len() as u32).to_le_bytes())?;
         out.write_all(&serialized[..])?;
@@ -96,12 +162,12 @@ pub fn serialize_stream(
 }
 
 //Version is unused for now, but I hate unversioned APIs
-pub fn serialize_action(action: &Action, _version: u8) -> Result<Vec<u8>, Error> {
+pub fn serialize_action(action: &Action, _version: u8) -> Result<Vec<u8>, BinError> {
     bincode::serialize(action)
 }
 
 //Version is unused for now, but I hate unversioned APIs
-pub fn deserialize_action(bytes: &[u8], _version: u8) -> Result<Action, Error> {
+pub fn deserialize_action(bytes: &[u8], _version: u8) -> Result<Action, BinError> {
     bincode::deserialize(bytes)
 }
 
@@ -115,7 +181,7 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn it_serializes_actions() {
+    fn it_serializes_and_deserializes_actions() {
         let entity_id = Uuid::parse_str("b06f8577-aa30-4000-9967-9ba336e9248c").unwrap();
         let shape_id = Uuid::parse_str("1c3ad65b-ebbf-4d5e-8943-28b94df19361").unwrap();
         let scale_rotation_translation = ScaleRotationTranslation {
@@ -160,5 +226,60 @@ mod tests {
         let deserialized = deserialize_action(&serialized, 1).unwrap();
 
         assert_eq!(action, deserialized);
+    }
+
+    #[test]
+    fn it_serializes_and_deserializes_streams() {
+        use iobuffer::IoBuffer;
+        let entity_id = Uuid::parse_str("b06f8577-aa30-4000-9967-9ba336e9248c").unwrap();
+        let shape_id = Uuid::parse_str("1c3ad65b-ebbf-4d5e-8943-28b94df19361").unwrap();
+        let scale_rotation_translation = ScaleRotationTranslation {
+            scale: Vector2F::splat(1.0),
+            theta: 0.0,
+            translation: Vector2F::splat(0.0),
+        };
+        let actions = vec![
+            Action::DefineShape {
+                id: shape_id,
+                shape: Shape::FillPath {
+                    points: vec![
+                        Vector2F::new(1.0, 5.0),
+                        Vector2F::new(5.0, 1.0),
+                        Vector2F::new(1.0, 1.0),
+                        Vector2F::new(5.0, 5.0),
+                    ],
+                    color: ColorU::white(),
+                },
+            },
+            Action::AddEntity {
+                id: entity_id,
+                name: String::from("first"),
+                transform: scale_rotation_translation,
+                depth: 2,
+                parts: vec![PartDefinition::Vector {
+                    item_id: shape_id,
+                    transform: scale_rotation_translation,
+                }],
+                parent: None,
+            },
+            Action::Label("a label".to_string()),
+            Action::PresentFrame(1, 2),
+            Action::Quit,
+        ];
+        let mut buffer = IoBuffer::new();
+        serialize_stream(&actions, Vector2I::new(960, 480), &mut buffer).unwrap();
+        match deserialize_stream(buffer) {
+            Ok((size, iterator)) => {
+                assert_eq!(size, Vector2I::new(960, 480));
+                let read: Vec<Action> = iterator.collect();
+                assert_eq!(read.len(), actions.len());
+                for i in 0..actions.len() {
+                    assert_eq!(read[i], actions[i]);
+                }
+            }
+            Err(err) => {
+                panic!(err);
+            }
+        }
     }
 }
