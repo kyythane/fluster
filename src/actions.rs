@@ -4,7 +4,7 @@ use super::rendering::{Bitmap, ColorUDef, Shape, Vector2FDef};
 use core::cmp::min;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::Vector2F;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
@@ -133,6 +133,29 @@ pub enum PartDefinition {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub enum PartUpdateDefinition {
+    Vector {
+        item_id: Uuid,
+        transform: Option<ScaleRotationTranslation>,
+        #[serde(
+            serialize_with = "option_color_ser",
+            deserialize_with = "option_color_des"
+        )]
+        color: Option<ColorU>,
+    },
+    Bitmap {
+        item_id: Uuid,
+        transform: Option<ScaleRotationTranslation>,
+        #[serde(
+            serialize_with = "option_color_ser",
+            deserialize_with = "option_color_des"
+        )]
+        color: Option<ColorU>,
+    },
+}
+
+//TODO: Fill in additional types or convert to struct
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum EntityDefinition {
     SimpleEntity {
         id: Uuid,
@@ -144,7 +167,7 @@ pub enum EntityDefinition {
     },
 }
 
-//TODO: additional actions: UpdateEntity, Text, Scripts, Fonts
+//TODO: additional actions: Text, Scripts, Fonts
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Action {
     CreateRoot(Uuid),
@@ -163,11 +186,50 @@ pub enum Action {
         bitmap: Bitmap,
     },
     AddEntity(EntityDefinition),
+    UpdateEntity {
+        id: Uuid,
+        duration_frames: u16,
+        transform: Option<ScaleRotationTranslation>,
+        part_updates: Vec<PartUpdateDefinition>,
+        #[serde(
+            serialize_with = "option_color_ser",
+            deserialize_with = "option_color_des"
+        )]
+        color: Option<ColorU>,
+        //TODO: morph shapes
+    },
     RemoveEntity {
         id: Uuid,
     },
     PresentFrame(u32, u32), //TODO: if frames have set indexes, then how would it be possible to load in additional frames? Clip ID?
     Quit,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ColorWrapper(#[serde(with = "ColorUDef")] ColorU);
+
+fn option_color_des<'de, D>(deserializer: D) -> Result<Option<ColorU>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match Option::deserialize(deserializer) {
+        Ok(option) => match option {
+            Some(ColorWrapper(c)) => Ok(Some(c)),
+            None => Ok(None),
+        },
+        Err(err) => Err(err),
+    }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn option_color_ser<S>(u: &Option<ColorU>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match u {
+        Some(ref color) => serializer.serialize_some(&ColorWrapper(*color)),
+        None => serializer.serialize_none(),
+    }
 }
 
 #[cfg(test)]

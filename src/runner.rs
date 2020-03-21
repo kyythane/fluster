@@ -172,6 +172,13 @@ fn execute_actions(
             Action::AddEntity(entity_definition) => {
                 add_entity(&state, entity_definition, display_list, library)?;
             }
+            Action::UpdateEntity {
+                id,
+                duration_frames,
+                transform,
+                part_updates,
+                color,
+            } => unimplemented!(),
             Action::RemoveEntity { id } => {
                 //Removing an entity also removes it's children
                 if let Some(old) = display_list.remove(id) {
