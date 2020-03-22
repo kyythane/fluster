@@ -7,3 +7,4 @@ pub mod actions;
 pub mod rendering;
 pub mod runner;
 pub mod serialization;
+pub mod tween;
