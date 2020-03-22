@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 pub struct ActionList {
     actions: Vec<Action>,
+    //TODO: move frame_index here
     action_index: usize,
     labels: HashMap<String, usize>,
     load_more: Box<dyn Fn() -> Option<Vec<Action>>>,
@@ -42,7 +43,7 @@ impl ActionList {
     }
 
     // TODO : this should return a tuple of (usize, u32) where the first is the action_index and the second is the new frame index
-    pub fn jump_to_label(&mut self, label: &str) -> Result<usize, String> {
+    pub fn jump_to_label(&mut self, label: &str) -> Result<(usize, u32), String> {
         let new_index = match self.labels.get(label) {
             Some(index) => *index,
             None => {
@@ -68,7 +69,19 @@ impl ActionList {
             }
         };
         self.action_index = new_index;
-        Ok(new_index)
+        let mut search = new_index;
+        loop {
+            if search == 0 {
+                return Ok((new_index, 0));
+            }
+            search -= 1; //new_index will be Action::Label
+            let action = self.actions.get(search);
+            match action {
+                Some(Action::PresentFrame(start, count)) => return Ok((new_index, start + count)),
+                Some(Action::EndInitialization) => return Ok((new_index, 0)),
+                _ => (),
+            }
+        }
     }
 
     pub fn back(&mut self) {
@@ -156,15 +169,13 @@ pub enum PartUpdateDefinition {
 
 //TODO: Fill in additional types or convert to struct
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum EntityDefinition {
-    SimpleEntity {
-        id: Uuid,
-        name: String,
-        transform: ScaleRotationTranslation,
-        depth: u32,
-        parts: Vec<PartDefinition>,
-        parent: Option<Uuid>,
-    },
+pub struct EntityDefinition {
+    pub id: Uuid,
+    pub name: String,
+    pub transform: ScaleRotationTranslation,
+    pub depth: u32,
+    pub parts: Vec<PartDefinition>,
+    pub parent: Option<Uuid>,
 }
 
 //TODO: additional actions: Text, Scripts, Fonts
@@ -255,9 +266,9 @@ mod tests {
         let mut action_list = ActionList::new(
             Box::new(|| {
                 Some(vec![
-                    Action::PresentFrame(1, 1),
-                    Action::PresentFrame(1, 1),
-                    Action::PresentFrame(1, 1),
+                    Action::PresentFrame(2, 1),
+                    Action::PresentFrame(3, 1),
+                    Action::PresentFrame(4, 1),
                 ])
             }),
             Some(&actions),
@@ -273,10 +284,10 @@ mod tests {
         let actions = vec![
             Action::PresentFrame(1, 1),
             Action::Label(String::from("label_1")),
-            Action::PresentFrame(1, 1),
-            Action::PresentFrame(1, 1),
+            Action::PresentFrame(2, 1),
+            Action::PresentFrame(3, 1),
             Action::Label(String::from("label_2")),
-            Action::PresentFrame(1, 1),
+            Action::PresentFrame(4, 1),
         ];
         let mut action_list = ActionList::new(Box::new(|| None), Some(&actions));
         action_list.advance();
@@ -284,9 +295,11 @@ mod tests {
         action_list.advance();
         assert_eq!(action_list.current_index(), 3);
         assert_eq!(action_list.labels.len(), 1);
-        action_list.jump_to_label("label_1").unwrap();
+        let result = action_list.jump_to_label("label_1").unwrap();
+        assert_eq!(result, (1, 2));
         assert_eq!(action_list.current_index(), 1);
-        action_list.jump_to_label("label_2").unwrap();
+        let result = action_list.jump_to_label("label_2").unwrap();
+        assert_eq!(result, (4, 4));
         assert_eq!(action_list.labels.len(), 2);
         assert_eq!(action_list.current_index(), 4);
     }

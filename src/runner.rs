@@ -5,6 +5,7 @@ use super::rendering::{Bitmap, Renderer, Shape};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::vector::Vector2I;
 use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
@@ -30,6 +31,19 @@ enum Part {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+enum PartTween {
+    Color(Uuid, ColorU, ColorU, f32),
+    Transform(Uuid, Transform2F, Transform2F, f32),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+enum Tween {
+    Color(ColorU, ColorU, f32),
+    Transform(Transform2F, Transform2F, f32),
+    Part(Vec<PartTween>),
+}
+
+#[derive(Clone, PartialEq, Debug)]
 struct Entity {
     id: Uuid,
     name: String,
@@ -48,6 +62,8 @@ impl Entity {
 }
 
 pub struct State {
+    seconds_per_frame: f32,
+    stage_size: Vector2I,
     frame: u32,
     root_entity_id: Uuid,
     background_color: ColorU,
@@ -58,10 +74,18 @@ pub fn play(
     renderer: &mut impl Renderer,
     actions: &mut ActionList,
     on_frame_complete: &dyn Fn(State) -> State,
+    stage_size: Vector2I,
+    seconds_per_frame: f32,
 ) -> Result<(), String> {
     let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
     let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
-    let mut state = initialize(actions, &mut display_list, &mut library)?;
+    let mut state = initialize(
+        actions,
+        &mut display_list,
+        &mut library,
+        stage_size,
+        seconds_per_frame,
+    )?;
     while let Some(_) = actions.get() {
         if !state.running {
             break;
@@ -74,12 +98,14 @@ pub fn play(
                 return Err("Attempting to play incorrect frame. Frame counter and action list have gotten desynced".to_string());
             } else {
                 for frame in 0..*count {
+                    //TODO: compute frame start time and delta
                     state.frame = *start + frame;
                     //TODO: handle input
                     //TODO: scripts
                     update_tweens(&state, &mut display_list);
                     paint(renderer, &state, &display_list, &library)?;
                     state = on_frame_complete(state);
+                    //TODO: compute frame end time
                 }
             }
         }
@@ -111,6 +137,8 @@ fn initialize(
     actions: &mut ActionList,
     display_list: &mut HashMap<Uuid, Entity>,
     library: &mut HashMap<Uuid, DisplayLibraryItem>,
+    stage_size: Vector2I,
+    seconds_per_frame: f32,
 ) -> Result<State, String> {
     let mut root_entity_id: Option<Uuid> = None;
     let mut background_color = ColorU::white();
@@ -151,6 +179,8 @@ fn initialize(
         root_entity_id: root_entity_id.expect("Action list did not define a root element"),
         background_color,
         running: true,
+        stage_size,
+        seconds_per_frame,
     })
 }
 
@@ -210,7 +240,7 @@ fn add_entity(
     library: &HashMap<Uuid, DisplayLibraryItem>,
 ) -> Result<(), String> {
     let (id, name, transform, depth, parts, parent) = match entity_definition {
-        EntityDefinition::SimpleEntity {
+        EntityDefinition {
             id,
             name,
             transform,
@@ -391,7 +421,14 @@ mod tests {
         let mut action_list = ActionList::new(Box::new(|| None), Some(&actions));
         let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
-        let state = initialize(&mut action_list, &mut display_list, &mut library).unwrap();
+        let state = initialize(
+            &mut action_list,
+            &mut display_list,
+            &mut library,
+            Vector2I::new(960, 480),
+            0.016,
+        )
+        .unwrap();
         assert_eq!(state.background_color, ColorU::black());
         assert_eq!(state.root_entity_id, root_id);
         assert_eq!(action_list.current_index(), 2);
@@ -428,7 +465,7 @@ mod tests {
                     color: ColorU::white(),
                 },
             },
-            Action::AddEntity(EntityDefinition::SimpleEntity {
+            Action::AddEntity(EntityDefinition {
                 id: entity_id,
                 name: String::from("first"),
                 transform: scale_rotation_translation,
@@ -439,7 +476,7 @@ mod tests {
                 }],
                 parent: None,
             }),
-            Action::AddEntity(EntityDefinition::SimpleEntity {
+            Action::AddEntity(EntityDefinition {
                 id: entity2_id,
                 name: String::from("second"),
                 transform: scale_rotation_translation,
@@ -476,6 +513,8 @@ mod tests {
             root_entity_id: root_id,
             background_color: ColorU::white(),
             running: true,
+            stage_size: Vector2I::new(960, 480),
+            seconds_per_frame: 0.016,
         };
         state = execute_actions(state, &mut action_list, &mut display_list, &mut library).unwrap();
         assert_eq!(state.background_color, ColorU::black());
@@ -558,6 +597,8 @@ mod tests {
             root_entity_id: root_id,
             background_color: ColorU::white(),
             running: true,
+            stage_size: Vector2I::new(960, 480),
+            seconds_per_frame: 0.016,
         };
         let mut seq = Sequence::new();
         let mut mock_renderer = MockRenderer::new();

@@ -190,7 +190,7 @@ mod tests {
             translation: Vector2F::splat(0.0),
         };
 
-        let action = Action::AddEntity(EntityDefinition::SimpleEntity {
+        let action = Action::AddEntity(EntityDefinition {
             id: entity_id,
             name: String::from("first"),
             transform: scale_rotation_translation,
@@ -251,7 +251,7 @@ mod tests {
                     color: ColorU::white(),
                 },
             },
-            Action::AddEntity(EntityDefinition::SimpleEntity {
+            Action::AddEntity(EntityDefinition {
                 id: entity_id,
                 name: String::from("first"),
                 transform: scale_rotation_translation,
