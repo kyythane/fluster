@@ -5,11 +5,11 @@ use super::actions::{
     PartUpdateDefinition, RectPoints, ScaleRotationTranslation,
 };
 use super::rendering::{Bitmap, Renderer, Shape};
-use super::tween::Easing;
-use pathfinder_color::ColorU;
+use super::tween::{Easing, Tween};
+use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
@@ -44,16 +44,49 @@ impl Part {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-enum PropertyTween {
+pub struct LerpTransform {
+    pub scale: Vector2F,
+    pub angle: Vector2F,
+    pub translation: Vector2F,
+}
+
+impl LerpTransform {
+    pub fn from_transform(transform: &Transform2F) -> LerpTransform {
+        let theta = transform.rotation();
+        let cos_theta = theta.cos();
+        LerpTransform {
+            scale: Vector2F::new(transform.m11() / cos_theta, transform.m22() / cos_theta),
+            angle: Vector2F::new(cos_theta, theta.sin()),
+            translation: transform.translation(),
+        }
+    }
+
+    pub fn from_scale_rotation_translation(transform: &ScaleRotationTranslation) -> LerpTransform {
+        LerpTransform {
+            scale: transform.scale,
+            angle: Vector2F::new(transform.theta.cos(), transform.theta.sin()),
+            translation: transform.translation,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PropertyTween {
+    data: PropertyTweenData,
+    elapsed_seconds: f32,
+}
+
+#[derive(Clone, Debug)]
+enum PropertyTweenData {
     Color {
-        start: ColorU,
-        end: ColorU,
+        start: ColorF,
+        end: ColorF,
         duration_seconds: f32,
         easing: Easing,
     },
     Transform {
-        start: ScaleRotationTranslation,
-        end: ScaleRotationTranslation,
+        start: LerpTransform,
+        end: LerpTransform,
         duration_seconds: f32,
         easing: Easing,
     },
@@ -65,8 +98,133 @@ enum PropertyTween {
     },
 }
 
+impl PropertyTween {
+    pub fn new_color(
+        start: ColorU,
+        end: ColorU,
+        duration_seconds: f32,
+        easing: Easing,
+    ) -> PropertyTween {
+        PropertyTween {
+            data: PropertyTweenData::Color {
+                start: start.to_f32(),
+                end: start.to_f32(),
+                duration_seconds,
+                easing,
+            },
+            elapsed_seconds: 0.0,
+        }
+    }
+
+    pub fn new_transform(
+        start: LerpTransform,
+        end: LerpTransform,
+        duration_seconds: f32,
+        easing: Easing,
+    ) -> PropertyTween {
+        PropertyTween {
+            data: PropertyTweenData::Transform {
+                start,
+                end,
+                duration_seconds,
+                easing,
+            },
+            elapsed_seconds: 0.0,
+        }
+    }
+
+    pub fn new_view_rect(
+        start: RectPoints,
+        end: RectPoints,
+        duration_seconds: f32,
+        easing: Easing,
+    ) -> PropertyTween {
+        PropertyTween {
+            data: PropertyTweenData::ViewRect {
+                start,
+                end,
+                duration_seconds,
+                easing,
+            },
+            elapsed_seconds: 0.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+enum PropertyTweenUpdate {
+    Color(ColorU),
+    Transform(Transform2F),
+    ViewRect(RectPoints),
+}
+
+impl Tween for PropertyTween {
+    type Item = PropertyTweenUpdate;
+
+    fn update(&mut self, delta_time: f32) -> Self::Item {
+        self.elapsed_seconds += delta_time;
+        match &self.data {
+            PropertyTweenData::Color {
+                start,
+                end,
+                duration_seconds,
+                easing,
+            } => {
+                let value = easing.ease(self.elapsed_seconds / duration_seconds);
+                PropertyTweenUpdate::Color(start.lerp(*end, value).to_u8())
+            }
+            PropertyTweenData::Transform {
+                start,
+                end,
+                duration_seconds,
+                easing,
+            } => {
+                let value = easing.ease(self.elapsed_seconds / duration_seconds);
+                let angle_vector = start.angle.lerp(end.angle, value);
+                PropertyTweenUpdate::Transform(Transform2F::from_scale_rotation_translation(
+                    start.scale.lerp(end.scale, value),
+                    f32::atan2(angle_vector.y(), angle_vector.x()),
+                    start.translation.lerp(end.translation, value),
+                ))
+            }
+            PropertyTweenData::ViewRect {
+                start,
+                end,
+                duration_seconds,
+                easing,
+            } => {
+                let value = easing.ease(self.elapsed_seconds / duration_seconds);
+                PropertyTweenUpdate::ViewRect(RectPoints {
+                    origin: start.origin.lerp(end.origin, value),
+                    lower_right: start.lower_right.lerp(end.lower_right, value),
+                })
+            }
+        }
+    }
+    fn is_complete(&self) -> bool {
+        match self.data {
+            PropertyTweenData::Color {
+                duration_seconds, ..
+            } => self.elapsed_seconds >= duration_seconds,
+            PropertyTweenData::Transform {
+                duration_seconds, ..
+            } => self.elapsed_seconds >= duration_seconds,
+            PropertyTweenData::ViewRect {
+                duration_seconds, ..
+            } => self.elapsed_seconds >= duration_seconds,
+        }
+    }
+    fn easing(&self) -> Easing {
+        match self.data {
+            PropertyTweenData::Color { easing, .. } => easing,
+            PropertyTweenData::Transform { easing, .. } => easing,
+            PropertyTweenData::ViewRect { easing, .. } => easing,
+        }
+    }
+}
+
 //TODO: Bounding boxes and hit tests for mouse interactions
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 struct Entity {
     active: bool,
     children: Vec<Uuid>,
@@ -77,6 +235,19 @@ struct Entity {
     parts: Vec<Part>,
     transform: Transform2F,
     tweens: HashMap<Uuid, Vec<PropertyTween>>,
+}
+
+impl PartialEq for Entity {
+    //Tweens are ignored for the purpose of equality
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.children == other.children
+            && self.depth == other.depth
+            && self.name == other.name
+            && self.parent == other.parent
+            && self.parts == other.parts
+            && self.transform == other.transform
+    }
 }
 
 impl Entity {
@@ -160,6 +331,18 @@ pub fn play(
 }
 
 fn update_tweens(state: &State, display_list: &mut HashMap<Uuid, Entity>) {
+    for entity in display_list.values() {
+        if entity.tweens.is_empty() {
+            continue;
+        }
+        for (key, tween) in &entity.tweens {
+            /* TODO:
+                - compute next tween value
+                - update entity/part
+                - remove tween if complete
+            */
+        }
+    }
     unimplemented!();
 }
 
@@ -381,14 +564,14 @@ fn add_tweens(
     let duration_seconds =
         state.seconds_per_frame * (entity_update_definition.duration_frames as f32);
     if let Some(entity) = display_list.get_mut(&entity_update_definition.id) {
-        if let Some(end_transform) = entity_update_definition.transform {
+        if let Some(end_transform) = &entity_update_definition.transform {
             let tween = if let Some(easing) = entity_update_definition.easing {
-                PropertyTween::Transform {
+                PropertyTween::new_transform(
+                    LerpTransform::from_transform(&entity.transform),
+                    LerpTransform::from_scale_rotation_translation(end_transform),
                     duration_seconds,
                     easing,
-                    start: ScaleRotationTranslation::from_transform(&entity.transform),
-                    end: end_transform,
-                }
+                )
             } else {
                 return Err(format!(
                     "Attempted to define tween for {} with no easing",
@@ -445,36 +628,36 @@ fn create_part_tween(
             {
                 if let Some(end_tint) = end_tint {
                     if let Some(start_tint) = start_tint {
-                        tweens.push(PropertyTween::Color {
+                        tweens.push(PropertyTween::new_color(
+                            *start_tint,
+                            *end_tint,
                             duration_seconds,
-                            easing: *easing,
-                            start: *start_tint,
-                            end: *end_tint,
-                        });
+                            *easing,
+                        ));
                     } else {
-                        tweens.push(PropertyTween::Color {
+                        tweens.push(PropertyTween::new_color(
+                            ColorU::white(),
+                            *end_tint,
                             duration_seconds,
-                            easing: *easing,
-                            start: ColorU::white(),
-                            end: *end_tint,
-                        });
+                            *easing,
+                        ));
                     }
                 }
                 if let Some(end_transform) = end_transform {
-                    tweens.push(PropertyTween::Transform {
+                    tweens.push(PropertyTween::new_transform(
+                        LerpTransform::from_transform(start_transform),
+                        LerpTransform::from_scale_rotation_translation(end_transform),
                         duration_seconds,
-                        easing: *easing,
-                        start: ScaleRotationTranslation::from_transform(start_transform),
-                        end: *end_transform,
-                    });
+                        *easing,
+                    ));
                 }
                 if let Some(end_view_rect) = end_view_rect {
-                    tweens.push(PropertyTween::ViewRect {
+                    tweens.push(PropertyTween::new_view_rect(
+                        RectPoints::from_rect(start_view_rect),
+                        *end_view_rect,
                         duration_seconds,
-                        easing: *easing,
-                        start: RectPoints::from_rect(start_view_rect),
-                        end: *end_view_rect,
-                    });
+                        *easing,
+                    ));
                 }
             } else {
                 return Err(format!(
@@ -497,20 +680,20 @@ fn create_part_tween(
             {
                 if let Some(end_color) = end_color {
                     if let Some(start_color) = start_color {
-                        tweens.push(PropertyTween::Color {
+                        tweens.push(PropertyTween::new_color(
+                            *start_color,
+                            *end_color,
                             duration_seconds,
-                            easing: *easing,
-                            start: *start_color,
-                            end: *end_color,
-                        });
+                            *easing,
+                        ));
                     } else if let DisplayLibraryItem::Vector(shape) = library_item {
                         if let Some(start_color) = shape.color() {
-                            tweens.push(PropertyTween::Color {
+                            tweens.push(PropertyTween::new_color(
+                                start_color,
+                                *end_color,
                                 duration_seconds,
-                                easing: *easing,
-                                start: start_color,
-                                end: *end_color,
-                            });
+                                *easing,
+                            ));
                         }
                     } else {
                         return Err(format!(
@@ -520,12 +703,12 @@ fn create_part_tween(
                     }
                 }
                 if let Some(end_transform) = end_transform {
-                    tweens.push(PropertyTween::Transform {
+                    tweens.push(PropertyTween::new_transform(
+                        LerpTransform::from_transform(start_transform),
+                        LerpTransform::from_scale_rotation_translation(end_transform),
                         duration_seconds,
-                        easing: *easing,
-                        start: ScaleRotationTranslation::from_transform(start_transform),
-                        end: *end_transform,
-                    });
+                        *easing,
+                    ));
                 }
             } else {
                 return Err(format!(
@@ -581,7 +764,7 @@ fn paint(
     }
     renderer.set_background(state.background_color);
     //Render from back to front (TODO: Does Pathfinder work better front to back or back to front?)
-    for (_, entity) in depth_list {
+    for entity in depth_list.values() {
         let world_space_transform = world_space_transforms.get(&entity.id).unwrap();
         for part in &entity.parts {
             match part {

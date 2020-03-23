@@ -4,6 +4,14 @@ use serde::{Deserialize, Serialize};
 use std::f32::consts::{FRAC_PI_2, PI};
 use std::f32::EPSILON;
 
+pub trait Tween {
+    type Item: ?Sized;
+
+    fn update(&mut self, delta_time: f32) -> Self::Item;
+    fn is_complete(&self) -> bool;
+    fn easing(&self) -> Easing;
+}
+
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Easing {
     Linear,
