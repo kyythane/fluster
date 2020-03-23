@@ -1,11 +1,15 @@
 #![deny(clippy::all)]
 
-use super::actions::{Action, ActionList, EntityDefinition, PartDefinition};
+use super::actions::{
+    Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
+    PartUpdateDefinition, ScaleRotationTranslation,
+};
 use super::rendering::{Bitmap, Renderer, Shape};
+use super::tween::Easing;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
@@ -30,32 +34,66 @@ enum Part {
     },
 }
 
-#[derive(Clone, PartialEq, Debug)]
-enum PartTween {
-    Color(Uuid, ColorU, ColorU, f32),
-    Transform(Uuid, Transform2F, Transform2F, f32),
+impl Part {
+    fn item_id(&self) -> &Uuid {
+        match self {
+            Part::Vector { item_id, .. } => item_id,
+            Part::Bitmap { item_id, .. } => item_id,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]
-enum Tween {
-    Color(ColorU, ColorU, f32),
-    Transform(Transform2F, Transform2F, f32),
-    Part(Vec<PartTween>),
+enum PropertyTween {
+    Color {
+        start: ColorU,
+        end: ColorU,
+        duration_seconds: f32,
+        easing: Easing,
+    },
+    Transform {
+        start: ScaleRotationTranslation,
+        end: ScaleRotationTranslation,
+        duration_seconds: f32,
+        easing: Easing,
+    },
 }
 
 #[derive(Clone, PartialEq, Debug)]
 struct Entity {
+    active: bool,
+    children: Vec<Uuid>,
+    depth: u32,
     id: Uuid,
     name: String,
-    transform: Transform2F,
-    depth: u32,
-    active: bool,
-    parts: Vec<Part>,
     parent: Uuid,
-    children: Vec<Uuid>,
+    parts: Vec<Part>,
+    transform: Transform2F,
+    tweens: HashMap<Uuid, Vec<PropertyTween>>,
 }
 
 impl Entity {
+    fn new(
+        id: Uuid,
+        depth: u32,
+        name: String,
+        parent: Uuid,
+        parts: Vec<Part>,
+        transform: Transform2F,
+    ) -> Entity {
+        Entity {
+            active: true,
+            children: vec![],
+            depth,
+            id,
+            name,
+            parent,
+            parts,
+            transform,
+            tweens: HashMap::new(),
+        }
+    }
+
     fn add_child(&mut self, child: Uuid) {
         self.children.push(child);
     }
@@ -149,16 +187,14 @@ fn initialize(
                 if !display_list.is_empty() {
                     return Err("Attempted to create root in non-empty display list".to_string());
                 }
-                let root = Entity {
-                    id: *id,
-                    name: String::from("root"),
-                    transform: Transform2F::default(),
-                    depth: 0,
-                    active: true,
-                    parent: *id,
-                    parts: vec![],
-                    children: vec![],
-                };
+                let root = Entity::new(
+                    *id,
+                    0,
+                    String::from("root"),
+                    *id,
+                    vec![],
+                    Transform2F::default(),
+                );
                 display_list.insert(*id, root);
             }
             Action::DefineShape { id, shape } => {
@@ -174,14 +210,18 @@ fn initialize(
         actions.advance();
     }
 
-    Ok(State {
-        frame: 0,
-        root_entity_id: root_entity_id.expect("Action list did not define a root element"),
-        background_color,
-        running: true,
-        stage_size,
-        seconds_per_frame,
-    })
+    if let Some(root_entity_id) = root_entity_id {
+        Ok(State {
+            frame: 0,
+            root_entity_id,
+            background_color,
+            running: true,
+            stage_size,
+            seconds_per_frame,
+        })
+    } else {
+        Err("Action list did not define a root element".to_string())
+    }
 }
 
 fn execute_actions(
@@ -202,14 +242,10 @@ fn execute_actions(
             Action::AddEntity(entity_definition) => {
                 add_entity(&state, entity_definition, display_list, library)?;
             }
-            Action::UpdateEntity {
-                id,
-                duration_frames,
-                transform,
-                part_updates,
-                color,
-            } => unimplemented!(),
-            Action::RemoveEntity { id } => {
+            Action::UpdateEntity(entity_update_definition) => {
+                add_tweens(&state, entity_update_definition, display_list, library)?;
+            }
+            Action::RemoveEntity(id) => {
                 //Removing an entity also removes it's children
                 if let Some(old) = display_list.remove(id) {
                     for c in old.children {
@@ -256,66 +292,59 @@ fn add_entity(
     };
     match display_list.get_mut(&parent) {
         Some(parent_entity) => {
-            let entity = Entity {
-                id,
-                name: name.clone(),
-                active: true,
-                transform: Transform2F::from_scale_rotation_translation(
-                    transform.scale,
-                    transform.theta,
-                    transform.translation,
-                ),
-                depth,
-                parts: {
-                    let constructed = parts
-                        .iter()
-                        .map(|x| match x {
-                            PartDefinition::Vector { item_id, transform } => {
-                                match library.get(&item_id) {
-                                    Some(DisplayLibraryItem::Vector { .. }) => Some(Part::Vector {
-                                        item_id: *item_id,
-                                        transform: Transform2F::from_scale_rotation_translation(
-                                            transform.scale,
-                                            transform.theta,
-                                            transform.translation,
-                                        ),
-                                        color: None,
-                                    }),
-                                    _ => None,
-                                }
-                            }
-                            PartDefinition::Bitmap {
-                                item_id,
-                                transform,
-                                view_rect,
-                            } => match library.get(&item_id) {
-                                Some(DisplayLibraryItem::Bitmap { .. }) => Some(Part::Bitmap {
+            let transform = Transform2F::from_scale_rotation_translation(
+                transform.scale,
+                transform.theta,
+                transform.translation,
+            );
+            let parts = {
+                let constructed = parts
+                    .iter()
+                    .map(|x| match x {
+                        PartDefinition::Vector { item_id, transform } => {
+                            match library.get(&item_id) {
+                                Some(DisplayLibraryItem::Vector { .. }) => Some(Part::Vector {
                                     item_id: *item_id,
                                     transform: Transform2F::from_scale_rotation_translation(
                                         transform.scale,
                                         transform.theta,
                                         transform.translation,
                                     ),
-                                    view_rect: RectF::from_points(
-                                        view_rect.origin,
-                                        view_rect.lower_right,
-                                    ),
-                                    tint: None,
+                                    color: None,
                                 }),
                                 _ => None,
-                            },
-                        })
-                        .filter(|e| e.is_some())
-                        .map(|e| e.unwrap())
-                        .collect::<Vec<Part>>();
-                    if constructed.len() < parts.len() {
-                        return Err(format!("Some parts on {} could not be processed", id));
-                    }
-                    constructed
-                },
-                parent,
-                children: vec![],
+                            }
+                        }
+                        PartDefinition::Bitmap {
+                            item_id,
+                            transform,
+                            view_rect,
+                        } => match library.get(&item_id) {
+                            Some(DisplayLibraryItem::Bitmap { .. }) => Some(Part::Bitmap {
+                                item_id: *item_id,
+                                transform: Transform2F::from_scale_rotation_translation(
+                                    transform.scale,
+                                    transform.theta,
+                                    transform.translation,
+                                ),
+                                view_rect: RectF::from_points(
+                                    view_rect.origin,
+                                    view_rect.lower_right,
+                                ),
+                                tint: None,
+                            }),
+                            _ => None,
+                        },
+                    })
+                    .filter(|e| e.is_some())
+                    .map(|e| e.unwrap())
+                    .collect::<Vec<Part>>();
+                if constructed.len() < parts.len() {
+                    return Err(format!("Some parts on {} could not be processed", id));
+                }
+                constructed
             };
+            let entity = Entity::new(id, depth, name.clone(), parent, parts, transform);
             parent_entity.add_child(id);
             if let Some(old) = display_list.insert(id, entity) {
                 // If we replace this entitiy, clear the old children out of the display list.
@@ -336,6 +365,104 @@ fn add_entity(
     }
 }
 
+fn add_tweens(
+    state: &State,
+    entity_update_definition: &EntityUpdateDefinition,
+    display_list: &mut HashMap<Uuid, Entity>,
+    library: &HashMap<Uuid, DisplayLibraryItem>,
+) -> Result<(), String> {
+    let duration_seconds =
+        state.seconds_per_frame * (entity_update_definition.duration_frames as f32);
+    if let Some(entity) = display_list.get_mut(&entity_update_definition.id) {
+        if let Some(transform) = entity_update_definition.transform {
+            let tween = if let Some(easing) = entity_update_definition.easing {
+                let theta = entity.transform.rotation();
+                let cos_theta = theta.cos();
+                PropertyTween::Transform {
+                    duration_seconds,
+                    easing,
+                    start: ScaleRotationTranslation {
+                        scale: Vector2F::new(
+                            entity.transform.m11() / cos_theta,
+                            entity.transform.m22() / cos_theta,
+                        ),
+                        theta,
+                        translation: entity.transform.translation(),
+                    },
+                    end: transform,
+                }
+            } else {
+                return Err(format!(
+                    "Attempted to define tween for {} with no easing",
+                    entity.id
+                ));
+            };
+            match entity.tweens.get_mut(&entity.id) {
+                Some(tweens) => tweens.push(tween),
+                None => {
+                    entity.tweens.insert(entity.id, vec![tween]);
+                }
+            };
+        }
+        for part_update in &entity_update_definition.part_updates {
+            let update_item_id = part_update.item_id();
+            if let Some(part) = entity.parts.iter().find(|p| p.item_id() == update_item_id) {
+                if let Some(library_item) = library.get(update_item_id) {
+                    let tween =
+                        create_part_tween(part, library_item, part_update, duration_seconds)?;
+                }
+            }
+        }
+    }
+    Ok(()) //Updating a removed entity or part is a no-op, since a script or event could remove an entity in a way the editor can't account for.
+}
+
+fn create_part_tween(
+    part: &Part,
+    library_item: &DisplayLibraryItem,
+    part_update: &PartUpdateDefinition,
+    duration_seconds: f32,
+) -> Result<Vec<PropertyTween>, String> {
+    let mut tweens: Vec<PropertyTween> = vec![];
+    match part_update {
+        PartUpdateDefinition::Bitmap {
+            tint: end_tint,
+            easing,
+            transform: end_transform,
+            view_rect: end_view_rect,
+            ..
+        } => {
+            if let Part::Bitmap {
+                transform: start_transform,
+                tint: start_tint,
+                view_rect: start_view_rect,
+                ..
+            } = part
+            {
+                if let Some(end_tint) = end_tint {}
+                if let Some(end_transform) = end_transform {}
+                if let Some(end_view_rect) = end_view_rect {}
+            } else {
+                return Err(format!(
+                    "Tried to apply Bitmap update to a vector part {}",
+                    part.item_id()
+                ));
+            }
+        }
+        PartUpdateDefinition::Vector {
+            color: end_color,
+            easing,
+            transform: end_transform,
+            ..
+        } => {
+            if let Some(end_color) = end_color {}
+            if let Some(end_transform) = end_transform {}
+        }
+    }
+    Ok(tweens)
+}
+
+//TODO: BUG: Children's transforms need to be composed with the parent's to get final transforms
 fn paint(
     renderer: &mut impl Renderer,
     state: &State,
@@ -366,7 +493,7 @@ fn paint(
         }
     }
     renderer.set_background(state.background_color);
-    //Render from back to front
+    //Render from back to front (TODO: Does Pathfinder work better front to back or back to front?)
     for (_, entity) in depth_list {
         for part in &entity.parts {
             match part {
@@ -496,16 +623,14 @@ mod tests {
         let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
         display_list.insert(
             root_id,
-            Entity {
-                id: root_id,
-                name: String::from("root"),
-                transform: Transform2F::default(),
-                depth: 0,
-                active: true,
-                parent: root_id,
-                parts: vec![],
-                children: vec![],
-            },
+            Entity::new(
+                root_id,
+                0,
+                String::from("root"),
+                root_id,
+                vec![],
+                Transform2F::default(),
+            ),
         );
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
         let mut state = State {
@@ -573,24 +698,23 @@ mod tests {
                 parent: root_id,
                 parts: vec![],
                 children: vec![entity_id],
+                tweens: HashMap::new(),
             },
         );
         display_list.insert(
             entity_id,
-            Entity {
-                id: entity_id,
-                name: String::from("entity"),
-                transform: Transform2F::default(),
-                depth: 1,
-                active: true,
-                parent: root_id,
-                parts: vec![Part::Vector {
+            Entity::new(
+                entity_id,
+                1,
+                String::from("entity"),
+                root_id,
+                vec![Part::Vector {
                     item_id: shape_id,
                     transform: Transform2F::default(),
                     color: None,
                 }],
-                children: vec![],
-            },
+                Transform2F::default(),
+            ),
         );
         let state = State {
             frame: 0,

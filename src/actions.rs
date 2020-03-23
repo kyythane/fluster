@@ -1,6 +1,7 @@
 #![deny(clippy::all)]
 
 use super::rendering::{Bitmap, ColorUDef, Shape, Vector2FDef};
+use super::tween::Easing;
 use core::cmp::min;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::Vector2F;
@@ -140,45 +141,76 @@ pub enum PartDefinition {
     },
     Bitmap {
         item_id: Uuid,
-        view_rect: RectPoints,
         transform: ScaleRotationTranslation,
+        view_rect: RectPoints,
     },
+}
+
+impl PartDefinition {
+    pub fn item_id(&self) -> &Uuid {
+        match self {
+            PartDefinition::Vector { item_id, .. } => item_id,
+            PartDefinition::Bitmap { item_id, .. } => item_id,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum PartUpdateDefinition {
     Vector {
-        item_id: Uuid,
-        transform: Option<ScaleRotationTranslation>,
         #[serde(
             serialize_with = "option_color_ser",
             deserialize_with = "option_color_des"
         )]
         color: Option<ColorU>,
+        easing: Easing,
+        //TODO: Gradients
+        item_id: Uuid,
+        transform: Option<ScaleRotationTranslation>,
     },
     Bitmap {
-        item_id: Uuid,
-        transform: Option<ScaleRotationTranslation>,
         #[serde(
             serialize_with = "option_color_ser",
             deserialize_with = "option_color_des"
         )]
-        color: Option<ColorU>,
+        tint: Option<ColorU>,
+        easing: Easing,
+        item_id: Uuid,
+        transform: Option<ScaleRotationTranslation>,
+        view_rect: Option<RectPoints>,
     },
 }
 
-//TODO: Fill in additional types or convert to struct
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct EntityDefinition {
-    pub id: Uuid,
-    pub name: String,
-    pub transform: ScaleRotationTranslation,
-    pub depth: u32,
-    pub parts: Vec<PartDefinition>,
-    pub parent: Option<Uuid>,
+impl PartUpdateDefinition {
+    pub fn item_id(&self) -> &Uuid {
+        match self {
+            PartUpdateDefinition::Vector { item_id, .. } => item_id,
+            PartUpdateDefinition::Bitmap { item_id, .. } => item_id,
+        }
+    }
 }
 
-//TODO: additional actions: Text, Scripts, Fonts
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct EntityDefinition {
+    pub depth: u32,
+    pub id: Uuid,
+    pub name: String,
+    pub parent: Option<Uuid>,
+    pub parts: Vec<PartDefinition>,
+    pub transform: ScaleRotationTranslation,
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct EntityUpdateDefinition {
+    pub duration_frames: u16,
+    pub easing: Option<Easing>,
+    pub id: Uuid,
+    pub part_updates: Vec<PartUpdateDefinition>,
+    pub transform: Option<ScaleRotationTranslation>,
+    //TODO: morph shapes
+}
+
+//TODO: additional actions: Text, Scripts, Fonts, AddPart, RemovePart
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Action {
     CreateRoot(Uuid),
@@ -197,21 +229,8 @@ pub enum Action {
         bitmap: Bitmap,
     },
     AddEntity(EntityDefinition),
-    UpdateEntity {
-        id: Uuid,
-        duration_frames: u16,
-        transform: Option<ScaleRotationTranslation>,
-        part_updates: Vec<PartUpdateDefinition>,
-        #[serde(
-            serialize_with = "option_color_ser",
-            deserialize_with = "option_color_des"
-        )]
-        color: Option<ColorU>,
-        //TODO: morph shapes
-    },
-    RemoveEntity {
-        id: Uuid,
-    },
+    UpdateEntity(EntityUpdateDefinition),
+    RemoveEntity(Uuid),
     PresentFrame(u32, u32), //TODO: if frames have set indexes, then how would it be possible to load in additional frames? Clip ID?
     Quit,
 }
