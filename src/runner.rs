@@ -538,7 +538,6 @@ fn create_part_tween(
     Ok(tweens)
 }
 
-//TODO: BUG: Children's transforms need to be composed with the parent's to get final transforms
 fn paint(
     renderer: &mut impl Renderer,
     state: &State,
@@ -548,12 +547,15 @@ fn paint(
     use std::collections::BTreeMap;
     use std::collections::VecDeque;
     let mut depth_list: BTreeMap<u64, &Entity> = BTreeMap::new();
+    let mut world_space_transforms: HashMap<Uuid, Transform2F> = HashMap::new();
     let root = display_list.get(&state.root_entity_id);
     if root.is_none() {
         return Err("Root Entity unloaded.".to_string());
     }
+    let root = root.unwrap();
+    world_space_transforms.insert(root.id, root.transform);
     let mut nodes = VecDeque::new();
-    nodes.push_back(root.unwrap());
+    nodes.push_back(root);
     while !nodes.is_empty() {
         if let Some(node) = nodes.pop_front() {
             for child_id in &node.children {
@@ -566,11 +568,21 @@ fn paint(
                 depth += 1;
             }
             depth_list.insert(depth, node);
+            if let Some(parent_transform) = world_space_transforms.get(&node.parent) {
+                let parent_transform = *parent_transform;
+                world_space_transforms.insert(node.id, parent_transform * node.transform);
+            } else {
+                return Err(format!(
+                    "Could not find parent {} of entity {} in world_space_transforms",
+                    node.parent, node.id
+                ));
+            }
         }
     }
     renderer.set_background(state.background_color);
     //Render from back to front (TODO: Does Pathfinder work better front to back or back to front?)
     for (_, entity) in depth_list {
+        let world_space_transform = world_space_transforms.get(&entity.id).unwrap();
         for part in &entity.parts {
             match part {
                 Part::Vector {
@@ -579,7 +591,7 @@ fn paint(
                     color,
                 } => {
                     if let Some(&DisplayLibraryItem::Vector(ref shape)) = library.get(&item_id) {
-                        renderer.draw_shape(shape, entity.transform * *transform, *color);
+                        renderer.draw_shape(shape, *world_space_transform * *transform, *color);
                     }
                 }
                 Part::Bitmap {
@@ -592,7 +604,7 @@ fn paint(
                         renderer.draw_bitmap(
                             bitmap,
                             *view_rect,
-                            entity.transform * *transform,
+                            *world_space_transform * *transform,
                             *tint,
                         );
                     }
