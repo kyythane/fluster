@@ -108,7 +108,7 @@ impl PropertyTween {
         PropertyTween {
             data: PropertyTweenData::Color {
                 start: start.to_f32(),
-                end: start.to_f32(),
+                end: end.to_f32(),
                 duration_seconds,
                 easing,
             },
