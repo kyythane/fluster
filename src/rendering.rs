@@ -69,6 +69,18 @@ pub enum Shape {
     },
 }
 
+impl Shape {
+    pub fn color(&self) -> Option<ColorU> {
+        match self {
+            Shape::Rect { color, .. } => Some(*color),
+            Shape::Path { color, .. } => Some(*color),
+            Shape::FillPath { color, .. } => Some(*color),
+            Shape::FillRect { color, .. } => Some(*color),
+            Shape::Clip { .. } => None,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Bitmap {
     #[serde(with = "Vector2FDef")]

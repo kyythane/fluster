@@ -4,6 +4,8 @@ use super::rendering::{Bitmap, ColorUDef, Shape, Vector2FDef};
 use super::tween::Easing;
 use core::cmp::min;
 use pathfinder_color::ColorU;
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
@@ -124,6 +126,15 @@ pub struct RectPoints {
     pub lower_right: Vector2F,
 }
 
+impl RectPoints {
+    pub fn from_rect(rect: &RectF) -> RectPoints {
+        RectPoints {
+            origin: rect.origin(),
+            lower_right: rect.lower_right(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ScaleRotationTranslation {
     #[serde(with = "Vector2FDef")]
@@ -131,6 +142,18 @@ pub struct ScaleRotationTranslation {
     pub theta: f32,
     #[serde(with = "Vector2FDef")]
     pub translation: Vector2F,
+}
+
+impl ScaleRotationTranslation {
+    pub fn from_transform(transform: &Transform2F) -> ScaleRotationTranslation {
+        let theta = transform.rotation();
+        let cos_theta = theta.cos();
+        ScaleRotationTranslation {
+            scale: Vector2F::new(transform.m11() / cos_theta, transform.m22() / cos_theta),
+            theta,
+            translation: transform.translation(),
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]

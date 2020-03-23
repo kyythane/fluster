@@ -2,14 +2,14 @@
 
 use super::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
-    PartUpdateDefinition, ScaleRotationTranslation,
+    PartUpdateDefinition, RectPoints, ScaleRotationTranslation,
 };
 use super::rendering::{Bitmap, Renderer, Shape};
 use super::tween::Easing;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::vector::Vector2I;
 use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
@@ -57,8 +57,15 @@ enum PropertyTween {
         duration_seconds: f32,
         easing: Easing,
     },
+    ViewRect {
+        start: RectPoints,
+        end: RectPoints,
+        duration_seconds: f32,
+        easing: Easing,
+    },
 }
 
+//TODO: Bounding boxes and hit tests for mouse interactions
 #[derive(Clone, PartialEq, Debug)]
 struct Entity {
     active: bool,
@@ -374,22 +381,13 @@ fn add_tweens(
     let duration_seconds =
         state.seconds_per_frame * (entity_update_definition.duration_frames as f32);
     if let Some(entity) = display_list.get_mut(&entity_update_definition.id) {
-        if let Some(transform) = entity_update_definition.transform {
+        if let Some(end_transform) = entity_update_definition.transform {
             let tween = if let Some(easing) = entity_update_definition.easing {
-                let theta = entity.transform.rotation();
-                let cos_theta = theta.cos();
                 PropertyTween::Transform {
                     duration_seconds,
                     easing,
-                    start: ScaleRotationTranslation {
-                        scale: Vector2F::new(
-                            entity.transform.m11() / cos_theta,
-                            entity.transform.m22() / cos_theta,
-                        ),
-                        theta,
-                        translation: entity.transform.translation(),
-                    },
-                    end: transform,
+                    start: ScaleRotationTranslation::from_transform(&entity.transform),
+                    end: end_transform,
                 }
             } else {
                 return Err(format!(
@@ -408,8 +406,14 @@ fn add_tweens(
             let update_item_id = part_update.item_id();
             if let Some(part) = entity.parts.iter().find(|p| p.item_id() == update_item_id) {
                 if let Some(library_item) = library.get(update_item_id) {
-                    let tween =
+                    let tweens =
                         create_part_tween(part, library_item, part_update, duration_seconds)?;
+                    match entity.tweens.get_mut(part.item_id()) {
+                        Some(existing_tweens) => existing_tweens.extend(tweens),
+                        None => {
+                            entity.tweens.insert(entity.id, tweens);
+                        }
+                    };
                 }
             }
         }
@@ -439,12 +443,42 @@ fn create_part_tween(
                 ..
             } = part
             {
-                if let Some(end_tint) = end_tint {}
-                if let Some(end_transform) = end_transform {}
-                if let Some(end_view_rect) = end_view_rect {}
+                if let Some(end_tint) = end_tint {
+                    if let Some(start_tint) = start_tint {
+                        tweens.push(PropertyTween::Color {
+                            duration_seconds,
+                            easing: *easing,
+                            start: *start_tint,
+                            end: *end_tint,
+                        });
+                    } else {
+                        tweens.push(PropertyTween::Color {
+                            duration_seconds,
+                            easing: *easing,
+                            start: ColorU::white(),
+                            end: *end_tint,
+                        });
+                    }
+                }
+                if let Some(end_transform) = end_transform {
+                    tweens.push(PropertyTween::Transform {
+                        duration_seconds,
+                        easing: *easing,
+                        start: ScaleRotationTranslation::from_transform(start_transform),
+                        end: *end_transform,
+                    });
+                }
+                if let Some(end_view_rect) = end_view_rect {
+                    tweens.push(PropertyTween::ViewRect {
+                        duration_seconds,
+                        easing: *easing,
+                        start: RectPoints::from_rect(start_view_rect),
+                        end: *end_view_rect,
+                    });
+                }
             } else {
                 return Err(format!(
-                    "Tried to apply Bitmap update to a vector part {}",
+                    "Tried to apply Bitmap update to a Bector part {}",
                     part.item_id()
                 ));
             }
@@ -455,8 +489,50 @@ fn create_part_tween(
             transform: end_transform,
             ..
         } => {
-            if let Some(end_color) = end_color {}
-            if let Some(end_transform) = end_transform {}
+            if let Part::Vector {
+                transform: start_transform,
+                color: start_color,
+                ..
+            } = part
+            {
+                if let Some(end_color) = end_color {
+                    if let Some(start_color) = start_color {
+                        tweens.push(PropertyTween::Color {
+                            duration_seconds,
+                            easing: *easing,
+                            start: *start_color,
+                            end: *end_color,
+                        });
+                    } else if let DisplayLibraryItem::Vector(shape) = library_item {
+                        if let Some(start_color) = shape.color() {
+                            tweens.push(PropertyTween::Color {
+                                duration_seconds,
+                                easing: *easing,
+                                start: start_color,
+                                end: *end_color,
+                            });
+                        }
+                    } else {
+                        return Err(format!(
+                            "Vector part {} references a Bitmap object",
+                            part.item_id()
+                        ));
+                    }
+                }
+                if let Some(end_transform) = end_transform {
+                    tweens.push(PropertyTween::Transform {
+                        duration_seconds,
+                        easing: *easing,
+                        start: ScaleRotationTranslation::from_transform(start_transform),
+                        end: *end_transform,
+                    });
+                }
+            } else {
+                return Err(format!(
+                    "Tried to apply Vector update to a Bitmap part {}",
+                    part.item_id()
+                ));
+            }
         }
     }
     Ok(tweens)
