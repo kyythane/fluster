@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["lprimrose"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+fluster_core = { path = "../fluster_core" }
+pathfinder_canvas = { git = "https://github.com/servo/pathfinder.git" }
+pathfinder_color = { git = "https://github.com/servo/pathfinder.git" }
+pathfinder_content = { git = "https://github.com/servo/pathfinder.git" }
+pathfinder_geometry = { git = "https://github.com/servo/pathfinder.git" }

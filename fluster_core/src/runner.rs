@@ -14,7 +14,7 @@ use pathfinder_geometry::vector::Vector2F;
 use std::collections::HashMap;
 use std::mem;
 use std::thread;
-use std::time::{Duration. SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
 
@@ -323,7 +323,8 @@ pub fn play(
                     paint(renderer, &state, &display_list, &library)?;
                     state = on_frame_complete(state);
                     let frame_end_time = time_seconds();
-                    let frame_time_left = state.seconds_per_frame - (frame_end_time - state.frame_end_time) as f32 ;
+                    let frame_time_left =
+                        state.seconds_per_frame - (frame_end_time - state.frame_end_time) as f32;
                     let frame_end_time = if frame_time_left > 0.0 {
                         thread::sleep(Duration::from_secs_f32(frame_time_left));
                         time_seconds()
