@@ -13,7 +13,8 @@ use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use std::collections::HashMap;
 use std::mem;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration. SystemTime, UNIX_EPOCH};
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
 
@@ -49,7 +50,8 @@ impl Part {
 #[derive(Clone, PartialEq, Debug)]
 pub struct LerpTransform {
     pub scale: Vector2F,
-    pub angle: Vector2F, //https://gamedev.stackexchange.com/questions/72348/how-do-i-lerp-between-values-that-loop-such-as-hue-or-rotation
+    //https://gamedev.stackexchange.com/questions/72348/how-do-i-lerp-between-values-that-loop-such-as-hue-or-rotation
+    pub angle: Vector2F,
     pub translation: Vector2F,
 }
 
@@ -313,15 +315,21 @@ pub fn play(
                 return Err("Attempting to play incorrect frame. Frame counter and action list have gotten desynced".to_string());
             } else {
                 for frame in 0..*count {
-                    //TODO: skip updates/paints to catch up to frame rate if we are lagging
                     state.frame = *start + frame;
+                    //TODO: skip updates/paints to catch up to frame rate if we are lagging
                     //TODO: handle input
                     //TODO: scripts
                     update_tweens(state.delta_time, &mut display_list);
                     paint(renderer, &state, &display_list, &library)?;
                     state = on_frame_complete(state);
-                    //TODO: cap framerate
                     let frame_end_time = time_seconds();
+                    let frame_time_left = state.seconds_per_frame - (frame_end_time - state.frame_end_time) as f32 ;
+                    let frame_end_time = if frame_time_left > 0.0 {
+                        thread::sleep(Duration::from_secs_f32(frame_time_left));
+                        time_seconds()
+                    } else {
+                        frame_end_time
+                    };
                     state.delta_time = (frame_end_time - state.frame_end_time) as f32;
                     state.frame_end_time = frame_end_time;
                 }
