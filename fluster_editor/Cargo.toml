@@ -1,0 +1,8 @@
+[package]
+name = "fluster_editor"
+version = "0.1.0"
+authors = ["lprimrose"]
+edition = "2018"
+
+[dependencies]
+fluster_core = { path = "../fluster_core" }
