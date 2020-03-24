@@ -51,6 +51,14 @@ pub enum Easing {
 
 impl Easing {
     pub fn ease(self, percent: f32) -> f32 {
+        // clamp
+        let percent = if percent > 1.0 {
+            1.0
+        } else if percent < 0.0 {
+            0.0
+        } else {
+            percent
+        };
         const BACK_SCALE: f32 = 1.70158;
         const IN_OUT_BACK_SCALE: f32 = BACK_SCALE * 1.525;
         match self {

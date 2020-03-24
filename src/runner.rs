@@ -1,4 +1,5 @@
 #![deny(clippy::all)]
+//TODO: break into smaller files... again... somehow
 
 use super::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
@@ -9,8 +10,10 @@ use super::tween::{Easing, Tween};
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::vector::Vector2F;
 use std::collections::HashMap;
+use std::mem;
+use std::time::{SystemTime, UNIX_EPOCH};
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
 
@@ -46,17 +49,19 @@ impl Part {
 #[derive(Clone, PartialEq, Debug)]
 pub struct LerpTransform {
     pub scale: Vector2F,
-    pub angle: Vector2F,
+    pub angle: Vector2F, //https://gamedev.stackexchange.com/questions/72348/how-do-i-lerp-between-values-that-loop-such-as-hue-or-rotation
     pub translation: Vector2F,
 }
 
 impl LerpTransform {
     pub fn from_transform(transform: &Transform2F) -> LerpTransform {
         let theta = transform.rotation();
-        let cos_theta = theta.cos();
         LerpTransform {
-            scale: Vector2F::new(transform.m11() / cos_theta, transform.m22() / cos_theta),
-            angle: Vector2F::new(cos_theta, theta.sin()),
+            scale: Vector2F::new(
+                Vector2F::new(transform.m11(), transform.m21()).length(),
+                Vector2F::new(transform.m21(), transform.m22()).length(),
+            ),
+            angle: Vector2F::new(theta.cos(), theta.sin()),
             translation: transform.translation(),
         }
     }
@@ -155,7 +160,7 @@ impl PropertyTween {
 enum PropertyTweenUpdate {
     Color(ColorU),
     Transform(Transform2F),
-    ViewRect(RectPoints),
+    ViewRect(RectF),
 }
 
 impl Tween for PropertyTween {
@@ -194,10 +199,10 @@ impl Tween for PropertyTween {
                 easing,
             } => {
                 let value = easing.ease(self.elapsed_seconds / duration_seconds);
-                PropertyTweenUpdate::ViewRect(RectPoints {
-                    origin: start.origin.lerp(end.origin, value),
-                    lower_right: start.lower_right.lerp(end.lower_right, value),
-                })
+                PropertyTweenUpdate::ViewRect(RectF::from_points(
+                    start.origin.lerp(end.origin, value),
+                    start.lower_right.lerp(end.lower_right, value),
+                ))
             }
         }
     }
@@ -279,8 +284,9 @@ impl Entity {
 
 pub struct State {
     seconds_per_frame: f32,
-    stage_size: Vector2I,
     frame: u32,
+    delta_time: f32,
+    frame_end_time: f64,
     root_entity_id: Uuid,
     background_color: ColorU,
     running: bool,
@@ -290,18 +296,11 @@ pub fn play(
     renderer: &mut impl Renderer,
     actions: &mut ActionList,
     on_frame_complete: &dyn Fn(State) -> State,
-    stage_size: Vector2I,
     seconds_per_frame: f32,
 ) -> Result<(), String> {
     let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
     let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
-    let mut state = initialize(
-        actions,
-        &mut display_list,
-        &mut library,
-        stage_size,
-        seconds_per_frame,
-    )?;
+    let mut state = initialize(actions, &mut display_list, &mut library, seconds_per_frame)?;
     while let Some(_) = actions.get() {
         if !state.running {
             break;
@@ -314,14 +313,17 @@ pub fn play(
                 return Err("Attempting to play incorrect frame. Frame counter and action list have gotten desynced".to_string());
             } else {
                 for frame in 0..*count {
-                    //TODO: compute frame start time and delta
+                    //TODO: skip updates/paints to catch up to frame rate if we are lagging
                     state.frame = *start + frame;
                     //TODO: handle input
                     //TODO: scripts
-                    update_tweens(&state, &mut display_list);
+                    update_tweens(state.delta_time, &mut display_list);
                     paint(renderer, &state, &display_list, &library)?;
                     state = on_frame_complete(state);
-                    //TODO: compute frame end time
+                    //TODO: cap framerate
+                    let frame_end_time = time_seconds();
+                    state.delta_time = (frame_end_time - state.frame_end_time) as f32;
+                    state.frame_end_time = frame_end_time;
                 }
             }
         }
@@ -330,20 +332,95 @@ pub fn play(
     Ok(())
 }
 
-fn update_tweens(state: &State, display_list: &mut HashMap<Uuid, Entity>) {
-    for entity in display_list.values() {
+#[inline]
+fn time_seconds() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
+}
+
+fn update_tweens(elapsed: f32, display_list: &mut HashMap<Uuid, Entity>) {
+    for (_, entity) in display_list.iter_mut() {
         if entity.tweens.is_empty() {
             continue;
         }
-        for (key, tween) in &entity.tweens {
-            /* TODO:
-                - compute next tween value
-                - update entity/part
-                - remove tween if complete
-            */
+        for (key, tweens) in entity.tweens.iter_mut() {
+            if key == &entity.id {
+                for update in tweens.iter_mut().map(|tween| tween.update(elapsed)) {
+                    if let PropertyTweenUpdate::Transform(transform) = update {
+                        entity.transform = transform;
+                    }
+                }
+                tweens.retain(|tween| !tween.is_complete());
+            } else if let Some(part) = entity.parts.iter_mut().find(|p| p.item_id() == key) {
+                let (new_transform, new_color, new_view_rect) = tweens
+                    .iter_mut()
+                    .map(|tween| {
+                        let update = tween.update(elapsed);
+                        match update {
+                            PropertyTweenUpdate::Transform(transform) => {
+                                (Some(transform), None, None)
+                            }
+                            PropertyTweenUpdate::Color(color) => (None, Some(color), None),
+                            PropertyTweenUpdate::ViewRect(view_rect) => {
+                                (None, None, Some(view_rect))
+                            }
+                        }
+                    })
+                    .fold((None, None, None), |acc, x| {
+                        let t = if x.0.is_some() { x.0 } else { acc.0 };
+                        let c = if x.1.is_some() { x.1 } else { acc.1 };
+                        let v = if x.2.is_some() { x.2 } else { acc.2 };
+                        (t, c, v)
+                    });
+                let new_part = match part {
+                    Part::Vector {
+                        item_id,
+                        transform,
+                        color,
+                    } => Part::Vector {
+                        item_id: *item_id,
+                        transform: if let Some(new_transform) = new_transform {
+                            new_transform
+                        } else {
+                            *transform
+                        },
+                        color: if new_color.is_some() {
+                            new_color
+                        } else {
+                            *color
+                        },
+                    },
+                    Part::Bitmap {
+                        item_id,
+                        transform,
+                        view_rect,
+                        tint,
+                    } => Part::Bitmap {
+                        item_id: *item_id,
+                        transform: if let Some(new_transform) = new_transform {
+                            new_transform
+                        } else {
+                            *transform
+                        },
+                        tint: if new_color.is_some() {
+                            new_color
+                        } else {
+                            *tint
+                        },
+                        view_rect: if let Some(new_view_rect) = new_view_rect {
+                            new_view_rect
+                        } else {
+                            *view_rect
+                        },
+                    },
+                };
+                mem::replace(part, new_part);
+                tweens.retain(|tween| !tween.is_complete());
+            }
         }
     }
-    unimplemented!();
 }
 
 fn define_shape(id: &Uuid, shape: &Shape, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
@@ -365,7 +442,6 @@ fn initialize(
     actions: &mut ActionList,
     display_list: &mut HashMap<Uuid, Entity>,
     library: &mut HashMap<Uuid, DisplayLibraryItem>,
-    stage_size: Vector2I,
     seconds_per_frame: f32,
 ) -> Result<State, String> {
     let mut root_entity_id: Option<Uuid> = None;
@@ -403,10 +479,11 @@ fn initialize(
     if let Some(root_entity_id) = root_entity_id {
         Ok(State {
             frame: 0,
+            delta_time: 0.0,
+            frame_end_time: time_seconds(),
             root_entity_id,
             background_color,
             running: true,
-            stage_size,
             seconds_per_frame,
         })
     } else {
@@ -804,7 +881,10 @@ mod tests {
     use crate::actions::ScaleRotationTranslation;
     use mockall::predicate::*;
     use mockall::*;
+    use pathfinder_geometry::transform2d::Transform2F;
     use pathfinder_geometry::vector::Vector2F;
+    use std::f32::consts::FRAC_PI_2;
+    use std::{thread, time};
 
     #[test]
     fn it_initializes_state() {
@@ -819,14 +899,7 @@ mod tests {
         let mut action_list = ActionList::new(Box::new(|| None), Some(&actions));
         let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
-        let state = initialize(
-            &mut action_list,
-            &mut display_list,
-            &mut library,
-            Vector2I::new(960, 480),
-            0.016,
-        )
-        .unwrap();
+        let state = initialize(&mut action_list, &mut display_list, &mut library, 0.016).unwrap();
         assert_eq!(state.background_color, ColorU::black());
         assert_eq!(state.root_entity_id, root_id);
         assert_eq!(action_list.current_index(), 2);
@@ -906,10 +979,11 @@ mod tests {
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
         let mut state = State {
             frame: 0,
+            delta_time: 0.0,
+            frame_end_time: time_seconds(),
             root_entity_id: root_id,
             background_color: ColorU::white(),
             running: true,
-            stage_size: Vector2I::new(960, 480),
             seconds_per_frame: 0.016,
         };
         state = execute_actions(state, &mut action_list, &mut display_list, &mut library).unwrap();
@@ -941,6 +1015,89 @@ mod tests {
             fn draw_shape(&self, shape: &Shape, transform: Transform2F, color_override: Option<ColorU>);
             fn draw_bitmap(&self, bitmap: &Bitmap, view_rect: RectF, transform: Transform2F, tint: Option<ColorU>);
         }
+    }
+
+    #[test]
+    fn it_updates_tweens() {
+        const FRAME_TIME: f32 = 1.0 / 60.0;
+        let root_id = Uuid::parse_str("cfc4e1a4-5623-485a-bd79-88dc82e3e26f").unwrap();
+        let entity_id = Uuid::parse_str("b06f8577-aa30-4000-9967-9ba336e9248c").unwrap();
+        let shape_id = Uuid::parse_str("1c3ad65b-ebbf-4d5e-8943-28b94df19361").unwrap();
+
+        let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
+        display_list.insert(
+            root_id,
+            Entity {
+                id: root_id,
+                name: String::from("root"),
+                transform: Transform2F::default(),
+                depth: 0,
+                active: true,
+                parent: root_id,
+                parts: vec![],
+                children: vec![entity_id],
+                tweens: HashMap::new(),
+            },
+        );
+        let mut tweens: HashMap<Uuid, Vec<PropertyTween>> = HashMap::new();
+        tweens.insert(
+            entity_id,
+            vec![PropertyTween::new_transform(
+                LerpTransform::from_transform(&Transform2F::default()),
+                LerpTransform::from_transform(&Transform2F::from_rotation(FRAC_PI_2)),
+                FRAME_TIME * 5.0,
+                Easing::CubicIn,
+            )],
+        );
+        tweens.insert(
+            shape_id,
+            vec![PropertyTween::new_transform(
+                LerpTransform::from_transform(&Transform2F::default()),
+                LerpTransform::from_transform(&Transform2F::from_scale(Vector2F::new(6.0, 15.0))),
+                FRAME_TIME * 5.0,
+                Easing::Linear,
+            )],
+        );
+        display_list.insert(
+            entity_id,
+            Entity {
+                id: entity_id,
+                name: String::from("entity"),
+                transform: Transform2F::default(),
+                depth: 1,
+                active: true,
+                parent: root_id,
+                parts: vec![Part::Vector {
+                    item_id: shape_id,
+                    transform: Transform2F::default(),
+                    color: None,
+                }],
+                children: vec![],
+                tweens,
+            },
+        );
+
+        let mut delta_time = 0.0;
+        let mut frame_end_time = time_seconds();
+
+        let sleep_duration = time::Duration::from_secs_f32(FRAME_TIME);
+        for _ in 0..6 {
+            update_tweens(delta_time, &mut display_list);
+            thread::sleep(sleep_duration);
+            let new_frame_end_time = time_seconds();
+            delta_time = (new_frame_end_time - frame_end_time) as f32;
+            frame_end_time = new_frame_end_time;
+        }
+        let entity = display_list.get(&entity_id);
+        assert!((entity.unwrap().transform.rotation() - FRAC_PI_2).abs() < std::f32::EPSILON);
+        let part_transform = match entity.unwrap().parts[0] {
+            Part::Bitmap { transform, .. } => transform,
+            Part::Vector { transform, .. } => transform,
+        };
+        assert_eq!(
+            Vector2F::new(part_transform.m11(), part_transform.m22()),
+            Vector2F::new(6.0, 15.0)
+        );
     }
 
     #[test]
@@ -989,10 +1146,11 @@ mod tests {
         );
         let state = State {
             frame: 0,
+            delta_time: 0.0,
+            frame_end_time: time_seconds(),
             root_entity_id: root_id,
             background_color: ColorU::white(),
             running: true,
-            stage_size: Vector2I::new(960, 480),
             seconds_per_frame: 0.016,
         };
         let mut seq = Sequence::new();
