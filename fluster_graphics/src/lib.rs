@@ -127,6 +127,11 @@ where
                         canvas.clip_path(path, FillRule::Winding);
                     }
                 }
+                Shape::Group { shapes } => {
+                    for shape in shapes {
+                        self.draw_shape(shape, transform, color_override)
+                    }
+                }
             }
         }
     }

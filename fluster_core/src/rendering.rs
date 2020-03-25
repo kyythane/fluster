@@ -58,6 +58,9 @@ pub enum Shape {
         )]
         points: Vec<Vector2F>,
     },
+    Group {
+        shapes: Vec<Shape>,
+    },
 }
 
 impl Shape {
@@ -66,6 +69,7 @@ impl Shape {
             Shape::Path { color, .. } => Some(*color),
             Shape::FillPath { color, .. } => Some(*color),
             Shape::Clip { .. } => None,
+            Shape::Group { .. } => None,
         }
     }
 }

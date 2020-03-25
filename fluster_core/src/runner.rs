@@ -12,6 +12,7 @@ use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use std::collections::HashMap;
+use std::f64::consts::PI;
 use std::mem;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -47,36 +48,6 @@ impl Part {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub struct LerpTransform {
-    pub scale: Vector2F,
-    //https://gamedev.stackexchange.com/questions/72348/how-do-i-lerp-between-values-that-loop-such-as-hue-or-rotation
-    pub angle: Vector2F,
-    pub translation: Vector2F,
-}
-
-impl LerpTransform {
-    pub fn from_transform(transform: &Transform2F) -> LerpTransform {
-        let theta = transform.rotation();
-        LerpTransform {
-            scale: Vector2F::new(
-                Vector2F::new(transform.m11(), transform.m21()).length(),
-                Vector2F::new(transform.m21(), transform.m22()).length(),
-            ),
-            angle: Vector2F::new(theta.cos(), theta.sin()),
-            translation: transform.translation(),
-        }
-    }
-
-    pub fn from_scale_rotation_translation(transform: &ScaleRotationTranslation) -> LerpTransform {
-        LerpTransform {
-            scale: transform.scale,
-            angle: Vector2F::new(transform.theta.cos(), transform.theta.sin()),
-            translation: transform.translation,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 struct PropertyTween {
     data: PropertyTweenData,
@@ -92,8 +63,12 @@ enum PropertyTweenData {
         easing: Easing,
     },
     Transform {
-        start: LerpTransform,
-        end: LerpTransform,
+        start_scale: Vector2F,
+        end_scale: Vector2F,
+        start_translation: Vector2F,
+        end_translation: Vector2F,
+        start_theta: f64,
+        end_theta: f64,
         duration_seconds: f32,
         easing: Easing,
     },
@@ -124,15 +99,26 @@ impl PropertyTween {
     }
 
     pub fn new_transform(
-        start: LerpTransform,
-        end: LerpTransform,
+        start: ScaleRotationTranslation,
+        end: ScaleRotationTranslation,
         duration_seconds: f32,
         easing: Easing,
     ) -> PropertyTween {
         PropertyTween {
             data: PropertyTweenData::Transform {
-                start,
-                end,
+                start_scale: start.scale,
+                end_scale: end.scale,
+                start_translation: start.translation,
+                end_translation: end.translation,
+                start_theta: {
+                    let delta = end.theta - start.theta;
+                    if (delta as f64) > PI {
+                        (start.theta as f64) + PI * 2.0
+                    } else {
+                        (start.theta as f64) - PI * 2.0
+                    }
+                },
+                end_theta: end.theta.into(),
                 duration_seconds,
                 easing,
             },
@@ -181,17 +167,20 @@ impl Tween for PropertyTween {
                 PropertyTweenUpdate::Color(start.lerp(*end, value).to_u8())
             }
             PropertyTweenData::Transform {
-                start,
-                end,
+                start_scale,
+                end_scale,
+                start_translation,
+                end_translation,
+                start_theta,
+                end_theta,
                 duration_seconds,
                 easing,
             } => {
                 let value = easing.ease(self.elapsed_seconds / duration_seconds);
-                let angle_vector = start.angle.lerp(end.angle, value);
                 PropertyTweenUpdate::Transform(Transform2F::from_scale_rotation_translation(
-                    start.scale.lerp(end.scale, value),
-                    f32::atan2(angle_vector.y(), angle_vector.x()),
-                    start.translation.lerp(end.translation, value),
+                    start_scale.lerp(*end_scale, value),
+                    ((end_theta - start_theta) * (value as f64) + start_theta) as f32,
+                    start_translation.lerp(*end_translation, value),
                 ))
             }
             PropertyTweenData::ViewRect {
@@ -679,8 +668,8 @@ fn add_tweens(
         if let Some(end_transform) = &entity_update_definition.transform {
             let tween = if let Some(easing) = entity_update_definition.easing {
                 PropertyTween::new_transform(
-                    LerpTransform::from_transform(&entity.transform),
-                    LerpTransform::from_scale_rotation_translation(end_transform),
+                    ScaleRotationTranslation::from_transform(&entity.transform),
+                    *end_transform,
                     duration_seconds,
                     easing,
                 )
@@ -757,8 +746,8 @@ fn create_part_tween(
                 }
                 if let Some(end_transform) = end_transform {
                     tweens.push(PropertyTween::new_transform(
-                        LerpTransform::from_transform(start_transform),
-                        LerpTransform::from_scale_rotation_translation(end_transform),
+                        ScaleRotationTranslation::from_transform(start_transform),
+                        *end_transform,
                         duration_seconds,
                         *easing,
                     ));
@@ -816,8 +805,8 @@ fn create_part_tween(
                 }
                 if let Some(end_transform) = end_transform {
                     tweens.push(PropertyTween::new_transform(
-                        LerpTransform::from_transform(start_transform),
-                        LerpTransform::from_scale_rotation_translation(end_transform),
+                        ScaleRotationTranslation::from_transform(start_transform),
+                        *end_transform,
                         duration_seconds,
                         *easing,
                     ));
@@ -1086,8 +1075,8 @@ mod tests {
         tweens.insert(
             entity_id,
             vec![PropertyTween::new_transform(
-                LerpTransform::from_transform(&Transform2F::default()),
-                LerpTransform::from_transform(&Transform2F::from_rotation(FRAC_PI_2)),
+                ScaleRotationTranslation::from_transform(&Transform2F::default()),
+                ScaleRotationTranslation::from_transform(&Transform2F::from_rotation(FRAC_PI_2)),
                 FRAME_TIME * 5.0,
                 Easing::CubicIn,
             )],
@@ -1095,8 +1084,10 @@ mod tests {
         tweens.insert(
             shape_id,
             vec![PropertyTween::new_transform(
-                LerpTransform::from_transform(&Transform2F::default()),
-                LerpTransform::from_transform(&Transform2F::from_scale(Vector2F::new(6.0, 15.0))),
+                ScaleRotationTranslation::from_transform(&Transform2F::default()),
+                ScaleRotationTranslation::from_transform(&Transform2F::from_scale(Vector2F::new(
+                    6.0, 15.0,
+                ))),
                 FRAME_TIME * 5.0,
                 Easing::Linear,
             )],
