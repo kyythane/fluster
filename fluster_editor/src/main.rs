@@ -8,6 +8,7 @@ use fluster_core::tween::Easing;
 use fluster_graphics::FlusterRenderer;
 use pathfinder_canvas::CanvasFontContext;
 use pathfinder_color::{ColorF, ColorU};
+use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
@@ -22,6 +23,7 @@ use uuid::Uuid;
 
 fn build_action_list() -> ActionList {
     let shape_id = Uuid::new_v4();
+    let shape2_id = Uuid::new_v4();
     let entity_id = Uuid::new_v4();
     let entity2_id = Uuid::new_v4();
     let actions = vec![
@@ -42,6 +44,24 @@ fn build_action_list() -> ActionList {
                 color: ColorU::new(149, 125, 173, 255),
             },
         },
+        Action::DefineShape {
+            id: shape2_id,
+            shape: Shape::Path {
+                points: vec![
+                    Vector2F::new(-15.0, -15.0),
+                    Vector2F::new(15.0, -15.0),
+                    Vector2F::new(15.0, 15.0),
+                    Vector2F::new(-15.0, 15.0),
+                ],
+                stroke_style: StrokeStyle {
+                    line_width: 3.0,
+                    line_cap: LineCap::Square,
+                    line_join: LineJoin::Bevel,
+                },
+                is_closed: true,
+                color: ColorU::black(),
+            },
+        },
         Action::AddEntity(EntityDefinition {
             id: entity_id,
             name: String::from("first"),
@@ -51,14 +71,24 @@ fn build_action_list() -> ActionList {
                 translation: Vector2F::new(400.0, 400.0),
             },
             depth: 2,
-            parts: vec![PartDefinition::Vector {
-                item_id: shape_id,
-                transform: ScaleRotationTranslation {
-                    scale: Vector2F::splat(2.0),
-                    theta: 0.0,
-                    translation: Vector2F::new(0.0, 0.0),
+            parts: vec![
+                PartDefinition::Vector {
+                    item_id: shape_id,
+                    transform: ScaleRotationTranslation {
+                        scale: Vector2F::splat(2.0),
+                        theta: 0.0,
+                        translation: Vector2F::new(0.0, 0.0),
+                    },
                 },
-            }],
+                PartDefinition::Vector {
+                    item_id: shape2_id,
+                    transform: ScaleRotationTranslation {
+                        scale: Vector2F::splat(2.0),
+                        theta: 0.0,
+                        translation: Vector2F::new(0.0, 0.0),
+                    },
+                },
+            ],
             parent: None,
         }),
         Action::AddEntity(EntityDefinition {
