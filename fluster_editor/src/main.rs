@@ -73,6 +73,14 @@ fn build_action_list() -> ActionList {
             depth: 2,
             parts: vec![
                 PartDefinition::Vector {
+                    item_id: shape2_id,
+                    transform: ScaleRotationTranslation {
+                        scale: Vector2F::splat(2.0),
+                        theta: 0.0,
+                        translation: Vector2F::new(0.0, 0.0),
+                    },
+                },
+                PartDefinition::Vector {
                     item_id: shape_id,
                     transform: ScaleRotationTranslation {
                         scale: Vector2F::splat(2.0),
@@ -81,11 +89,11 @@ fn build_action_list() -> ActionList {
                     },
                 },
                 PartDefinition::Vector {
-                    item_id: shape2_id,
+                    item_id: shape_id,
                     transform: ScaleRotationTranslation {
                         scale: Vector2F::splat(2.0),
                         theta: 0.0,
-                        translation: Vector2F::new(0.0, 0.0),
+                        translation: Vector2F::new(300.0, 0.0),
                     },
                 },
             ],
@@ -135,16 +143,16 @@ fn build_action_list() -> ActionList {
         Action::PresentFrame(0, 1),
         Action::UpdateEntity(EntityUpdateDefinition {
             duration_frames: 480,
-            easing: Some(Easing::CubicInOut),
+            easing: Some(Easing::BounceOut),
             id: entity2_id,
             part_updates: vec![],
             transform: Some(ScaleRotationTranslation {
                 scale: Vector2F::splat(1.0),
-                theta: PI / 2.0,
-                translation: Vector2F::new(0.0, 0.0),
+                theta: PI,
+                translation: Vector2F::new(200.0, 0.0),
             }),
         }),
-        Action::PresentFrame(1, 479),
+        Action::PresentFrame(1, 499),
         Action::Quit,
     ];
     ActionList::new(Box::new(|| None), Some(&actions))

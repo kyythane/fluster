@@ -111,11 +111,13 @@ impl PropertyTween {
                 start_translation: start.translation,
                 end_translation: end.translation,
                 start_theta: {
-                    let delta = end.theta - start.theta;
-                    if (delta as f64) > PI {
+                    let delta = (end.theta - start.theta) as f64;
+                    if delta > PI {
                         (start.theta as f64) + PI * 2.0
-                    } else {
+                    } else if delta < -PI {
                         (start.theta as f64) - PI * 2.0
+                    } else {
+                        start.theta as f64
                     }
                 },
                 end_theta: end.theta.into(),
