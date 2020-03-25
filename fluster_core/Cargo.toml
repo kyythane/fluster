@@ -8,10 +8,10 @@ edition = "2018"
 bincode = "1.2"
 circular = "0.3"
 nom = "5.1"
-pathfinder_color = { git = "https://github.com/servo/pathfinder.git" }
-pathfinder_content = { git = "https://github.com/servo/pathfinder.git" }
-pathfinder_geometry = { git = "https://github.com/servo/pathfinder.git" }
-pathfinder_simd = { git = "https://github.com/servo/pathfinder.git" }
+pathfinder_color = { git = "https://github.com/kyythane/pathfinder.git" }
+pathfinder_content = { git = "https://github.com/kyythane/pathfinder.git" }
+pathfinder_geometry = { git = "https://github.com/kyythane/pathfinder.git" }
+pathfinder_simd = { git = "https://github.com/kyythane/pathfinder.git" }
 serde = "1.0"
 streaming-iterator = "0.1"
 uuid = { version = "0.8", features = ["serde"] }

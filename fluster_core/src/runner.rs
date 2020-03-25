@@ -292,6 +292,7 @@ pub struct State {
     root_entity_id: Uuid,
     background_color: ColorU,
     running: bool,
+    stage_size: Vector2F,
 }
 
 pub fn play(
@@ -299,10 +300,17 @@ pub fn play(
     actions: &mut ActionList,
     on_frame_complete: &dyn Fn(State) -> State,
     seconds_per_frame: f32,
+    stage_size: Vector2F,
 ) -> Result<(), String> {
     let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
     let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
-    let mut state = initialize(actions, &mut display_list, &mut library, seconds_per_frame)?;
+    let mut state = initialize(
+        actions,
+        &mut display_list,
+        &mut library,
+        seconds_per_frame,
+        stage_size,
+    )?;
     while let Some(_) = actions.get() {
         if !state.running {
             break;
@@ -452,6 +460,7 @@ fn initialize(
     display_list: &mut HashMap<Uuid, Entity>,
     library: &mut HashMap<Uuid, DisplayLibraryItem>,
     seconds_per_frame: f32,
+    stage_size: Vector2F,
 ) -> Result<State, String> {
     let mut root_entity_id: Option<Uuid> = None;
     let mut background_color = ColorU::white();
@@ -494,6 +503,7 @@ fn initialize(
             background_color,
             running: true,
             seconds_per_frame,
+            stage_size,
         })
     } else {
         Err("Action list did not define a root element".to_string())
@@ -848,6 +858,7 @@ fn paint(
             }
         }
     }
+    renderer.start_frame(state.stage_size);
     renderer.set_background(state.background_color);
     //Render from back to front (TODO: Does Pathfinder work better front to back or back to front?)
     for entity in depth_list.values() {
@@ -881,6 +892,7 @@ fn paint(
             }
         }
     }
+    renderer.end_frame();
     Ok(())
 }
 
@@ -908,9 +920,18 @@ mod tests {
         let mut action_list = ActionList::new(Box::new(|| None), Some(&actions));
         let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
-        let state = initialize(&mut action_list, &mut display_list, &mut library, 0.016).unwrap();
+        let state = initialize(
+            &mut action_list,
+            &mut display_list,
+            &mut library,
+            0.016,
+            Vector2F::new(800.0, 600.0),
+        )
+        .unwrap();
         assert_eq!(state.background_color, ColorU::black());
         assert_eq!(state.root_entity_id, root_id);
+        assert_eq!(state.seconds_per_frame, 0.016);
+        assert_eq!(state.stage_size, Vector2F::new(800.0, 600.0));
         assert_eq!(action_list.current_index(), 2);
         assert_eq!(action_list.get(), Some(&Action::EndInitialization));
         assert_eq!(display_list.len(), 1);
@@ -940,9 +961,14 @@ mod tests {
             },
             Action::DefineShape {
                 id: shape_id,
-                shape: Shape::FillRect {
-                    dimensions: Vector2F::new(5.0, 5.0),
-                    color: ColorU::white(),
+                shape: Shape::FillPath {
+                    points: vec![
+                        Vector2F::new(-15.0, -15.0),
+                        Vector2F::new(15.0, -15.0),
+                        Vector2F::new(15.0, 15.0),
+                        Vector2F::new(-15.0, 15.0),
+                    ],
+                    color: ColorU::new(0, 255, 0, 255),
                 },
             },
             Action::AddEntity(EntityDefinition {
@@ -994,6 +1020,7 @@ mod tests {
             background_color: ColorU::white(),
             running: true,
             seconds_per_frame: 0.016,
+            stage_size: Vector2F::new(800.0, 600.0),
         };
         state = execute_actions(state, &mut action_list, &mut display_list, &mut library).unwrap();
         assert_eq!(state.background_color, ColorU::black());
@@ -1015,15 +1042,6 @@ mod tests {
         assert_eq!(entity2.id, entity2_id);
         assert_eq!(entity2.parent, entity_id);
         assert_eq!(entity2.active, true);
-    }
-
-    mock! {
-        pub Renderer { }
-        trait Renderer {
-            fn set_background(&self, color: ColorU);
-            fn draw_shape(&self, shape: &Shape, transform: Transform2F, color_override: Option<ColorU>);
-            fn draw_bitmap(&self, bitmap: &Bitmap, view_rect: RectF, transform: Transform2F, tint: Option<ColorU>);
-        }
     }
 
     #[test]
@@ -1109,6 +1127,17 @@ mod tests {
         );
     }
 
+    mock! {
+        pub Renderer { }
+        trait Renderer {
+            fn start_frame(&mut self, stage_size: Vector2F);
+            fn set_background(&mut self, color: ColorU);
+            fn draw_shape(&mut self, shape: &Shape, transform: Transform2F, color_override: Option<ColorU>);
+            fn draw_bitmap(&mut self, bitmap: &Bitmap, view_rect: RectF, transform: Transform2F, tint: Option<ColorU>);
+            fn end_frame(&mut self);
+        }
+    }
+
     #[test]
     fn it_paints() {
         let root_id = Uuid::parse_str("cfc4e1a4-5623-485a-bd79-88dc82e3e26f").unwrap();
@@ -1118,8 +1147,13 @@ mod tests {
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
         library.insert(
             shape_id,
-            DisplayLibraryItem::Vector(Shape::FillRect {
-                dimensions: Vector2F::new(15.0, 15.0),
+            DisplayLibraryItem::Vector(Shape::FillPath {
+                points: vec![
+                    Vector2F::new(-15.0, -15.0),
+                    Vector2F::new(15.0, -15.0),
+                    Vector2F::new(15.0, 15.0),
+                    Vector2F::new(-15.0, 15.0),
+                ],
                 color: ColorU::new(0, 255, 0, 255),
             }),
         );
@@ -1161,9 +1195,15 @@ mod tests {
             background_color: ColorU::white(),
             running: true,
             seconds_per_frame: 0.016,
+            stage_size: Vector2F::new(800.0, 600.0),
         };
         let mut seq = Sequence::new();
         let mut mock_renderer = MockRenderer::new();
+        mock_renderer
+            .expect_start_frame()
+            .times(1)
+            .return_const(())
+            .in_sequence(&mut seq);
         mock_renderer
             .expect_set_background()
             .times(1)
@@ -1174,14 +1214,24 @@ mod tests {
             .expect_draw_shape()
             .times(1)
             .withf(|drawn_shape, transform, color_override| {
-                let model_shape = Shape::FillRect {
-                    dimensions: Vector2F::new(15.0, 15.0),
+                let model_shape = Shape::FillPath {
+                    points: vec![
+                        Vector2F::new(-15.0, -15.0),
+                        Vector2F::new(15.0, -15.0),
+                        Vector2F::new(15.0, 15.0),
+                        Vector2F::new(-15.0, 15.0),
+                    ],
                     color: ColorU::new(0, 255, 0, 255),
                 };
                 drawn_shape == &model_shape
                     && *transform == Transform2F::default()
                     && *color_override == None
             })
+            .return_const(())
+            .in_sequence(&mut seq);
+        mock_renderer
+            .expect_end_frame()
+            .times(1)
             .return_const(())
             .in_sequence(&mut seq);
         paint(&mut mock_renderer, &state, &display_list, &library).unwrap();

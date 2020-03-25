@@ -13,27 +13,25 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::mem;
 
 pub trait Renderer {
-    fn set_background(&self, color: ColorU);
-    fn draw_shape(&self, shape: &Shape, transform: Transform2F, color_override: Option<ColorU>); //TODO: gradient overrides???
+    fn start_frame(&mut self, stage_size: Vector2F);
+    fn set_background(&mut self, color: ColorU);
+    fn draw_shape(&mut self, shape: &Shape, transform: Transform2F, color_override: Option<ColorU>); //TODO: gradient overrides???
     fn draw_bitmap(
-        &self,
+        &mut self,
         bitmap: &Bitmap,
         view_rect: RectF,
         transform: Transform2F,
         tint: Option<ColorU>,
     ); //TODO: filters?
+    fn end_frame(&mut self);
 }
 
+/*TODO: move to a more complex shape definition system.
+    Obviously this'll impact PropertyTweens and Parts as well
+    Additional TODO that might be convolved with this: supporting curves in the Path
+*/
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Shape {
-    Rect {
-        #[serde(with = "Vector2FDef")]
-        dimensions: Vector2F,
-        #[serde(with = "ColorUDef")]
-        color: ColorU,
-        #[serde(with = "StrokeStyleDef")]
-        stoke_style: StrokeStyle,
-    },
     Path {
         #[serde(
             serialize_with = "vec_vector2f_ser",
@@ -43,7 +41,8 @@ pub enum Shape {
         #[serde(with = "ColorUDef")]
         color: ColorU,
         #[serde(with = "StrokeStyleDef")]
-        stoke_style: StrokeStyle,
+        stroke_style: StrokeStyle,
+        is_closed: bool,
     },
     FillPath {
         #[serde(
@@ -51,12 +50,6 @@ pub enum Shape {
             deserialize_with = "vec_vector2f_des"
         )]
         points: Vec<Vector2F>,
-        #[serde(with = "ColorUDef")]
-        color: ColorU,
-    },
-    FillRect {
-        #[serde(with = "Vector2FDef")]
-        dimensions: Vector2F,
         #[serde(with = "ColorUDef")]
         color: ColorU,
     },
@@ -72,10 +65,8 @@ pub enum Shape {
 impl Shape {
     pub fn color(&self) -> Option<ColorU> {
         match self {
-            Shape::Rect { color, .. } => Some(*color),
             Shape::Path { color, .. } => Some(*color),
             Shape::FillPath { color, .. } => Some(*color),
-            Shape::FillRect { color, .. } => Some(*color),
             Shape::Clip { .. } => None,
         }
     }
