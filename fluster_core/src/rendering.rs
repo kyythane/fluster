@@ -94,20 +94,17 @@ pub enum Coloring {
 impl Coloring {
     #[inline]
     #[allow(clippy::trivially_copy_pass_by_ref)]
-    fn lerp_color(start: &ColorU, end: &ColorU, percent: f32) -> ColorU {
-        ColorU::new(
-            ((start.r - end.r) as f32 * percent).round() as u8 + start.r,
-            ((start.g - end.g) as f32 * percent).round() as u8 + start.g,
-            ((start.b - end.r) as f32 * percent).round() as u8 + start.b,
-            ((start.a - end.a) as f32 * percent).round() as u8 + start.a,
-        )
-    }
 
     pub fn lerp(&self, end: &Coloring, percent: f32) -> Coloring {
         match self {
             Coloring::Color(start_color) => {
                 if let Coloring::Color(end_color) = end {
-                    Coloring::Color(Coloring::lerp_color(start_color, end_color, percent))
+                    Coloring::Color(
+                        start_color
+                            .to_f32()
+                            .lerp(end_color.to_f32(), percent)
+                            .to_u8(),
+                    )
                 } else {
                     Coloring::None
                 }

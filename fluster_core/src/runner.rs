@@ -375,6 +375,12 @@ pub fn play(
                     let frame_end_time = time_seconds();
                     let frame_time_left =
                         state.seconds_per_frame - (frame_end_time - state.frame_end_time) as f32;
+                    println!(
+                        "frame {:?} time {:?}% of target ",
+                        state.frame,
+                        (frame_end_time - state.frame_end_time) as f32 / state.seconds_per_frame
+                            * 100.0
+                    );
                     let frame_end_time = if frame_time_left > 0.0 {
                         thread::sleep(Duration::from_secs_f32(frame_time_left));
                         time_seconds()
@@ -723,10 +729,10 @@ fn add_tweens(
                 if let Some(library_item) = library.get(update_item_id) {
                     let tweens =
                         create_part_tween(part, library_item, part_update, duration_seconds)?;
-                    match entity.tweens.get_mut(part.item_id()) {
+                    match entity.tweens.get_mut(update_item_id) {
                         Some(existing_tweens) => existing_tweens.extend(tweens),
                         None => {
-                            entity.tweens.insert(entity.id, tweens);
+                            entity.tweens.insert(*update_item_id, tweens);
                         }
                     };
                 }

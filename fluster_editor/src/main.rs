@@ -1,7 +1,8 @@
 use fluster_core::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
+    PartUpdateDefinition,
 };
-use fluster_core::rendering::{AugmentedShape, Shape};
+use fluster_core::rendering::{AugmentedShape, Coloring, Shape};
 use fluster_core::runner;
 use fluster_core::tween::Easing;
 use fluster_core::types::ScaleRotationTranslation;
@@ -194,7 +195,25 @@ fn build_action_list() -> ActionList {
                 translation: Vector2F::new(200.0, 0.0),
             }),
         }),
-        Action::PresentFrame(1, 499),
+        Action::PresentFrame(1, 239),
+        Action::UpdateEntity(EntityUpdateDefinition {
+            duration_frames: 300,
+            easing: None,
+            id: entity2_id,
+            part_updates: vec![PartUpdateDefinition::Vector {
+                color: Some(Coloring::Colorings(vec![
+                    Coloring::Color(ColorU::new(210, 145, 188, 255)),
+                    Coloring::Color(ColorU::new(224, 187, 228, 255)),
+                    Coloring::Color(ColorU::new(210, 145, 188, 255)),
+                    Coloring::Color(ColorU::new(255, 223, 211, 255)),
+                ])),
+                easing: Easing::CubicInOut,
+                item_id: shape3_id,
+                transform: None,
+            }],
+            transform: None,
+        }),
+        Action::PresentFrame(240, 600),
         Action::Quit,
     ];
     ActionList::new(Box::new(|| None), Some(&actions))

@@ -128,6 +128,20 @@ where
                     }
                 }
                 Shape::Group { shapes } => {
+                    if let Some(Coloring::Colorings(color_override)) = color_override {
+                        if color_override.len() == shapes.len() {
+                            for i in 0..shapes.len() {
+                                let shape = &shapes[i];
+                                let color_override = &Some(color_override[i].clone());
+                                self.draw_shape(
+                                    &shape.shape,
+                                    transform * shape.transform,
+                                    color_override,
+                                )
+                            }
+                            return;
+                        }
+                    }
                     for shape in shapes {
                         self.draw_shape(&shape.shape, transform * shape.transform, color_override)
                     }
