@@ -295,10 +295,20 @@ pub struct State {
     stage_size: Vector2F,
 }
 
+impl State {
+    pub fn get_running(&self) -> bool {
+        self.running
+    }
+
+    pub fn set_running(&mut self, is_running: bool) {
+        self.running = is_running;
+    }
+}
+
 pub fn play(
     renderer: &mut impl Renderer,
     actions: &mut ActionList,
-    on_frame_complete: &dyn Fn(State) -> State,
+    on_frame_complete: &mut dyn FnMut(State) -> State,
     seconds_per_frame: f32,
     stage_size: Vector2F,
 ) -> Result<(), String> {
@@ -330,6 +340,9 @@ pub fn play(
                     update_tweens(state.delta_time, &mut display_list);
                     paint(renderer, &state, &display_list, &library)?;
                     state = on_frame_complete(state);
+                    if !state.running {
+                        break;
+                    }
                     let frame_end_time = time_seconds();
                     let frame_time_left =
                         state.seconds_per_frame - (frame_end_time - state.frame_end_time) as f32;
@@ -548,7 +561,10 @@ fn execute_actions(
             }
             Action::Label(_) => (),
             Action::EndInitialization => (),
-            Action::Quit => state.running = false,
+            Action::Quit => {
+                state.running = false;
+                break;
+            }
         }
         actions.advance();
     }
@@ -930,7 +946,7 @@ mod tests {
         .unwrap();
         assert_eq!(state.background_color, ColorU::black());
         assert_eq!(state.root_entity_id, root_id);
-        assert_eq!(state.seconds_per_frame, 0.016);
+        assert!((state.seconds_per_frame - 0.016).abs() < std::f32::EPSILON);
         assert_eq!(state.stage_size, Vector2F::new(800.0, 600.0));
         assert_eq!(action_list.current_index(), 2);
         assert_eq!(action_list.get(), Some(&Action::EndInitialization));

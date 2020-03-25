@@ -1,3 +1,192 @@
+use fluster_core::actions::{
+    Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
+    ScaleRotationTranslation,
+};
+use fluster_core::rendering::Shape;
+use fluster_core::runner;
+use fluster_core::tween::Easing;
+use fluster_graphics::FlusterRenderer;
+use pathfinder_canvas::CanvasFontContext;
+use pathfinder_color::{ColorF, ColorU};
+use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_gl::{GLDevice, GLVersion};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::renderer::Renderer;
+use pathfinder_resources::fs::FilesystemResourceLoader;
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use sdl2::video::GLProfile;
+use std::f32::consts::PI;
+use uuid::Uuid;
+
+fn build_action_list() -> ActionList {
+    let shape_id = Uuid::new_v4();
+    let entity_id = Uuid::new_v4();
+    let entity2_id = Uuid::new_v4();
+    let actions = vec![
+        Action::SetBackground {
+            color: ColorU::new(254, 200, 216, 255),
+        },
+        Action::CreateRoot(Uuid::new_v4()),
+        Action::EndInitialization,
+        Action::DefineShape {
+            id: shape_id,
+            shape: Shape::FillPath {
+                points: vec![
+                    Vector2F::new(-15.0, -15.0),
+                    Vector2F::new(15.0, -15.0),
+                    Vector2F::new(15.0, 15.0),
+                    Vector2F::new(-15.0, 15.0),
+                ],
+                color: ColorU::new(149, 125, 173, 255),
+            },
+        },
+        Action::AddEntity(EntityDefinition {
+            id: entity_id,
+            name: String::from("first"),
+            transform: ScaleRotationTranslation {
+                scale: Vector2F::splat(0.5),
+                theta: 0.0,
+                translation: Vector2F::new(400.0, 400.0),
+            },
+            depth: 2,
+            parts: vec![PartDefinition::Vector {
+                item_id: shape_id,
+                transform: ScaleRotationTranslation {
+                    scale: Vector2F::splat(2.0),
+                    theta: 0.0,
+                    translation: Vector2F::new(0.0, 0.0),
+                },
+            }],
+            parent: None,
+        }),
+        Action::AddEntity(EntityDefinition {
+            id: entity2_id,
+            name: String::from("second"),
+            transform: ScaleRotationTranslation::from_transform(&Transform2F::default()),
+            depth: 3,
+            parts: vec![
+                PartDefinition::Vector {
+                    item_id: shape_id,
+                    transform: ScaleRotationTranslation {
+                        scale: Vector2F::splat(1.0),
+                        theta: 0.0,
+                        translation: Vector2F::new(-100.0, -100.0),
+                    },
+                },
+                PartDefinition::Vector {
+                    item_id: shape_id,
+                    transform: ScaleRotationTranslation {
+                        scale: Vector2F::splat(1.0),
+                        theta: 0.0,
+                        translation: Vector2F::new(100.0, -100.0),
+                    },
+                },
+                PartDefinition::Vector {
+                    item_id: shape_id,
+                    transform: ScaleRotationTranslation {
+                        scale: Vector2F::splat(1.0),
+                        theta: 0.0,
+                        translation: Vector2F::new(100.0, 100.0),
+                    },
+                },
+                PartDefinition::Vector {
+                    item_id: shape_id,
+                    transform: ScaleRotationTranslation {
+                        scale: Vector2F::splat(1.0),
+                        theta: 0.0,
+                        translation: Vector2F::new(-100.0, 100.0),
+                    },
+                },
+            ],
+            parent: Some(entity_id),
+        }),
+        Action::PresentFrame(0, 1),
+        Action::UpdateEntity(EntityUpdateDefinition {
+            duration_frames: 480,
+            easing: Some(Easing::CubicInOut),
+            id: entity2_id,
+            part_updates: vec![],
+            transform: Some(ScaleRotationTranslation {
+                scale: Vector2F::splat(1.0),
+                theta: PI / 2.0,
+                translation: Vector2F::new(0.0, 0.0),
+            }),
+        }),
+        Action::PresentFrame(1, 479),
+        Action::Quit,
+    ];
+    ActionList::new(Box::new(|| None), Some(&actions))
+}
+
 fn main() {
-    println!("Hello, world!");
+    let sdl_context = sdl2::init().unwrap();
+    let video = sdl_context.video().unwrap();
+    let gl_attributes = video.gl_attr();
+    gl_attributes.set_context_profile(GLProfile::Core);
+    gl_attributes.set_context_version(3, 3);
+    let window_size = Vector2I::new(800, 600);
+    let window = video
+        .window(
+            "Fluster demo",
+            window_size.x() as u32,
+            window_size.y() as u32,
+        )
+        .opengl()
+        .build()
+        .unwrap();
+
+    let gl_context = window.gl_create_context().unwrap();
+    gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
+    window.gl_make_current(&gl_context).unwrap();
+
+    let renderer = Renderer::new(
+        GLDevice::new(GLVersion::GL3, 0),
+        &FilesystemResourceLoader::locate(),
+        DestFramebuffer::full_window(window_size),
+        RendererOptions {
+            background_color: Some(ColorF::white()),
+        },
+    );
+
+    let mut event_pump = sdl_context.event_pump().unwrap();
+
+    let font_context = CanvasFontContext::from_system_source();
+
+    let mut fluster_renderer = FlusterRenderer::new(
+        font_context,
+        renderer,
+        Box::new(move || window.gl_swap_window()),
+    );
+
+    let mut end_of_frame_callback = move |state: runner::State| {
+        let mut state = state;
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => {
+                    state.set_running(false);
+                }
+                _ => {}
+            }
+        }
+        state
+    };
+
+    let mut action_list = build_action_list();
+
+    match runner::play(
+        &mut fluster_renderer,
+        &mut action_list,
+        &mut end_of_frame_callback,
+        1.0 / 60.0,
+        window_size.to_f32(),
+    ) {
+        Err(message) => println!("{}", message),
+        _ => {}
+    }
 }

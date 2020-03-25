@@ -114,7 +114,7 @@ where
                         } else {
                             *color
                         };
-                        let path = points_to_path(points, true);
+                        let path = points_to_path(points, false);
                         canvas.set_current_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(color));
                         canvas.fill_path(path, FillRule::Winding);
