@@ -129,7 +129,7 @@ where
                 }
                 Shape::Group { shapes } => {
                     for shape in shapes {
-                        self.draw_shape(shape, transform, color_override)
+                        self.draw_shape(&shape.shape, transform * shape.transform, color_override)
                     }
                 }
             }

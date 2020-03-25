@@ -1,10 +1,10 @@
 use fluster_core::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
-    ScaleRotationTranslation,
 };
-use fluster_core::rendering::Shape;
+use fluster_core::rendering::{AugmentedShape, Shape};
 use fluster_core::runner;
 use fluster_core::tween::Easing;
+use fluster_core::types::ScaleRotationTranslation;
 use fluster_graphics::FlusterRenderer;
 use pathfinder_canvas::CanvasFontContext;
 use pathfinder_color::{ColorF, ColorU};
@@ -24,6 +24,7 @@ use uuid::Uuid;
 fn build_action_list() -> ActionList {
     let shape_id = Uuid::new_v4();
     let shape2_id = Uuid::new_v4();
+    let shape3_id = Uuid::new_v4();
     let entity_id = Uuid::new_v4();
     let entity2_id = Uuid::new_v4();
     let actions = vec![
@@ -62,39 +63,110 @@ fn build_action_list() -> ActionList {
                 color: ColorU::black(),
             },
         },
+        Action::DefineShape {
+            id: shape3_id,
+            shape: Shape::Group {
+                shapes: vec![
+                    AugmentedShape {
+                        shape: Shape::FillPath {
+                            points: vec![
+                                Vector2F::new(-15.0, -15.0),
+                                Vector2F::new(15.0, -15.0),
+                                Vector2F::new(15.0, 15.0),
+                                Vector2F::new(-15.0, 15.0),
+                            ],
+                            color: ColorU::new(149, 125, 173, 255),
+                        },
+                        transform: Transform2F::from_scale_rotation_translation(
+                            Vector2F::splat(1.0),
+                            0.0,
+                            Vector2F::new(-100.0, -100.0),
+                        ),
+                    },
+                    AugmentedShape {
+                        shape: Shape::FillPath {
+                            points: vec![
+                                Vector2F::new(-15.0, -15.0),
+                                Vector2F::new(15.0, -15.0),
+                                Vector2F::new(15.0, 15.0),
+                                Vector2F::new(-15.0, 15.0),
+                            ],
+                            color: ColorU::new(149, 125, 173, 255),
+                        },
+                        transform: Transform2F::from_scale_rotation_translation(
+                            Vector2F::splat(1.0),
+                            0.0,
+                            Vector2F::new(100.0, -100.0),
+                        ),
+                    },
+                    AugmentedShape {
+                        shape: Shape::FillPath {
+                            points: vec![
+                                Vector2F::new(-15.0, -15.0),
+                                Vector2F::new(15.0, -15.0),
+                                Vector2F::new(15.0, 15.0),
+                                Vector2F::new(-15.0, 15.0),
+                            ],
+                            color: ColorU::new(149, 125, 173, 255),
+                        },
+                        transform: Transform2F::from_scale_rotation_translation(
+                            Vector2F::splat(1.0),
+                            0.0,
+                            Vector2F::new(100.0, 100.0),
+                        ),
+                    },
+                    AugmentedShape {
+                        shape: Shape::FillPath {
+                            points: vec![
+                                Vector2F::new(-15.0, -15.0),
+                                Vector2F::new(15.0, -15.0),
+                                Vector2F::new(15.0, 15.0),
+                                Vector2F::new(-15.0, 15.0),
+                            ],
+                            color: ColorU::new(149, 125, 173, 255),
+                        },
+                        transform: Transform2F::from_scale_rotation_translation(
+                            Vector2F::splat(1.0),
+                            0.0,
+                            Vector2F::new(-100.0, 100.0),
+                        ),
+                    },
+                ],
+            },
+        },
         Action::AddEntity(EntityDefinition {
             id: entity_id,
             name: String::from("first"),
-            transform: ScaleRotationTranslation {
-                scale: Vector2F::splat(0.5),
-                theta: 0.0,
-                translation: Vector2F::new(400.0, 400.0),
-            },
+            transform: Transform2F::from_scale_rotation_translation(
+                Vector2F::splat(0.5),
+                0.0,
+                Vector2F::new(400.0, 400.0),
+            ),
             depth: 2,
             parts: vec![
                 PartDefinition::Vector {
                     item_id: shape2_id,
-                    transform: ScaleRotationTranslation {
-                        scale: Vector2F::splat(2.0),
-                        theta: 0.0,
-                        translation: Vector2F::new(0.0, 0.0),
-                    },
+                    transform: Transform2F::from_scale_rotation_translation(
+                        Vector2F::splat(2.0),
+                        0.0,
+                        Vector2F::splat(0.0),
+                    ),
                 },
                 PartDefinition::Vector {
                     item_id: shape_id,
-                    transform: ScaleRotationTranslation {
-                        scale: Vector2F::splat(2.0),
-                        theta: 0.0,
-                        translation: Vector2F::new(0.0, 0.0),
-                    },
+                    transform: Transform2F::from_scale_rotation_translation(
+                        Vector2F::splat(2.0),
+                        0.0,
+                        Vector2F::splat(0.0),
+                    ),
                 },
                 PartDefinition::Vector {
                     item_id: shape_id,
-                    transform: ScaleRotationTranslation {
-                        scale: Vector2F::splat(2.0),
-                        theta: 0.0,
-                        translation: Vector2F::new(300.0, 0.0),
-                    },
+                    transform: Transform2F::from_scale_rotation_translation(
+                        Vector2F::splat(2.0),
+                        0.0,
+                        Vector2F::new(300.0, 300.0),
+                    ),
                 },
             ],
             parent: None,
@@ -102,42 +174,12 @@ fn build_action_list() -> ActionList {
         Action::AddEntity(EntityDefinition {
             id: entity2_id,
             name: String::from("second"),
-            transform: ScaleRotationTranslation::from_transform(&Transform2F::default()),
+            transform: Transform2F::default(),
             depth: 3,
-            parts: vec![
-                PartDefinition::Vector {
-                    item_id: shape_id,
-                    transform: ScaleRotationTranslation {
-                        scale: Vector2F::splat(1.0),
-                        theta: 0.0,
-                        translation: Vector2F::new(-100.0, -100.0),
-                    },
-                },
-                PartDefinition::Vector {
-                    item_id: shape_id,
-                    transform: ScaleRotationTranslation {
-                        scale: Vector2F::splat(1.0),
-                        theta: 0.0,
-                        translation: Vector2F::new(100.0, -100.0),
-                    },
-                },
-                PartDefinition::Vector {
-                    item_id: shape_id,
-                    transform: ScaleRotationTranslation {
-                        scale: Vector2F::splat(1.0),
-                        theta: 0.0,
-                        translation: Vector2F::new(100.0, 100.0),
-                    },
-                },
-                PartDefinition::Vector {
-                    item_id: shape_id,
-                    transform: ScaleRotationTranslation {
-                        scale: Vector2F::splat(1.0),
-                        theta: 0.0,
-                        translation: Vector2F::new(-100.0, 100.0),
-                    },
-                },
-            ],
+            parts: vec![PartDefinition::Vector {
+                item_id: shape3_id,
+                transform: Transform2F::default(),
+            }],
             parent: Some(entity_id),
         }),
         Action::PresentFrame(0, 1),

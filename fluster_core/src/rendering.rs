@@ -1,11 +1,10 @@
 #![deny(clippy::all)]
-
+use super::types::{transform_des, transform_ser, Vector2FDef};
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
-use pathfinder_simd::default::F32x2;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::mem;
@@ -29,10 +28,6 @@ pub trait Renderer {
     fn end_frame(&mut self);
 }
 
-/*TODO: move to a more complex shape definition system.
-    Obviously this'll impact PropertyTweens and Parts as well
-    Additional TODO that might be convolved with this: supporting curves in the Path
-*/
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Shape {
     Path {
@@ -64,8 +59,15 @@ pub enum Shape {
         points: Vec<Vector2F>,
     },
     Group {
-        shapes: Vec<Shape>,
+        shapes: Vec<AugmentedShape>,
     },
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct AugmentedShape {
+    pub shape: Shape,
+    #[serde(serialize_with = "transform_ser", deserialize_with = "transform_des")]
+    pub transform: Transform2F,
 }
 
 impl Shape {
@@ -75,7 +77,7 @@ impl Shape {
             Shape::FillPath { color, .. } => Coloring::Color(*color),
             Shape::Clip { .. } => Coloring::None,
             Shape::Group { shapes } => {
-                Coloring::Colorings(shapes.iter().map(|s| s.color()).collect())
+                Coloring::Colorings(shapes.iter().map(|s| s.shape.color()).collect())
             }
         }
     }
@@ -169,14 +171,6 @@ where
     }
     seq.end()
 }
-
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "Vector2F")]
-pub struct Vector2FDef(#[serde(with = "F32x2Def")] pub F32x2);
-
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "F32x2")]
-pub struct F32x2Def(pub u64);
 
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "ColorU")]

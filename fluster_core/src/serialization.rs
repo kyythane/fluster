@@ -174,9 +174,10 @@ pub fn deserialize_action(bytes: &[u8], _version: u8) -> Result<Action, BinError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::{EntityDefinition, PartDefinition, ScaleRotationTranslation};
+    use crate::actions::{EntityDefinition, PartDefinition};
     use crate::rendering::Shape;
     use pathfinder_color::ColorU;
+    use pathfinder_geometry::transform2d::Transform2F;
     use pathfinder_geometry::vector::Vector2F;
     use uuid::Uuid;
 
@@ -184,20 +185,15 @@ mod tests {
     fn it_serializes_and_deserializes_actions() {
         let entity_id = Uuid::parse_str("b06f8577-aa30-4000-9967-9ba336e9248c").unwrap();
         let shape_id = Uuid::parse_str("1c3ad65b-ebbf-4d5e-8943-28b94df19361").unwrap();
-        let scale_rotation_translation = ScaleRotationTranslation {
-            scale: Vector2F::splat(1.0),
-            theta: 0.0,
-            translation: Vector2F::splat(0.0),
-        };
 
         let action = Action::AddEntity(EntityDefinition {
             id: entity_id,
             name: String::from("first"),
-            transform: scale_rotation_translation,
+            transform: Transform2F::default(),
             depth: 2,
             parts: vec![PartDefinition::Vector {
                 item_id: shape_id,
-                transform: scale_rotation_translation,
+                transform: Transform2F::default(),
             }],
             parent: None,
         });
@@ -233,11 +229,6 @@ mod tests {
         use iobuffer::IoBuffer;
         let entity_id = Uuid::parse_str("b06f8577-aa30-4000-9967-9ba336e9248c").unwrap();
         let shape_id = Uuid::parse_str("1c3ad65b-ebbf-4d5e-8943-28b94df19361").unwrap();
-        let scale_rotation_translation = ScaleRotationTranslation {
-            scale: Vector2F::splat(1.0),
-            theta: 0.0,
-            translation: Vector2F::splat(0.0),
-        };
         let actions = vec![
             Action::DefineShape {
                 id: shape_id,
@@ -254,11 +245,11 @@ mod tests {
             Action::AddEntity(EntityDefinition {
                 id: entity_id,
                 name: String::from("first"),
-                transform: scale_rotation_translation,
+                transform: Transform2F::default(),
                 depth: 2,
                 parts: vec![PartDefinition::Vector {
                     item_id: shape_id,
-                    transform: scale_rotation_translation,
+                    transform: Transform2F::default(),
                 }],
                 parent: None,
             }),

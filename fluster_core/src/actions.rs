@@ -1,7 +1,8 @@
 #![deny(clippy::all)]
 
-use super::rendering::{Bitmap, ColorUDef, Coloring, Shape, Vector2FDef};
+use super::rendering::{Bitmap, ColorUDef, Coloring, Shape};
 use super::tween::Easing;
+use super::types::{transform_des, transform_ser, ScaleRotationTranslation, Vector2FDef};
 use core::cmp::min;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectF;
@@ -135,36 +136,17 @@ impl RectPoints {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
-pub struct ScaleRotationTranslation {
-    #[serde(with = "Vector2FDef")]
-    pub scale: Vector2F,
-    pub theta: f32,
-    #[serde(with = "Vector2FDef")]
-    pub translation: Vector2F,
-}
-
-impl ScaleRotationTranslation {
-    pub fn from_transform(transform: &Transform2F) -> ScaleRotationTranslation {
-        let theta = transform.rotation();
-        let cos_theta = theta.cos();
-        ScaleRotationTranslation {
-            scale: Vector2F::new(transform.m11() / cos_theta, transform.m22() / cos_theta),
-            theta,
-            translation: transform.translation(),
-        }
-    }
-}
-
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum PartDefinition {
     Vector {
         item_id: Uuid,
-        transform: ScaleRotationTranslation,
+        #[serde(serialize_with = "transform_ser", deserialize_with = "transform_des")]
+        transform: Transform2F,
     },
     Bitmap {
         item_id: Uuid,
-        transform: ScaleRotationTranslation,
+        #[serde(serialize_with = "transform_ser", deserialize_with = "transform_des")]
+        transform: Transform2F,
         view_rect: RectPoints,
     },
 }
@@ -216,7 +198,8 @@ pub struct EntityDefinition {
     pub name: String,
     pub parent: Option<Uuid>,
     pub parts: Vec<PartDefinition>,
-    pub transform: ScaleRotationTranslation,
+    #[serde(serialize_with = "transform_ser", deserialize_with = "transform_des")]
+    pub transform: Transform2F,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]

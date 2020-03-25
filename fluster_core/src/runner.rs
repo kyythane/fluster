@@ -3,10 +3,11 @@
 
 use super::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
-    PartUpdateDefinition, RectPoints, ScaleRotationTranslation,
+    PartUpdateDefinition, RectPoints,
 };
 use super::rendering::{Bitmap, Coloring, Renderer, Shape};
 use super::tween::{Easing, Tween};
+use super::types::ScaleRotationTranslation;
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
@@ -626,11 +627,6 @@ fn add_entity(
     };
     match display_list.get_mut(&parent) {
         Some(parent_entity) => {
-            let transform = Transform2F::from_scale_rotation_translation(
-                transform.scale,
-                transform.theta,
-                transform.translation,
-            );
             let parts = {
                 let constructed = parts
                     .iter()
@@ -639,11 +635,7 @@ fn add_entity(
                             match library.get(&item_id) {
                                 Some(DisplayLibraryItem::Vector { .. }) => Some(Part::Vector {
                                     item_id: *item_id,
-                                    transform: Transform2F::from_scale_rotation_translation(
-                                        transform.scale,
-                                        transform.theta,
-                                        transform.translation,
-                                    ),
+                                    transform: *transform,
                                     color: None,
                                 }),
                                 _ => None,
@@ -656,11 +648,7 @@ fn add_entity(
                         } => match library.get(&item_id) {
                             Some(DisplayLibraryItem::Bitmap { .. }) => Some(Part::Bitmap {
                                 item_id: *item_id,
-                                transform: Transform2F::from_scale_rotation_translation(
-                                    transform.scale,
-                                    transform.theta,
-                                    transform.translation,
-                                ),
+                                transform: *transform,
                                 view_rect: RectF::from_points(
                                     view_rect.origin,
                                     view_rect.lower_right,
@@ -678,7 +666,7 @@ fn add_entity(
                 }
                 constructed
             };
-            let entity = Entity::new(id, depth, name.clone(), parent, parts, transform);
+            let entity = Entity::new(id, depth, name.clone(), parent, parts, *transform);
             parent_entity.add_child(id);
             if let Some(old) = display_list.insert(id, entity) {
                 // If we replace this entitiy, clear the old children out of the display list.
@@ -945,7 +933,7 @@ fn paint(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::ScaleRotationTranslation;
+    use crate::types::ScaleRotationTranslation;
     use mockall::predicate::*;
     use mockall::*;
     use pathfinder_geometry::transform2d::Transform2F;
@@ -996,11 +984,6 @@ mod tests {
         let entity2_id = Uuid::parse_str("3ec76e6a-7758-47bf-bcb5-7cf5bc309aad").unwrap();
         let root_id = Uuid::parse_str("cfc4e1a4-5623-485a-bd79-88dc82e3e26f").unwrap();
         let shape_id = Uuid::parse_str("1c3ad65b-ebbf-4d5e-8943-28b94df19361").unwrap();
-        let scale_rotation_translation = ScaleRotationTranslation {
-            scale: Vector2F::splat(1.0),
-            theta: 0.0,
-            translation: Vector2F::splat(0.0),
-        };
         let actions = vec![
             Action::SetBackground {
                 color: ColorU::black(),
@@ -1020,22 +1003,22 @@ mod tests {
             Action::AddEntity(EntityDefinition {
                 id: entity_id,
                 name: String::from("first"),
-                transform: scale_rotation_translation,
+                transform: Transform2F::default(),
                 depth: 2,
                 parts: vec![PartDefinition::Vector {
                     item_id: shape_id,
-                    transform: scale_rotation_translation,
+                    transform: Transform2F::default(),
                 }],
                 parent: None,
             }),
             Action::AddEntity(EntityDefinition {
                 id: entity2_id,
                 name: String::from("second"),
-                transform: scale_rotation_translation,
+                transform: Transform2F::default(),
                 depth: 3,
                 parts: vec![PartDefinition::Vector {
                     item_id: shape_id,
-                    transform: scale_rotation_translation,
+                    transform: Transform2F::default(),
                 }],
                 parent: Some(entity_id),
             }),
