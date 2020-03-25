@@ -1,4 +1,4 @@
-use fluster_core::rendering::{Bitmap, Renderer, Shape};
+use fluster_core::rendering::{Bitmap, Coloring, Renderer, Shape};
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
 use pathfinder_color::ColorU;
 use pathfinder_content::fill::FillRule;
@@ -82,7 +82,7 @@ where
         &mut self,
         shape: &Shape,
         transform: Transform2F,
-        color_override: Option<ColorU>,
+        color_override: &Option<Coloring>,
     ) {
         if let Some(canvas) = &mut self.canvas {
             match shape {
@@ -93,30 +93,30 @@ where
                     is_closed,
                 } => {
                     if points.len() > 1 {
-                        let color = if let Some(color_override) = color_override {
+                        let color = if let Some(Coloring::Color(color_override)) = color_override {
                             color_override
                         } else {
-                            *color
+                            color
                         };
                         let path = points_to_path(points, *is_closed);
                         canvas.set_current_transform(&transform);
                         canvas.set_line_width(stroke_style.line_width);
                         canvas.set_line_cap(stroke_style.line_cap);
                         canvas.set_line_join(patch_line_join(stroke_style.line_join));
-                        canvas.set_stroke_style(FillStyle::Color(color));
+                        canvas.set_stroke_style(FillStyle::Color(*color));
                         canvas.stroke_path(path);
                     }
                 }
                 Shape::FillPath { points, color } => {
                     if points.len() > 2 {
-                        let color = if let Some(color_override) = color_override {
+                        let color = if let Some(Coloring::Color(color_override)) = color_override {
                             color_override
                         } else {
-                            *color
+                            color
                         };
                         let path = points_to_path(points, true);
                         canvas.set_current_transform(&transform);
-                        canvas.set_fill_style(FillStyle::Color(color));
+                        canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
                     }
                 }

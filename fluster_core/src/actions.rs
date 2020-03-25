@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 
-use super::rendering::{Bitmap, ColorUDef, Shape, Vector2FDef};
+use super::rendering::{Bitmap, ColorUDef, Coloring, Shape, Vector2FDef};
 use super::tween::Easing;
 use core::cmp::min;
 use pathfinder_color::ColorU;
@@ -181,11 +181,7 @@ impl PartDefinition {
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum PartUpdateDefinition {
     Vector {
-        #[serde(
-            serialize_with = "option_color_ser",
-            deserialize_with = "option_color_des"
-        )]
-        color: Option<ColorU>,
+        color: Option<Coloring>,
         easing: Easing,
         //TODO: Gradients
         item_id: Uuid,

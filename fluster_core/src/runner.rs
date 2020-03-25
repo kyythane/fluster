@@ -5,14 +5,14 @@ use super::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
     PartUpdateDefinition, RectPoints, ScaleRotationTranslation,
 };
-use super::rendering::{Bitmap, Renderer, Shape};
+use super::rendering::{Bitmap, Coloring, Renderer, Shape};
 use super::tween::{Easing, Tween};
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use std::collections::HashMap;
-use std::f64::consts::PI;
+use std::f32::consts::PI;
 use std::mem;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -29,7 +29,7 @@ enum Part {
     Vector {
         item_id: Uuid,
         transform: Transform2F,
-        color: Option<ColorU>,
+        color: Option<Coloring>,
     },
     Bitmap {
         item_id: Uuid,
@@ -62,13 +62,19 @@ enum PropertyTweenData {
         duration_seconds: f32,
         easing: Easing,
     },
+    Coloring {
+        start: Coloring,
+        end: Coloring,
+        duration_seconds: f32,
+        easing: Easing,
+    },
     Transform {
         start_scale: Vector2F,
         end_scale: Vector2F,
         start_translation: Vector2F,
         end_translation: Vector2F,
-        start_theta: f64,
-        end_theta: f64,
+        start_theta: f32,
+        end_theta: f32,
         duration_seconds: f32,
         easing: Easing,
     },
@@ -98,6 +104,23 @@ impl PropertyTween {
         }
     }
 
+    pub fn new_coloring(
+        start: Coloring,
+        end: Coloring,
+        duration_seconds: f32,
+        easing: Easing,
+    ) -> PropertyTween {
+        PropertyTween {
+            data: PropertyTweenData::Coloring {
+                start,
+                end,
+                duration_seconds,
+                easing,
+            },
+            elapsed_seconds: 0.0,
+        }
+    }
+
     pub fn new_transform(
         start: ScaleRotationTranslation,
         end: ScaleRotationTranslation,
@@ -111,16 +134,16 @@ impl PropertyTween {
                 start_translation: start.translation,
                 end_translation: end.translation,
                 start_theta: {
-                    let delta = (end.theta - start.theta) as f64;
+                    let delta = end.theta - start.theta;
                     if delta > PI {
-                        (start.theta as f64) + PI * 2.0
+                        start.theta + PI * 2.0
                     } else if delta < -PI {
-                        (start.theta as f64) - PI * 2.0
+                        start.theta - PI * 2.0
                     } else {
-                        start.theta as f64
+                        start.theta
                     }
                 },
-                end_theta: end.theta.into(),
+                end_theta: end.theta,
                 duration_seconds,
                 easing,
             },
@@ -149,6 +172,7 @@ impl PropertyTween {
 #[derive(Clone, Debug)]
 enum PropertyTweenUpdate {
     Color(ColorU),
+    Coloring(Coloring),
     Transform(Transform2F),
     ViewRect(RectF),
 }
@@ -168,6 +192,15 @@ impl Tween for PropertyTween {
                 let value = easing.ease(self.elapsed_seconds / duration_seconds);
                 PropertyTweenUpdate::Color(start.lerp(*end, value).to_u8())
             }
+            PropertyTweenData::Coloring {
+                start,
+                end,
+                duration_seconds,
+                easing,
+            } => {
+                let value = easing.ease(self.elapsed_seconds / duration_seconds);
+                PropertyTweenUpdate::Coloring(start.lerp(end, value))
+            }
             PropertyTweenData::Transform {
                 start_scale,
                 end_scale,
@@ -181,7 +214,7 @@ impl Tween for PropertyTween {
                 let value = easing.ease(self.elapsed_seconds / duration_seconds);
                 PropertyTweenUpdate::Transform(Transform2F::from_scale_rotation_translation(
                     start_scale.lerp(*end_scale, value),
-                    ((end_theta - start_theta) * (value as f64) + start_theta) as f32,
+                    (end_theta - start_theta) * value + start_theta,
                     start_translation.lerp(*end_translation, value),
                 ))
             }
@@ -204,6 +237,9 @@ impl Tween for PropertyTween {
             PropertyTweenData::Color {
                 duration_seconds, ..
             } => self.elapsed_seconds >= duration_seconds,
+            PropertyTweenData::Coloring {
+                duration_seconds, ..
+            } => self.elapsed_seconds >= duration_seconds,
             PropertyTweenData::Transform {
                 duration_seconds, ..
             } => self.elapsed_seconds >= duration_seconds,
@@ -215,6 +251,7 @@ impl Tween for PropertyTween {
     fn easing(&self) -> Easing {
         match self.data {
             PropertyTweenData::Color { easing, .. } => easing,
+            PropertyTweenData::Coloring { easing, .. } => easing,
             PropertyTweenData::Transform { easing, .. } => easing,
             PropertyTweenData::ViewRect { easing, .. } => easing,
         }
@@ -375,25 +412,29 @@ fn update_tweens(elapsed: f32, display_list: &mut HashMap<Uuid, Entity>) {
                 }
                 tweens.retain(|tween| !tween.is_complete());
             } else if let Some(part) = entity.parts.iter_mut().find(|p| p.item_id() == key) {
-                let (new_transform, new_color, new_view_rect) = tweens
+                let (new_transform, new_color, new_coloring, new_view_rect) = tweens
                     .iter_mut()
                     .map(|tween| {
                         let update = tween.update(elapsed);
                         match update {
                             PropertyTweenUpdate::Transform(transform) => {
-                                (Some(transform), None, None)
+                                (Some(transform), None, None, None)
                             }
-                            PropertyTweenUpdate::Color(color) => (None, Some(color), None),
+                            PropertyTweenUpdate::Color(color) => (None, Some(color), None, None),
+                            PropertyTweenUpdate::Coloring(coloring) => {
+                                (None, None, Some(coloring), None)
+                            }
                             PropertyTweenUpdate::ViewRect(view_rect) => {
-                                (None, None, Some(view_rect))
+                                (None, None, None, Some(view_rect))
                             }
                         }
                     })
-                    .fold((None, None, None), |acc, x| {
+                    .fold((None, None, None, None), |acc, x| {
                         let t = if x.0.is_some() { x.0 } else { acc.0 };
                         let c = if x.1.is_some() { x.1 } else { acc.1 };
-                        let v = if x.2.is_some() { x.2 } else { acc.2 };
-                        (t, c, v)
+                        let cs = if x.2.is_some() { x.2 } else { acc.2 };
+                        let v = if x.3.is_some() { x.3 } else { acc.3 };
+                        (t, c, cs, v)
                     });
                 let new_part = match part {
                     Part::Vector {
@@ -407,10 +448,10 @@ fn update_tweens(elapsed: f32, display_list: &mut HashMap<Uuid, Entity>) {
                         } else {
                             *transform
                         },
-                        color: if new_color.is_some() {
-                            new_color
+                        color: if new_coloring.is_some() {
+                            new_coloring
                         } else {
-                            *color
+                            color.take()
                         },
                     },
                     Part::Bitmap {
@@ -783,21 +824,19 @@ fn create_part_tween(
             {
                 if let Some(end_color) = end_color {
                     if let Some(start_color) = start_color {
-                        tweens.push(PropertyTween::new_color(
-                            *start_color,
-                            *end_color,
+                        tweens.push(PropertyTween::new_coloring(
+                            start_color.clone(),
+                            end_color.clone(),
                             duration_seconds,
                             *easing,
                         ));
                     } else if let DisplayLibraryItem::Vector(shape) = library_item {
-                        if let Some(start_color) = shape.color() {
-                            tweens.push(PropertyTween::new_color(
-                                start_color,
-                                *end_color,
-                                duration_seconds,
-                                *easing,
-                            ));
-                        }
+                        tweens.push(PropertyTween::new_coloring(
+                            shape.color(),
+                            end_color.clone(),
+                            duration_seconds,
+                            *easing,
+                        ));
                     } else {
                         return Err(format!(
                             "Vector part {} references a Bitmap object",
@@ -878,7 +917,7 @@ fn paint(
                     color,
                 } => {
                     if let Some(&DisplayLibraryItem::Vector(ref shape)) = library.get(&item_id) {
-                        renderer.draw_shape(shape, *world_space_transform * *transform, *color);
+                        renderer.draw_shape(shape, *world_space_transform * *transform, color);
                     }
                 }
                 Part::Bitmap {
@@ -1141,7 +1180,7 @@ mod tests {
         trait Renderer {
             fn start_frame(&mut self, stage_size: Vector2F);
             fn set_background(&mut self, color: ColorU);
-            fn draw_shape(&mut self, shape: &Shape, transform: Transform2F, color_override: Option<ColorU>);
+            fn draw_shape(&mut self, shape: &Shape, transform: Transform2F, color_override:  &Option<Coloring>);
             fn draw_bitmap(&mut self, bitmap: &Bitmap, view_rect: RectF, transform: Transform2F, tint: Option<ColorU>);
             fn end_frame(&mut self);
         }
