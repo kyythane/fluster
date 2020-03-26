@@ -5,8 +5,7 @@ use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
-use serde::ser::SerializeSeq;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::mem;
 
 pub trait Renderer {
@@ -29,13 +28,36 @@ pub trait Renderer {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub enum Point {
+    Move(#[serde(with = "Vector2FDef")] Vector2F),
+    Line(#[serde(with = "Vector2FDef")] Vector2F),
+    Quadratic {
+        #[serde(with = "Vector2FDef")]
+        control: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        to: Vector2F,
+    },
+    Bezier {
+        #[serde(with = "Vector2FDef")]
+        control_1: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        control_2: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        to: Vector2F,
+    },
+    Arc {
+        #[serde(with = "Vector2FDef")]
+        control: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        to: Vector2F,
+        radius: f32,
+    },
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Shape {
     Path {
-        #[serde(
-            serialize_with = "vec_vector2f_ser",
-            deserialize_with = "vec_vector2f_des"
-        )]
-        points: Vec<Vector2F>,
+        points: Vec<Point>,
         #[serde(with = "ColorUDef")]
         color: ColorU,
         #[serde(with = "StrokeStyleDef")]
@@ -43,20 +65,12 @@ pub enum Shape {
         is_closed: bool,
     },
     FillPath {
-        #[serde(
-            serialize_with = "vec_vector2f_ser",
-            deserialize_with = "vec_vector2f_des"
-        )]
-        points: Vec<Vector2F>,
+        points: Vec<Point>,
         #[serde(with = "ColorUDef")]
         color: ColorU,
     },
     Clip {
-        #[serde(
-            serialize_with = "vec_vector2f_ser",
-            deserialize_with = "vec_vector2f_des"
-        )]
-        points: Vec<Vector2F>,
+        points: Vec<Point>,
     },
     Group {
         shapes: Vec<AugmentedShape>,
@@ -147,28 +161,6 @@ impl Bitmap {
 }
 
 //The following deffinitions add serde support to pathfinder types
-#[derive(Serialize, Deserialize)]
-struct VecWrapper(#[serde(with = "Vector2FDef")] Vector2F);
-
-fn vec_vector2f_des<'de, D>(deserializer: D) -> Result<Vec<Vector2F>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let v = Vec::deserialize(deserializer)?;
-    Ok(v.into_iter().map(|VecWrapper(a)| a).collect())
-}
-
-fn vec_vector2f_ser<S>(v: &[Vector2F], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let mut seq = serializer.serialize_seq(Some(v.len()))?;
-    for element in v.iter().map(|a| VecWrapper(*a)) {
-        seq.serialize_element(&element)?;
-    }
-    seq.end()
-}
-
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "ColorU")]
 pub struct ColorUDef {

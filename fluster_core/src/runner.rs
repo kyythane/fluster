@@ -5,7 +5,7 @@ use super::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
     PartUpdateDefinition, RectPoints,
 };
-use super::rendering::{Bitmap, Coloring, Renderer, Shape};
+use super::rendering::{Bitmap, Coloring, Point, Renderer, Shape};
 use super::tween::{Easing, Tween};
 use super::types::ScaleRotationTranslation;
 use pathfinder_color::{ColorF, ColorU};
@@ -998,10 +998,10 @@ mod tests {
                 id: shape_id,
                 shape: Shape::FillPath {
                     points: vec![
-                        Vector2F::new(-15.0, -15.0),
-                        Vector2F::new(15.0, -15.0),
-                        Vector2F::new(15.0, 15.0),
-                        Vector2F::new(-15.0, 15.0),
+                        Point::Line(Vector2F::new(-15.0, -15.0)),
+                        Point::Line(Vector2F::new(15.0, -15.0)),
+                        Point::Line(Vector2F::new(15.0, 15.0)),
+                        Point::Line(Vector2F::new(-15.0, 15.0)),
                     ],
                     color: ColorU::new(0, 255, 0, 255),
                 },
@@ -1186,10 +1186,10 @@ mod tests {
             shape_id,
             DisplayLibraryItem::Vector(Shape::FillPath {
                 points: vec![
-                    Vector2F::new(-15.0, -15.0),
-                    Vector2F::new(15.0, -15.0),
-                    Vector2F::new(15.0, 15.0),
-                    Vector2F::new(-15.0, 15.0),
+                    Point::Line(Vector2F::new(-15.0, -15.0)),
+                    Point::Line(Vector2F::new(15.0, -15.0)),
+                    Point::Line(Vector2F::new(15.0, 15.0)),
+                    Point::Line(Vector2F::new(-15.0, 15.0)),
                 ],
                 color: ColorU::new(0, 255, 0, 255),
             }),
@@ -1253,10 +1253,10 @@ mod tests {
             .withf(|drawn_shape, transform, color_override| {
                 let model_shape = Shape::FillPath {
                     points: vec![
-                        Vector2F::new(-15.0, -15.0),
-                        Vector2F::new(15.0, -15.0),
-                        Vector2F::new(15.0, 15.0),
-                        Vector2F::new(-15.0, 15.0),
+                        Point::Line(Vector2F::new(-15.0, -15.0)),
+                        Point::Line(Vector2F::new(15.0, -15.0)),
+                        Point::Line(Vector2F::new(15.0, 15.0)),
+                        Point::Line(Vector2F::new(-15.0, 15.0)),
                     ],
                     color: ColorU::new(0, 255, 0, 255),
                 };

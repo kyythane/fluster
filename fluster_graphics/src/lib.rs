@@ -1,4 +1,4 @@
-use fluster_core::rendering::{Bitmap, Coloring, Renderer, Shape};
+use fluster_core::rendering::{Bitmap, Coloring, Point, Renderer, Shape};
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
 use pathfinder_color::ColorU;
 use pathfinder_content::fill::FillRule;
@@ -22,12 +22,24 @@ fn patch_line_join(j: StrokeLineJoin) -> LineJoin {
     }
 }
 
-fn points_to_path(points: &Vec<Vector2F>, close_path: bool) -> Path2D {
+fn points_to_path(points: &Vec<Point>, close_path: bool) -> Path2D {
     let mut path = Path2D::new();
-    let mut points = points.iter();
-    path.move_to(*points.next().unwrap());
     for point in points {
-        path.line_to(*point);
+        match point {
+            Point::Move(to) => path.move_to(*to),
+            Point::Line(to) => path.line_to(*to),
+            Point::Quadratic { control, to } => path.quadratic_curve_to(*control, *to),
+            Point::Bezier {
+                control_1,
+                control_2,
+                to,
+            } => path.bezier_curve_to(*control_1, *control_2, *to),
+            Point::Arc {
+                control,
+                to,
+                radius,
+            } => path.arc_to(*control, *to, *radius),
+        }
     }
     if close_path {
         path.close_path();

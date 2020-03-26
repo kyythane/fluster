@@ -18,6 +18,7 @@ const MAX_BUFFER_SIZE: usize = 4_096_000; // 1000 *(2 ^ 12) bytes ~ 4MB
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Header {
     version: u8,
+    fps: u8,
     stage_size: Vector2I,
 }
 
@@ -26,11 +27,13 @@ named!(
     do_parse!(
         tag!("FSR")
             >> version: le_u8
+            >> fps: le_u8
             >> stage_width: le_i32
             >> stage_height: le_i32
             >> (Header {
                 version: version,
-                stage_size: Vector2I::new(stage_width, stage_height)
+                fps: fps,
+                stage_size: Vector2I::new(stage_width, stage_height),
             })
     )
 );
@@ -115,7 +118,7 @@ impl<T: Read> Iterator for DeserializationIterator<T> {
 
 pub fn deserialize_stream<T: Read>(
     mut stream: T,
-) -> Result<(Vector2I, DeserializationIterator<T>), BinError> {
+) -> Result<(Vector2I, u8, DeserializationIterator<T>), BinError> {
     let mut buffer = Buffer::with_capacity(STARTING_BUFFER_SIZE);
 
     let bytes = stream.read(buffer.space())?;
@@ -134,7 +137,7 @@ pub fn deserialize_stream<T: Read>(
     match header.version {
         1 => {
             let iter = DeserializationIterator { stream, buffer };
-            Ok((header.stage_size, iter))
+            Ok((header.stage_size, header.fps, iter))
         }
         _ => Err(BinError::from(BinErrorKind::Custom(format!(
             "Unsupported verion: {}, maximum supported version: {}",
@@ -146,10 +149,11 @@ pub fn deserialize_stream<T: Read>(
 pub fn serialize_stream(
     actions: &[Action],
     stage_size: Vector2I,
+    frames_per_second: u8,
     out: &mut impl Write,
 ) -> Result<(), BinError> {
     out.write_all(&"FSR".bytes().collect::<Vec<u8>>()[..])?;
-    out.write_all(&[FILE_VERSION])?;
+    out.write_all(&[FILE_VERSION, frames_per_second])?;
     out.write_all(&stage_size.x().to_le_bytes())?;
     out.write_all(&stage_size.y().to_le_bytes())?;
     for action in actions {
@@ -175,7 +179,7 @@ pub fn deserialize_action(bytes: &[u8], _version: u8) -> Result<Action, BinError
 mod tests {
     use super::*;
     use crate::actions::{EntityDefinition, PartDefinition};
-    use crate::rendering::Shape;
+    use crate::rendering::{Point, Shape};
     use pathfinder_color::ColorU;
     use pathfinder_geometry::transform2d::Transform2F;
     use pathfinder_geometry::vector::Vector2F;
@@ -208,10 +212,10 @@ mod tests {
             id: shape_id,
             shape: Shape::FillPath {
                 points: vec![
-                    Vector2F::new(1.0, 5.0),
-                    Vector2F::new(5.0, 1.0),
-                    Vector2F::new(1.0, 1.0),
-                    Vector2F::new(5.0, 5.0),
+                    Point::Line(Vector2F::new(1.0, 5.0)),
+                    Point::Line(Vector2F::new(5.0, 1.0)),
+                    Point::Line(Vector2F::new(1.0, 1.0)),
+                    Point::Line(Vector2F::new(5.0, 5.0)),
                 ],
                 color: ColorU::white(),
             },
@@ -234,10 +238,10 @@ mod tests {
                 id: shape_id,
                 shape: Shape::FillPath {
                     points: vec![
-                        Vector2F::new(1.0, 5.0),
-                        Vector2F::new(5.0, 1.0),
-                        Vector2F::new(1.0, 1.0),
-                        Vector2F::new(5.0, 5.0),
+                        Point::Line(Vector2F::new(1.0, 5.0)),
+                        Point::Line(Vector2F::new(5.0, 1.0)),
+                        Point::Line(Vector2F::new(1.0, 1.0)),
+                        Point::Line(Vector2F::new(5.0, 5.0)),
                     ],
                     color: ColorU::white(),
                 },
@@ -258,10 +262,11 @@ mod tests {
             Action::Quit,
         ];
         let mut buffer = IoBuffer::new();
-        serialize_stream(&actions, Vector2I::new(960, 480), &mut buffer).unwrap();
+        serialize_stream(&actions, Vector2I::new(960, 480), 60, &mut buffer).unwrap();
         match deserialize_stream(buffer) {
-            Ok((size, iterator)) => {
+            Ok((size, frames_per_second, iterator)) => {
                 assert_eq!(size, Vector2I::new(960, 480));
+                assert_eq!(frames_per_second, 60);
                 let read: Vec<Action> = iterator.collect();
                 assert_eq!(read.len(), actions.len());
                 for i in 0..actions.len() {
