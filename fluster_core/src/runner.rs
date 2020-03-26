@@ -334,6 +334,12 @@ impl State {
     }
 }
 
+/* TODO: For the editor we need to make it so we can recall and rebuild an arbitrary frame from scratch.
+    I don't want to expose all the internals about libraries and display lists. If they were genericised
+    to a trait with just the needed functionality, we could build a version that's backed by a bucketed hash map
+    where each bucket is a frame. Then that bucket could be rebuilt when visiting said frame without impacting
+    the invariants we want to maintain in execute_actions.
+*/
 pub fn play(
     renderer: &mut impl Renderer,
     actions: &mut ActionList,
@@ -358,11 +364,12 @@ pub fn play(
         if let Some(Action::PresentFrame(start, count)) = actions.get() {
             if *count == 0 {
                 continue; //Treat PresentFrame(_, 0) as a no-op
-            } else if state.frame > *start + *count {
+            } else if state.frame > start + count {
                 return Err("Attempting to play incorrect frame. Frame counter and action list have gotten desynced".to_string());
             } else {
-                for frame in 0..*count {
-                    state.frame = *start + frame;
+                let start = state.frame - *start;
+                for frame in 0..(*count - start) {
+                    state.frame = start + frame;
                     //TODO: skip updates/paints to catch up to frame rate if we are lagging
                     //TODO: handle input
                     //TODO: scripts

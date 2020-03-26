@@ -49,6 +49,7 @@ pub enum Easing {
     None,
 }
 
+//TODO: BUG: Back and Elastic are just wrong
 impl Easing {
     pub fn ease(self, percent: f32) -> f32 {
         // clamp

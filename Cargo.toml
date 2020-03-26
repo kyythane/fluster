@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "fluster_core",
-    "fluster_editor",
     "fluster_graphics",
+    "fluster_editor",
+    "fluster_player",
 ]
