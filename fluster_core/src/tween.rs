@@ -1,5 +1,6 @@
 #![deny(clippy::all)]
 
+use super::util;
 use serde::{Deserialize, Serialize};
 use std::f32::consts::{FRAC_PI_2, PI};
 use std::f32::EPSILON;
@@ -52,14 +53,7 @@ pub enum Easing {
 //TODO: BUG: Back and Elastic are just wrong
 impl Easing {
     pub fn ease(self, percent: f32) -> f32 {
-        // clamp
-        let percent = if percent > 1.0 {
-            1.0
-        } else if percent < 0.0 {
-            0.0
-        } else {
-            percent
-        };
+        let percent = util::clamp_0_1(percent);
         const BACK_SCALE: f32 = 1.70158;
         const IN_OUT_BACK_SCALE: f32 = BACK_SCALE * 1.525;
         match self {
