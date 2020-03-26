@@ -26,13 +26,15 @@ fn build_action_list() -> ActionList {
     let shape_id = Uuid::new_v4();
     let shape2_id = Uuid::new_v4();
     let shape3_id = Uuid::new_v4();
+    let shape4_id = Uuid::new_v4();
+    let root_id = Uuid::new_v4();
     let entity_id = Uuid::new_v4();
     let entity2_id = Uuid::new_v4();
     let actions = vec![
         Action::SetBackground {
             color: ColorU::new(254, 200, 216, 255),
         },
-        Action::CreateRoot(Uuid::new_v4()),
+        Action::CreateRoot(root_id),
         Action::EndInitialization,
         Action::DefineShape {
             id: shape_id,
@@ -135,6 +137,37 @@ fn build_action_list() -> ActionList {
                 ],
             },
         },
+        Action::DefineShape {
+            id: shape4_id,
+            shape: Shape::Path {
+                points: vec![
+                    Point::Move(Vector2F::new(300.0, 100.0)),
+                    Point::Line(Vector2F::new(258.0, 142.0)),
+                    Point::Bezier {
+                        control_1: Vector2F::new(322.0, 160.0),
+                        control_2: Vector2F::new(326.0, 150.0),
+                        to: Vector2F::new(330.0, 142.0),
+                    },
+                    Point::Quadratic {
+                        control: Vector2F::new(240.0, 100.0),
+                        to: Vector2F::new(330.0, 62.0),
+                    },
+                    Point::Move(Vector2F::new(330.0, 130.0)),
+                    Point::Arc {
+                        control: Vector2F::new(300.0, 100.0),
+                        to: Vector2F::new(360.0, 92.0),
+                        radius: 21.0,
+                    },
+                ],
+                stroke_style: StrokeStyle {
+                    line_width: 3.0,
+                    line_cap: LineCap::Square,
+                    line_join: LineJoin::Bevel,
+                },
+                is_closed: false,
+                color: ColorU::black(),
+            },
+        },
         Action::AddEntity(EntityDefinition {
             id: entity_id,
             name: String::from("first"),
@@ -167,6 +200,14 @@ fn build_action_list() -> ActionList {
                         Vector2F::splat(2.0),
                         0.0,
                         Vector2F::new(300.0, 300.0),
+                    ),
+                },
+                PartDefinition::Vector {
+                    item_id: shape4_id,
+                    transform: Transform2F::from_scale_rotation_translation(
+                        Vector2F::splat(2.0),
+                        0.0,
+                        Vector2F::new(0.0, 0.0),
                     ),
                 },
             ],

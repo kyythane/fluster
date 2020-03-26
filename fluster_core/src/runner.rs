@@ -5,7 +5,7 @@ use super::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
     PartUpdateDefinition, RectPoints,
 };
-use super::rendering::{Bitmap, Coloring, Point, Renderer, Shape};
+use super::rendering::{Bitmap, Coloring, Renderer, Shape};
 use super::tween::{Easing, Tween};
 use super::types::ScaleRotationTranslation;
 use pathfinder_color::{ColorF, ColorU};
