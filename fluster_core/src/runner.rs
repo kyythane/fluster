@@ -939,6 +939,7 @@ fn paint(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rendering::Point;
     use crate::types::ScaleRotationTranslation;
     use mockall::predicate::*;
     use mockall::*;
