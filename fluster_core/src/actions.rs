@@ -191,6 +191,7 @@ impl PartUpdateDefinition {
     }
 }
 
+//TODO: since these vecs are immutable, replace with Box<[T]> (into_boxed_slice())
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct EntityDefinition {
     pub depth: u32,
@@ -200,6 +201,7 @@ pub struct EntityDefinition {
     pub parts: Vec<PartDefinition>,
     #[serde(serialize_with = "transform_ser", deserialize_with = "transform_des")]
     pub transform: Transform2F,
+    pub morph_index: f32,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -209,7 +211,7 @@ pub struct EntityUpdateDefinition {
     pub id: Uuid,
     pub part_updates: Vec<PartUpdateDefinition>,
     pub transform: Option<ScaleRotationTranslation>,
-    //TODO: morph shapes
+    pub morph_index: Option<f32>,
 }
 
 //TODO: additional actions: Text, Scripts, Fonts, AddPart, RemovePart

@@ -1,3 +1,4 @@
+#![deny(clippy::all)]
 use fluster_core::rendering::{Bitmap, Coloring, Point, Renderer, Shape};
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
 use pathfinder_color::ColorU;
@@ -22,7 +23,7 @@ fn patch_line_join(j: StrokeLineJoin) -> LineJoin {
     }
 }
 
-fn points_to_path(points: &Vec<Point>, close_path: bool) -> Path2D {
+fn points_to_path(points: &[Point], close_path: bool) -> Path2D {
     let mut path = Path2D::new();
     for point in points {
         match point {
@@ -95,6 +96,7 @@ where
         shape: &Shape,
         transform: Transform2F,
         color_override: &Option<Coloring>,
+        morph_index: f32,
     ) {
         if let Some(canvas) = &mut self.canvas {
             match shape {
@@ -119,7 +121,7 @@ where
                         canvas.stroke_path(path);
                     }
                 }
-                Shape::FillPath { points, color } => {
+                Shape::Fill { points, color } => {
                     if points.len() > 2 {
                         let color = if let Some(Coloring::Color(color_override)) = color_override {
                             color_override
@@ -127,6 +129,48 @@ where
                             color
                         };
                         let path = points_to_path(points, true);
+                        canvas.set_current_transform(&transform);
+                        canvas.set_fill_style(FillStyle::Color(*color));
+                        canvas.fill_path(path, FillRule::Winding);
+                    }
+                }
+                Shape::MorphPath {
+                    points,
+                    color,
+                    stroke_style,
+                    is_closed,
+                } => {
+                    if points.len() > 1 {
+                        let color = if let Some(Coloring::Color(color_override)) = color_override {
+                            color_override
+                        } else {
+                            color
+                        };
+                        let points = points
+                            .iter()
+                            .map(|mp| mp.to_point(morph_index))
+                            .collect::<Vec<Point>>();
+                        let path = points_to_path(&points, *is_closed);
+                        canvas.set_current_transform(&transform);
+                        canvas.set_line_width(stroke_style.line_width);
+                        canvas.set_line_cap(stroke_style.line_cap);
+                        canvas.set_line_join(patch_line_join(stroke_style.line_join));
+                        canvas.set_stroke_style(FillStyle::Color(*color));
+                        canvas.stroke_path(path);
+                    }
+                }
+                Shape::MorphFill { points, color } => {
+                    if points.len() > 2 {
+                        let color = if let Some(Coloring::Color(color_override)) = color_override {
+                            color_override
+                        } else {
+                            color
+                        };
+                        let points = points
+                            .iter()
+                            .map(|mp| mp.to_point(morph_index))
+                            .collect::<Vec<Point>>();
+                        let path = points_to_path(&points, true);
                         canvas.set_current_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
@@ -149,13 +193,19 @@ where
                                     &shape.shape,
                                     transform * shape.transform,
                                     color_override,
+                                    morph_index,
                                 )
                             }
                             return;
                         }
                     }
                     for shape in shapes {
-                        self.draw_shape(&shape.shape, transform * shape.transform, color_override)
+                        self.draw_shape(
+                            &shape.shape,
+                            transform * shape.transform,
+                            color_override,
+                            morph_index,
+                        )
                     }
                 }
             }

@@ -38,7 +38,7 @@ fn build_action_list() -> ActionList {
         Action::EndInitialization,
         Action::DefineShape {
             id: shape_id,
-            shape: Shape::FillPath {
+            shape: Shape::Fill {
                 points: vec![
                     Point::Line(Vector2F::new(-15.0, -15.0)),
                     Point::Line(Vector2F::new(15.0, -15.0)),
@@ -71,7 +71,7 @@ fn build_action_list() -> ActionList {
             shape: Shape::Group {
                 shapes: vec![
                     AugmentedShape {
-                        shape: Shape::FillPath {
+                        shape: Shape::Fill {
                             points: vec![
                                 Point::Line(Vector2F::new(-15.0, -15.0)),
                                 Point::Line(Vector2F::new(15.0, -15.0)),
@@ -87,7 +87,7 @@ fn build_action_list() -> ActionList {
                         ),
                     },
                     AugmentedShape {
-                        shape: Shape::FillPath {
+                        shape: Shape::Fill {
                             points: vec![
                                 Point::Line(Vector2F::new(-15.0, -15.0)),
                                 Point::Line(Vector2F::new(15.0, -15.0)),
@@ -103,7 +103,7 @@ fn build_action_list() -> ActionList {
                         ),
                     },
                     AugmentedShape {
-                        shape: Shape::FillPath {
+                        shape: Shape::Fill {
                             points: vec![
                                 Point::Line(Vector2F::new(-15.0, -15.0)),
                                 Point::Line(Vector2F::new(15.0, -15.0)),
@@ -119,7 +119,7 @@ fn build_action_list() -> ActionList {
                         ),
                     },
                     AugmentedShape {
-                        shape: Shape::FillPath {
+                        shape: Shape::Fill {
                             points: vec![
                                 Point::Line(Vector2F::new(-15.0, -15.0)),
                                 Point::Line(Vector2F::new(15.0, -15.0)),
@@ -212,6 +212,7 @@ fn build_action_list() -> ActionList {
                 },
             ],
             parent: None,
+            morph_index: 0.0,
         }),
         Action::AddEntity(EntityDefinition {
             id: entity2_id,
@@ -223,6 +224,7 @@ fn build_action_list() -> ActionList {
                 transform: Transform2F::default(),
             }],
             parent: Some(entity_id),
+            morph_index: 0.0,
         }),
         Action::PresentFrame(0, 1),
         Action::UpdateEntity(EntityUpdateDefinition {
@@ -235,6 +237,7 @@ fn build_action_list() -> ActionList {
                 theta: PI,
                 translation: Vector2F::new(200.0, 0.0),
             }),
+            morph_index: None,
         }),
         Action::PresentFrame(1, 239),
         Action::UpdateEntity(EntityUpdateDefinition {
@@ -253,6 +256,7 @@ fn build_action_list() -> ActionList {
                 transform: None,
             }],
             transform: None,
+            morph_index: None,
         }),
         Action::PresentFrame(240, 600),
         Action::Quit,

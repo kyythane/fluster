@@ -8,6 +8,7 @@ use super::actions::{
 use super::rendering::{Bitmap, Coloring, Renderer, Shape};
 use super::tween::{Easing, Tween};
 use super::types::ScaleRotationTranslation;
+use super::util;
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
@@ -82,6 +83,12 @@ enum PropertyTweenData {
     ViewRect {
         start: RectPoints,
         end: RectPoints,
+        duration_seconds: f32,
+        easing: Easing,
+    },
+    MorphIndex {
+        start: f32,
+        end: f32,
         duration_seconds: f32,
         easing: Easing,
     },
@@ -168,6 +175,23 @@ impl PropertyTween {
             elapsed_seconds: 0.0,
         }
     }
+
+    pub fn new_morph_index(
+        start: f32,
+        end: f32,
+        duration_seconds: f32,
+        easing: Easing,
+    ) -> PropertyTween {
+        PropertyTween {
+            data: PropertyTweenData::MorphIndex {
+                start: util::clamp_0_1(start),
+                end: util::clamp_0_1(end),
+                duration_seconds,
+                easing,
+            },
+            elapsed_seconds: 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -176,6 +200,7 @@ enum PropertyTweenUpdate {
     Coloring(Coloring),
     Transform(Transform2F),
     ViewRect(RectF),
+    Morph(f32),
 }
 
 impl Tween for PropertyTween {
@@ -231,6 +256,15 @@ impl Tween for PropertyTween {
                     start.lower_right.lerp(end.lower_right, value),
                 ))
             }
+            PropertyTweenData::MorphIndex {
+                start,
+                end,
+                duration_seconds,
+                easing,
+            } => {
+                let value = easing.ease(self.elapsed_seconds / duration_seconds);
+                PropertyTweenUpdate::Morph(util::lerp(*start, *end, value))
+            }
         }
     }
     fn is_complete(&self) -> bool {
@@ -247,6 +281,9 @@ impl Tween for PropertyTween {
             PropertyTweenData::ViewRect {
                 duration_seconds, ..
             } => self.elapsed_seconds >= duration_seconds,
+            PropertyTweenData::MorphIndex {
+                duration_seconds, ..
+            } => self.elapsed_seconds >= duration_seconds,
         }
     }
     fn easing(&self) -> Easing {
@@ -255,6 +292,7 @@ impl Tween for PropertyTween {
             PropertyTweenData::Coloring { easing, .. } => easing,
             PropertyTweenData::Transform { easing, .. } => easing,
             PropertyTweenData::ViewRect { easing, .. } => easing,
+            PropertyTweenData::MorphIndex { easing, .. } => easing,
         }
     }
 }
@@ -266,6 +304,7 @@ struct Entity {
     children: Vec<Uuid>,
     depth: u32,
     id: Uuid,
+    morph_index: f32,
     name: String,
     parent: Uuid,
     parts: Vec<Part>,
@@ -294,6 +333,7 @@ impl Entity {
         parent: Uuid,
         parts: Vec<Part>,
         transform: Transform2F,
+        morph_index: f32,
     ) -> Entity {
         Entity {
             active: true,
@@ -305,6 +345,7 @@ impl Entity {
             parts,
             transform,
             tweens: HashMap::new(),
+            morph_index,
         }
     }
 
@@ -441,6 +482,7 @@ fn update_tweens(elapsed: f32, display_list: &mut HashMap<Uuid, Entity>) {
                             PropertyTweenUpdate::ViewRect(view_rect) => {
                                 (None, None, None, Some(view_rect))
                             }
+                            PropertyTweenUpdate::Morph(_) => (None, None, None, None),
                         }
                     })
                     .fold((None, None, None, None), |acc, x| {
@@ -537,6 +579,7 @@ fn initialize(
                     *id,
                     vec![],
                     Transform2F::default(),
+                    0.0,
                 );
                 display_list.insert(*id, root);
             }
@@ -623,15 +666,16 @@ fn add_entity(
     display_list: &mut HashMap<Uuid, Entity>,
     library: &HashMap<Uuid, DisplayLibraryItem>,
 ) -> Result<(), String> {
-    let (id, name, transform, depth, parts, parent) = match entity_definition {
+    let (id, name, transform, depth, morph_index, parts, parent) = match entity_definition {
         EntityDefinition {
             id,
             name,
             transform,
             depth,
+            morph_index,
             parts,
             parent,
-        } => (*id, name, transform, *depth, parts, *parent),
+        } => (*id, name, transform, *depth, *morph_index, parts, *parent),
     };
 
     let parent = match parent {
@@ -679,7 +723,15 @@ fn add_entity(
                 }
                 constructed
             };
-            let entity = Entity::new(id, depth, name.clone(), parent, parts, *transform);
+            let entity = Entity::new(
+                id,
+                depth,
+                name.clone(),
+                parent,
+                parts,
+                *transform,
+                morph_index,
+            );
             parent_entity.add_child(id);
             if let Some(old) = display_list.insert(id, entity) {
                 // If we replace this entitiy, clear the old children out of the display list.
@@ -709,26 +761,35 @@ fn add_tweens(
     let duration_seconds =
         state.seconds_per_frame * (entity_update_definition.duration_frames as f32);
     if let Some(entity) = display_list.get_mut(&entity_update_definition.id) {
-        if let Some(end_transform) = &entity_update_definition.transform {
-            let tween = if let Some(easing) = entity_update_definition.easing {
-                PropertyTween::new_transform(
+        if let Some(easing) = entity_update_definition.easing {
+            if let Some(end_transform) = &entity_update_definition.transform {
+                let tween = PropertyTween::new_transform(
                     ScaleRotationTranslation::from_transform(&entity.transform),
                     *end_transform,
                     duration_seconds,
                     easing,
-                )
-            } else {
-                return Err(format!(
-                    "Attempted to define tween for {} with no easing",
-                    entity.id
-                ));
-            };
-            match entity.tweens.get_mut(&entity.id) {
-                Some(tweens) => tweens.push(tween),
-                None => {
-                    entity.tweens.insert(entity.id, vec![tween]);
-                }
-            };
+                );
+                match entity.tweens.get_mut(&entity.id) {
+                    Some(tweens) => tweens.push(tween),
+                    None => {
+                        entity.tweens.insert(entity.id, vec![tween]);
+                    }
+                };
+            }
+            if let Some(end_morph) = &entity_update_definition.morph_index {
+                let tween = PropertyTween::new_morph_index(
+                    entity.morph_index,
+                    *end_morph,
+                    duration_seconds,
+                    easing,
+                );
+                match entity.tweens.get_mut(&entity.id) {
+                    Some(tweens) => tweens.push(tween),
+                    None => {
+                        entity.tweens.insert(entity.id, vec![tween]);
+                    }
+                };
+            }
         }
         for part_update in &entity_update_definition.part_updates {
             let update_item_id = part_update.item_id();
@@ -806,7 +867,7 @@ fn create_part_tween(
                 }
             } else {
                 return Err(format!(
-                    "Tried to apply Bitmap update to a Bector part {}",
+                    "Tried to apply Bitmap update to a Vector part {}",
                     part.item_id()
                 ));
             }
@@ -918,7 +979,12 @@ fn paint(
                     color,
                 } => {
                     if let Some(&DisplayLibraryItem::Vector(ref shape)) = library.get(&item_id) {
-                        renderer.draw_shape(shape, *world_space_transform * *transform, color);
+                        renderer.draw_shape(
+                            shape,
+                            *world_space_transform * *transform,
+                            color,
+                            entity.morph_index,
+                        );
                     }
                 }
                 Part::Bitmap {
@@ -1004,7 +1070,7 @@ mod tests {
             },
             Action::DefineShape {
                 id: shape_id,
-                shape: Shape::FillPath {
+                shape: Shape::Fill {
                     points: vec![
                         Point::Line(Vector2F::new(-15.0, -15.0)),
                         Point::Line(Vector2F::new(15.0, -15.0)),
@@ -1024,6 +1090,7 @@ mod tests {
                     transform: Transform2F::default(),
                 }],
                 parent: None,
+                morph_index: 0.0,
             }),
             Action::AddEntity(EntityDefinition {
                 id: entity2_id,
@@ -1035,6 +1102,7 @@ mod tests {
                     transform: Transform2F::default(),
                 }],
                 parent: Some(entity_id),
+                morph_index: 0.0,
             }),
             Action::PresentFrame(1, 1),
             Action::SetBackground {
@@ -1052,6 +1120,7 @@ mod tests {
                 root_id,
                 vec![],
                 Transform2F::default(),
+                0.0,
             ),
         );
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
@@ -1107,6 +1176,7 @@ mod tests {
                 parts: vec![],
                 children: vec![entity_id],
                 tweens: HashMap::new(),
+                morph_index: 0.0,
             },
         );
         let mut tweens: HashMap<Uuid, Vec<PropertyTween>> = HashMap::new();
@@ -1146,6 +1216,7 @@ mod tests {
                 }],
                 children: vec![],
                 tweens,
+                morph_index: 0.0,
             },
         );
 
@@ -1177,7 +1248,7 @@ mod tests {
         trait Renderer {
             fn start_frame(&mut self, stage_size: Vector2F);
             fn set_background(&mut self, color: ColorU);
-            fn draw_shape(&mut self, shape: &Shape, transform: Transform2F, color_override:  &Option<Coloring>);
+            fn draw_shape(&mut self, shape: &Shape, transform: Transform2F, color_override:  &Option<Coloring>, morph_index: f32);
             fn draw_bitmap(&mut self, bitmap: &Bitmap, view_rect: RectF, transform: Transform2F, tint: Option<ColorU>);
             fn end_frame(&mut self);
         }
@@ -1192,7 +1263,7 @@ mod tests {
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
         library.insert(
             shape_id,
-            DisplayLibraryItem::Vector(Shape::FillPath {
+            DisplayLibraryItem::Vector(Shape::Fill {
                 points: vec![
                     Point::Line(Vector2F::new(-15.0, -15.0)),
                     Point::Line(Vector2F::new(15.0, -15.0)),
@@ -1215,6 +1286,7 @@ mod tests {
                 parts: vec![],
                 children: vec![entity_id],
                 tweens: HashMap::new(),
+                morph_index: 0.0,
             },
         );
         display_list.insert(
@@ -1230,6 +1302,7 @@ mod tests {
                     color: None,
                 }],
                 Transform2F::default(),
+                0.0,
             ),
         );
         let state = State {
@@ -1258,8 +1331,8 @@ mod tests {
         mock_renderer
             .expect_draw_shape()
             .times(1)
-            .withf(|drawn_shape, transform, color_override| {
-                let model_shape = Shape::FillPath {
+            .withf(|drawn_shape, transform, color_override, morph_index| {
+                let model_shape = Shape::Fill {
                     points: vec![
                         Point::Line(Vector2F::new(-15.0, -15.0)),
                         Point::Line(Vector2F::new(15.0, -15.0)),
@@ -1271,6 +1344,7 @@ mod tests {
                 drawn_shape == &model_shape
                     && *transform == Transform2F::default()
                     && *color_override == None
+                    && morph_index.abs() < std::f32::EPSILON
             })
             .return_const(())
             .in_sequence(&mut seq);

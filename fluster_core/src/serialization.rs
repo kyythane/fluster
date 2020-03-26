@@ -200,6 +200,7 @@ mod tests {
                 transform: Transform2F::default(),
             }],
             parent: None,
+            morph_index: 0.0,
         });
 
         let serialized = serialize_action(&action, 1).unwrap();
@@ -210,7 +211,7 @@ mod tests {
 
         let action = Action::DefineShape {
             id: shape_id,
-            shape: Shape::FillPath {
+            shape: Shape::Fill {
                 points: vec![
                     Point::Line(Vector2F::new(1.0, 5.0)),
                     Point::Line(Vector2F::new(5.0, 1.0)),
@@ -236,7 +237,7 @@ mod tests {
         let actions = vec![
             Action::DefineShape {
                 id: shape_id,
-                shape: Shape::FillPath {
+                shape: Shape::Fill {
                     points: vec![
                         Point::Line(Vector2F::new(1.0, 5.0)),
                         Point::Line(Vector2F::new(5.0, 1.0)),
@@ -256,6 +257,7 @@ mod tests {
                     transform: Transform2F::default(),
                 }],
                 parent: None,
+                morph_index: 0.0,
             }),
             Action::Label("a label".to_string()),
             Action::PresentFrame(1, 2),

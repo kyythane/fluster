@@ -1,5 +1,6 @@
 #![deny(clippy::all)]
 use super::types::{transform_des, transform_ser, Vector2FDef};
+use super::util;
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
@@ -16,6 +17,7 @@ pub trait Renderer {
         shape: &Shape,
         transform: Transform2F,
         color_override: &Option<Coloring>,
+        morph_index: f32,
     );
     fn draw_bitmap(
         &mut self,
@@ -55,6 +57,97 @@ pub enum Point {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub enum MorphPoint {
+    Move(
+        #[serde(with = "Vector2FDef")] Vector2F,
+        #[serde(with = "Vector2FDef")] Vector2F,
+    ),
+    Line(
+        #[serde(with = "Vector2FDef")] Vector2F,
+        #[serde(with = "Vector2FDef")] Vector2F,
+    ),
+    Quadratic {
+        #[serde(with = "Vector2FDef")]
+        control_start: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        to_start: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        control_end: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        to_end: Vector2F,
+    },
+    Bezier {
+        #[serde(with = "Vector2FDef")]
+        control_1_start: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        control_2_start: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        to_start: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        control_1_end: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        control_2_end: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        to_end: Vector2F,
+    },
+    Arc {
+        #[serde(with = "Vector2FDef")]
+        control_start: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        to_start: Vector2F,
+        radius_start: f32,
+        #[serde(with = "Vector2FDef")]
+        control_end: Vector2F,
+        #[serde(with = "Vector2FDef")]
+        to_end: Vector2F,
+        radius_end: f32,
+    },
+}
+
+impl MorphPoint {
+    pub fn to_point(&self, percent: f32) -> Point {
+        match self {
+            MorphPoint::Move(start, end) => Point::Move(start.lerp(*end, percent)),
+            MorphPoint::Line(start, end) => Point::Line(start.lerp(*end, percent)),
+            MorphPoint::Quadratic {
+                control_start,
+                to_start,
+                control_end,
+                to_end,
+            } => Point::Quadratic {
+                control: control_start.lerp(*control_end, percent),
+                to: to_start.lerp(*to_end, percent),
+            },
+            MorphPoint::Bezier {
+                control_1_start,
+                control_2_start,
+                to_start,
+                control_1_end,
+                control_2_end,
+                to_end,
+            } => Point::Bezier {
+                control_1: control_1_start.lerp(*control_1_end, percent),
+                control_2: control_2_start.lerp(*control_2_end, percent),
+                to: to_start.lerp(*to_end, percent),
+            },
+            MorphPoint::Arc {
+                control_start,
+                to_start,
+                radius_start,
+                control_end,
+                to_end,
+                radius_end,
+            } => Point::Arc {
+                control: control_start.lerp(*control_end, percent),
+                to: to_start.lerp(*to_end, percent),
+                radius: util::lerp(*radius_start, *radius_end, percent),
+            },
+        }
+    }
+}
+
+//TODO: since these vecs are immutable, replace with Box<[T]> (into_boxed_slice())
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Shape {
     Path {
         points: Vec<Point>,
@@ -64,8 +157,21 @@ pub enum Shape {
         stroke_style: StrokeStyle,
         is_closed: bool,
     },
-    FillPath {
+    Fill {
         points: Vec<Point>,
+        #[serde(with = "ColorUDef")]
+        color: ColorU,
+    },
+    MorphPath {
+        points: Vec<MorphPoint>,
+        #[serde(with = "ColorUDef")]
+        color: ColorU,
+        #[serde(with = "StrokeStyleDef")]
+        stroke_style: StrokeStyle,
+        is_closed: bool,
+    },
+    MorphFill {
+        points: Vec<MorphPoint>,
         #[serde(with = "ColorUDef")]
         color: ColorU,
     },
@@ -88,7 +194,9 @@ impl Shape {
     pub fn color(&self) -> Coloring {
         match self {
             Shape::Path { color, .. } => Coloring::Color(*color),
-            Shape::FillPath { color, .. } => Coloring::Color(*color),
+            Shape::Fill { color, .. } => Coloring::Color(*color),
+            Shape::MorphPath { color, .. } => Coloring::Color(*color),
+            Shape::MorphFill { color, .. } => Coloring::Color(*color),
             Shape::Clip { .. } => Coloring::None,
             Shape::Group { shapes } => {
                 Coloring::Colorings(shapes.iter().map(|s| s.shape.color()).collect())
