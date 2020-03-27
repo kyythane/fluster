@@ -410,7 +410,6 @@ pub fn play(
             } else {
                 let start = state.frame - *start;
                 for frame in 0..(*count - start) {
-                    state.frame = start + frame;
                     //TODO: skip updates/paints to catch up to frame rate if we are lagging
                     //TODO: handle input
                     //TODO: scripts
@@ -437,6 +436,7 @@ pub fn play(
                     };
                     state.delta_time = (frame_end_time - state.frame_end_time) as f32;
                     state.frame_end_time = frame_end_time;
+                    state.frame = start + frame + 1;
                 }
             }
         }
