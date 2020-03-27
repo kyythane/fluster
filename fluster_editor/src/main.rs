@@ -19,18 +19,19 @@ use pathfinder_resources::fs::FilesystemResourceLoader;
 use std::f32::consts::PI;
 use uuid::Uuid;*/
 
-use piston_window::{PistonWindow};
+use piston_window::{PistonWindow, WindowSettings};
+
+const WINDOW_WIDTH: f64 = 1280.0;
+const WINDOW_HEIGHT: f64 = 760.0;
+const STAGE_WIDTH: f32 = 800.0;
+const STAGE_HEIGHT: f32 = 600.0;
 
 fn main() {
     let mut window: PistonWindow =
-        WindowSettings::new("Hello World!", [512; 2])
-            .build().unwrap();
+        WindowSettings::new("Fluster Editor v0.1.0", [WINDOW_WIDTH, WINDOW_HEIGHT])
+            .build()
+            .unwrap();
     while let Some(event) = window.next() {
-        window.draw_2d(&event, |context, graphics, _| {
-            clear([0.5, 0.5, 0.5, 1.0], g);
-            rectangle([1.0, 0.0, 0.0, 1.0], // red
-                      [0.0, 0.0, 100.0, 100.0], // rectangle
-                      c.transform, g);
-        });
+        window.draw_2d(&event, |c, g, _| {});
     }
 }
