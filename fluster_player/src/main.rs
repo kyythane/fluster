@@ -2,7 +2,7 @@ use fluster_core::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
     PartUpdateDefinition,
 };
-use fluster_core::rendering::{AugmentedShape, Coloring, Point, Shape};
+use fluster_core::rendering::{AugmentedShape, Coloring, MorphPoint, Point, Shape};
 use fluster_core::runner;
 use fluster_core::tween::Easing;
 use fluster_core::types::ScaleRotationTranslation;
@@ -27,6 +27,7 @@ fn build_action_list() -> ActionList {
     let shape2_id = Uuid::new_v4();
     let shape3_id = Uuid::new_v4();
     let shape4_id = Uuid::new_v4();
+    let shape5_id = Uuid::new_v4();
     let root_id = Uuid::new_v4();
     let entity_id = Uuid::new_v4();
     let entity2_id = Uuid::new_v4();
@@ -168,6 +169,24 @@ fn build_action_list() -> ActionList {
                 color: ColorU::black(),
             },
         },
+        Action::DefineShape {
+            id: shape5_id,
+            shape: Shape::MorphPath {
+                points: vec![
+                    MorphPoint::Line(Vector2F::new(-15.0, -15.0), Vector2F::new(-18.0, -12.0)),
+                    MorphPoint::Line(Vector2F::new(15.0, -15.0), Vector2F::new(0.0, -22.0)),
+                    MorphPoint::Line(Vector2F::new(15.0, 15.0), Vector2F::new(30.0, 15.0)),
+                    MorphPoint::Line(Vector2F::new(-15.0, 15.0), Vector2F::new(-11.0, 33.0)),
+                ],
+                stroke_style: StrokeStyle {
+                    line_width: 3.0,
+                    line_cap: LineCap::Square,
+                    line_join: LineJoin::Bevel,
+                },
+                is_closed: true,
+                color: ColorU::white(),
+            },
+        },
         Action::AddEntity(EntityDefinition {
             id: entity_id,
             name: String::from("first"),
@@ -195,7 +214,7 @@ fn build_action_list() -> ActionList {
                     ),
                 },
                 PartDefinition::Vector {
-                    item_id: shape_id,
+                    item_id: shape5_id,
                     transform: Transform2F::from_scale_rotation_translation(
                         Vector2F::splat(2.0),
                         0.0,
@@ -238,6 +257,14 @@ fn build_action_list() -> ActionList {
                 translation: Vector2F::new(200.0, 0.0),
             }),
             morph_index: None,
+        }),
+        Action::UpdateEntity(EntityUpdateDefinition {
+            duration_frames: 360,
+            easing: Some(Easing::QuinticIn),
+            id: entity_id,
+            part_updates: vec![],
+            transform: None,
+            morph_index: Some(1.0),
         }),
         Action::PresentFrame(1, 239),
         Action::UpdateEntity(EntityUpdateDefinition {

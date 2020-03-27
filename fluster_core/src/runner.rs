@@ -461,8 +461,14 @@ fn update_tweens(elapsed: f32, display_list: &mut HashMap<Uuid, Entity>) {
         for (key, tweens) in entity.tweens.iter_mut() {
             if key == &entity.id {
                 for update in tweens.iter_mut().map(|tween| tween.update(elapsed)) {
-                    if let PropertyTweenUpdate::Transform(transform) = update {
-                        entity.transform = transform;
+                    match update {
+                        PropertyTweenUpdate::Transform(transform) => {
+                            entity.transform = transform;
+                        }
+                        PropertyTweenUpdate::Morph(morph_index) => {
+                            entity.morph_index = morph_index;
+                        }
+                        _ => (),
                     }
                 }
                 tweens.retain(|tween| !tween.is_complete());
