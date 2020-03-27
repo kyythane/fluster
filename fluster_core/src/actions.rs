@@ -166,6 +166,7 @@ pub enum PartUpdateDefinition {
         color: Option<Coloring>,
         easing: Easing,
         //TODO: Gradients
+        //TODO: line weight
         item_id: Uuid,
         transform: Option<ScaleRotationTranslation>,
     },

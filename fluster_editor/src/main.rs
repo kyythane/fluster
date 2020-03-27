@@ -19,4 +19,18 @@ use pathfinder_resources::fs::FilesystemResourceLoader;
 use std::f32::consts::PI;
 use uuid::Uuid;*/
 
-fn main() {}
+use piston_window::{PistonWindow};
+
+fn main() {
+    let mut window: PistonWindow =
+        WindowSettings::new("Hello World!", [512; 2])
+            .build().unwrap();
+    while let Some(event) = window.next() {
+        window.draw_2d(&event, |context, graphics, _| {
+            clear([0.5, 0.5, 0.5, 1.0], g);
+            rectangle([1.0, 0.0, 0.0, 1.0], // red
+                      [0.0, 0.0, 100.0, 100.0], // rectangle
+                      c.transform, g);
+        });
+    }
+}

@@ -3,7 +3,7 @@ use fluster_core::rendering::{Bitmap, Coloring, Point, Renderer, Shape};
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
 use pathfinder_color::ColorU;
 use pathfinder_content::fill::FillRule;
-use pathfinder_content::stroke::LineJoin as StrokeLineJoin;
+use pathfinder_content::stroke::{LineJoin as StrokeLineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
@@ -23,7 +23,7 @@ fn patch_line_join(j: StrokeLineJoin) -> LineJoin {
     }
 }
 
-fn points_to_path(points: &[Point], close_path: bool) -> Path2D {
+fn points_to_path(points: &[Point], is_closed: bool) -> Path2D {
     let mut path = Path2D::new();
     for point in points {
         match point {
@@ -42,10 +42,27 @@ fn points_to_path(points: &[Point], close_path: bool) -> Path2D {
             } => path.arc_to(*control, *to, *radius),
         }
     }
-    if close_path {
+    if is_closed {
         path.close_path();
     }
     path
+}
+
+fn stroke_path(
+    canvas: &mut CanvasRenderingContext2D,
+    points: &[Point],
+    is_closed: bool,
+    stroke_style: &StrokeStyle,
+    transform: &Transform2F,
+    color: ColorU,
+) {
+    let path = points_to_path(&points, is_closed);
+    canvas.set_current_transform(transform);
+    canvas.set_line_width(stroke_style.line_width);
+    canvas.set_line_cap(stroke_style.line_cap);
+    canvas.set_line_join(patch_line_join(stroke_style.line_join));
+    canvas.set_stroke_style(FillStyle::Color(color));
+    canvas.stroke_path(path);
 }
 
 pub struct FlusterRenderer<D>
@@ -112,13 +129,7 @@ where
                         } else {
                             color
                         };
-                        let path = points_to_path(points, *is_closed);
-                        canvas.set_current_transform(&transform);
-                        canvas.set_line_width(stroke_style.line_width);
-                        canvas.set_line_cap(stroke_style.line_cap);
-                        canvas.set_line_join(patch_line_join(stroke_style.line_join));
-                        canvas.set_stroke_style(FillStyle::Color(*color));
-                        canvas.stroke_path(path);
+                        stroke_path(canvas, points, *is_closed, stroke_style, &transform, *color);
                     }
                 }
                 Shape::Fill { points, color } => {
@@ -150,13 +161,14 @@ where
                             .iter()
                             .map(|mp| mp.to_point(morph_index))
                             .collect::<Vec<Point>>();
-                        let path = points_to_path(&points, *is_closed);
-                        canvas.set_current_transform(&transform);
-                        canvas.set_line_width(stroke_style.line_width);
-                        canvas.set_line_cap(stroke_style.line_cap);
-                        canvas.set_line_join(patch_line_join(stroke_style.line_join));
-                        canvas.set_stroke_style(FillStyle::Color(*color));
-                        canvas.stroke_path(path);
+                        stroke_path(
+                            canvas,
+                            &points,
+                            *is_closed,
+                            stroke_style,
+                            &transform,
+                            *color,
+                        );
                     }
                 }
                 Shape::MorphFill { points, color } => {
