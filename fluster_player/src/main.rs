@@ -321,8 +321,6 @@ fn main() {
         },
     );
 
-    let mut event_pump = sdl_context.event_pump().unwrap();
-
     let font_context = CanvasFontContext::from_system_source();
 
     let mut fluster_renderer = FlusterRenderer::new(
@@ -331,6 +329,7 @@ fn main() {
         Box::new(move || window.gl_swap_window()),
     );
 
+    let mut event_pump = sdl_context.event_pump().unwrap();
     let mut end_of_frame_callback = move |state: runner::State| {
         let mut state = state;
         for event in event_pump.poll_iter() {

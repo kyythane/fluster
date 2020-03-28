@@ -2,6 +2,6 @@
 members = [
     "fluster_core",
     "fluster_graphics",
-    "fluster_editor",
+    # "fluster_editor",
     "fluster_player",
 ]

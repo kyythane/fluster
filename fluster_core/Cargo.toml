@@ -12,7 +12,7 @@ pathfinder_color = { git = "https://github.com/kyythane/pathfinder.git" }
 pathfinder_content = { git = "https://github.com/kyythane/pathfinder.git" }
 pathfinder_geometry = { git = "https://github.com/kyythane/pathfinder.git" }
 pathfinder_simd = { git = "https://github.com/kyythane/pathfinder.git" }
-serde = "1.0"
+serde = "1.0.105"
 streaming-iterator = "0.1"
 uuid = { version = "0.8", features = ["serde"] }
 

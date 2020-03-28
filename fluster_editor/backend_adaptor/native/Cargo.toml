@@ -1,0 +1,19 @@
+[package]
+name = "fluster-editor-backend"
+version = "0.1.0"
+authors = ["lprimrose <kyythane@gmail.com>"]
+license = "Unlicense"
+build = "build.rs"
+edition = "2018"
+exclude = ["artifacts.json", "index.node"]
+
+[lib]
+name = "fluster_editor_backend"
+crate-type = ["cdylib"]
+
+[build-dependencies]
+neon-build = "0.4.0"
+
+[dependencies]
+neon = "0.4.0"
+fluster_core = { path = "../../../fluster_core" }

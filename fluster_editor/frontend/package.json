@@ -1,0 +1,14 @@
+{
+  "name": "fluster-editor",
+  "version": "0.1.0",
+  "description": "An editor for the fluster file format.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "lprimrose",
+  "license": "Unlicense",
+  "devDependencies": {
+    "electron": "^8.2.0"
+  }
+}
