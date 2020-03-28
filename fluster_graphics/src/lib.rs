@@ -115,7 +115,6 @@ where
         color_override: &Option<Coloring>,
         morph_index: f32,
     ) {
-        println!("{:?}", shape);
         if let Some(canvas) = &mut self.canvas {
             match shape {
                 Shape::Path {
