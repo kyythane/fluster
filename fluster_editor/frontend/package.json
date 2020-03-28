@@ -16,7 +16,7 @@
     "name": "Lillian Primrose",
     "email": "kyythane@gmail.com"
   },
-  "license": "MIT",
+  "license": "Unlicense",
   "config": {
     "forge": {
       "packagerConfig": {},
