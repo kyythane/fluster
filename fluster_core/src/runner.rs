@@ -413,6 +413,7 @@ pub fn play(
                     //TODO: skip updates/paints to catch up to frame rate if we are lagging
                     //TODO: handle input
                     //TODO: scripts
+                    //TODO: tweens should update consistently w/ frame index instead of via timer
                     update_tweens(state.delta_time, &mut display_list);
                     paint(renderer, &state, &display_list, &library)?;
                     state = on_frame_complete(state);
