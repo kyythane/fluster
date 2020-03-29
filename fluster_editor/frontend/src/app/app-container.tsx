@@ -1,7 +1,5 @@
-import React from 'react';
+import React from "react";
 
 export function AppContainer() {
-    return (
-        <p>Hello World!</p>
-    );
+  return <p>Hello World!</p>;
 }
