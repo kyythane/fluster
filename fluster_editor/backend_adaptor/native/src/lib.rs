@@ -1,23 +1,38 @@
+#[macro_use]
+extern crate neon_serde;
 use neon::prelude::*;
+use serde::{Deserialize, Serialize};
+use serde_bytes::ByteBuf;
 
-fn initialize(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-    Ok(cx.undefined())
-}
+/*thread_local! {
+    static fluster_renderer: FlusterEditor = {
 
-fn render_frame(mut cx: FunctionContext) -> JsResult<JsArrayBuffer> {
-    let frame_index = cx.argument::<JsNumber>(0)?.value();
-    let frame_index = if frame_index > std::u32::MAX as f64 {
-        return cx.throw_range_error("frameIndex out of bounds");
-    } else if frame_index < 0.0 {
-        return cx.throw_range_error("frameIndex must be >= 0");
-    } else {
-        frame_index as u32
     };
-    unimplemented!()
+
+}*/
+
+#[derive(Deserialize, Serialize)]
+pub struct Frame {
+    start_index: u32,
+    end_index: u32,
 }
 
-register_module!(mut cx, {
-    cx.export_function("initialize", initialize)?;
-    cx.export_function("renderFrame", render_frame)?;
-    Ok(())
-});
+#[derive(Deserialize, Serialize)]
+pub struct ScrollPosition {
+    x: f32,
+    y: f32,
+}
+
+export! {
+    fn initialize() -> () {
+
+    }
+
+    fn set_zoom_position(zoom: f32, scroll: ScrollPosition) -> () {
+
+    }
+
+    fn render_frame(frame_index: u32) -> ByteBuf {
+        unimplemented!()
+    }
+}

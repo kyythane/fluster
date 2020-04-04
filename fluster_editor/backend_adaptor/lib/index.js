@@ -1,1 +1,2 @@
-var addon = require('../native');
+var backend = require('../native');
+module.exports = backend;

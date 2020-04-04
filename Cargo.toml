@@ -2,7 +2,7 @@
 members = [
     "fluster_core",
     "fluster_graphics",
-    # "fluster_editor",
     "fluster_editor/backend_adaptor/native",
+    "fluster_editor/core",
     "fluster_player",
 ]
