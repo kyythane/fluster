@@ -1,8 +1,9 @@
 #![deny(clippy::all)]
-use fluster_core::rendering::{Bitmap, Coloring, Point, Renderer, Shape};
+use fluster_core::rendering::{Coloring, Point, Renderer, Shape};
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
 use pathfinder_color::ColorU;
 use pathfinder_content::fill::FillRule;
+use pathfinder_content::pattern::Pattern;
 use pathfinder_content::stroke::{LineJoin as StrokeLineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
@@ -224,17 +225,21 @@ where
         }
     }
 
-    fn draw_bitmap(
+    fn draw_raster(
         &mut self,
-        _bitmap: &Bitmap,
-        _view_rect: RectF,
-        _transform: Transform2F,
-        _tint: Option<ColorU>,
+        bitmap: &Pattern,
+        view_rect: RectF,
+        transform: Transform2F,
+        tint: Option<ColorU>,
     ) {
-        /*TODO:
-            This will require with dealing with GL directly
-            A batching scheme for both shapes and textures will also need to be set up.
-        */
+        if let Some(canvas) = &mut self.canvas {
+            canvas.set_current_transform(&transform);
+            canvas.draw_subimage(
+                image,
+                view_rect,
+                RectF::new(Vector2F::zero(), view_rect::size()),
+            );
+        }
     }
     fn end_frame(&mut self) {
         if self.canvas.is_some() {

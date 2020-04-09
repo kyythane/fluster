@@ -5,11 +5,12 @@ use super::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
     PartUpdateDefinition, RectPoints,
 };
-use super::rendering::{Bitmap, Coloring, Renderer, Shape};
+use super::rendering::{Coloring, Renderer, Shape};
 use super::tween::{Easing, Tween};
-use super::types::ScaleRotationTranslation;
+use super::types::{Bitmap, ScaleRotationTranslation};
 use super::util;
 use pathfinder_color::{ColorF, ColorU};
+use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
@@ -23,7 +24,7 @@ use uuid::Uuid;
 
 enum DisplayLibraryItem {
     Vector(Shape),
-    Bitmap(Bitmap),
+    Raster(Pattern),
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -33,7 +34,7 @@ enum Part {
         transform: Transform2F,
         color: Option<Coloring>,
     },
-    Bitmap {
+    Raster {
         item_id: Uuid,
         view_rect: RectF,
         transform: Transform2F,
@@ -45,7 +46,7 @@ impl Part {
     fn item_id(&self) -> &Uuid {
         match self {
             Part::Vector { item_id, .. } => item_id,
-            Part::Bitmap { item_id, .. } => item_id,
+            Part::Raster { item_id, .. } => item_id,
         }
     }
 }
@@ -517,12 +518,12 @@ fn update_tweens(elapsed: f32, display_list: &mut HashMap<Uuid, Entity>) {
                             color.take()
                         },
                     },
-                    Part::Bitmap {
+                    Part::Raster {
                         item_id,
                         transform,
                         view_rect,
                         tint,
-                    } => Part::Bitmap {
+                    } => Part::Raster {
                         item_id: *item_id,
                         transform: if let Some(new_transform) = new_transform {
                             new_transform
@@ -558,7 +559,7 @@ fn define_shape(id: &Uuid, shape: &Shape, library: &mut HashMap<Uuid, DisplayLib
 // Note: this is destructive to the source bitmap. Bitmaps can be very large, and library loads are idempotent
 fn load_bitmap(id: &Uuid, bitmap: &mut Bitmap, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
     if !library.contains_key(id) {
-        let item = DisplayLibraryItem::Bitmap(bitmap.release_contents());
+        let item = DisplayLibraryItem::Raster(bitmap.release_contents());
         library.insert(*id, item);
     }
 }
@@ -710,7 +711,7 @@ fn add_entity(
                             transform,
                             view_rect,
                         } => match library.get(&item_id) {
-                            Some(DisplayLibraryItem::Bitmap { .. }) => Some(Part::Bitmap {
+                            Some(DisplayLibraryItem::Raster { .. }) => Some(Part::Raster {
                                 item_id: *item_id,
                                 transform: *transform,
                                 view_rect: RectF::from_points(
@@ -832,7 +833,7 @@ fn create_part_tween(
             view_rect: end_view_rect,
             ..
         } => {
-            if let Part::Bitmap {
+            if let Part::Raster {
                 transform: start_transform,
                 tint: start_tint,
                 view_rect: start_view_rect,
@@ -994,14 +995,14 @@ fn paint(
                         );
                     }
                 }
-                Part::Bitmap {
+                Part::Raster {
                     item_id,
                     transform,
                     view_rect,
                     tint,
                 } => {
-                    if let Some(&DisplayLibraryItem::Bitmap(ref bitmap)) = library.get(&item_id) {
-                        renderer.draw_bitmap(
+                    if let Some(&DisplayLibraryItem::Raster(ref bitmap)) = library.get(&item_id) {
+                        renderer.draw_raster(
                             bitmap,
                             *view_rect,
                             *world_space_transform * *transform,
@@ -1241,7 +1242,7 @@ mod tests {
         let entity = display_list.get(&entity_id);
         assert!((entity.unwrap().transform.rotation() - FRAC_PI_2).abs() < std::f32::EPSILON);
         let part_transform = match entity.unwrap().parts[0] {
-            Part::Bitmap { transform, .. } => transform,
+            Part::Raster { transform, .. } => transform,
             Part::Vector { transform, .. } => transform,
         };
         assert_eq!(
@@ -1256,7 +1257,7 @@ mod tests {
             fn start_frame(&mut self, stage_size: Vector2F);
             fn set_background(&mut self, color: ColorU);
             fn draw_shape(&mut self, shape: &Shape, transform: Transform2F, color_override:  &Option<Coloring>, morph_index: f32);
-            fn draw_bitmap(&mut self, bitmap: &Bitmap, view_rect: RectF, transform: Transform2F, tint: Option<ColorU>);
+            fn draw_raster(&mut self, bitmap: &Pattern, view_rect: RectF, transform: Transform2F, tint: Option<ColorU>);
             fn end_frame(&mut self);
         }
     }

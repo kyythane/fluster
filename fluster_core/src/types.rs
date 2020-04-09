@@ -1,8 +1,11 @@
 #![deny(clippy::all)]
+use pathfinder_content::pattern::{Image, Pattern, PatternFlags, PatternSource};
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_simd::default::F32x2;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_bytes;
+use std::mem;
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ScaleRotationTranslation {
@@ -50,4 +53,25 @@ where
     S: Serializer,
 {
     ScaleRotationTranslation::serialize(&ScaleRotationTranslation::from_transform(t), serializer)
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct Bitmap {
+    size_x: i32,
+    size_y: i32,
+    #[serde(with = "serde_bytes")]
+    bytes: Vec<u8>,
+}
+
+impl Bitmap {
+    pub fn release_contents(&mut self) -> Pattern {
+        let bytes = mem::replace(&mut self.bytes, vec![]);
+        let colors = pathfinder_color::u8_vec_to_color_vec(bytes);
+        let image = Image::new(Vector2I::new(self.size_x, self.size_y), colors);
+        Pattern::new(
+            PatternSource::Image(image),
+            Transform2F::default(),
+            PatternFlags::empty(),
+        )
+    }
 }

@@ -1,13 +1,13 @@
 #![deny(clippy::all)]
 use super::types::{transform_des, transform_ser, Vector2FDef};
 use super::util;
+use pathfinder_content::pattern::Pattern;
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use serde::{Deserialize, Serialize};
-use std::mem;
 
 pub trait Renderer {
     fn start_frame(&mut self, stage_size: Vector2F);
@@ -19,9 +19,9 @@ pub trait Renderer {
         color_override: &Option<Coloring>,
         morph_index: f32,
     );
-    fn draw_bitmap(
+    fn draw_raster(
         &mut self,
-        bitmap: &Bitmap,
+        pattern: &Pattern,
         view_rect: RectF,
         transform: Transform2F,
         tint: Option<ColorU>,
@@ -248,22 +248,6 @@ impl Coloring {
                 }
             }
             Coloring::None => Coloring::None,
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct Bitmap {
-    #[serde(with = "Vector2FDef")]
-    dimensions: Vector2F,
-    bytes: Vec<u8>,
-}
-
-impl Bitmap {
-    pub fn release_contents(&mut self) -> Bitmap {
-        Bitmap {
-            dimensions: self.dimensions,
-            bytes: mem::replace(&mut self.bytes, vec![]),
         }
     }
 }
