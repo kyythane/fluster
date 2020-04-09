@@ -1,11 +1,12 @@
 #![deny(clippy::all)]
-use pathfinder_content::pattern::{Image, Pattern, PatternFlags, PatternSource};
+use pathfinder_color::ColorU;
+use pathfinder_content::pattern::{Image, Pattern};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_simd::default::F32x2;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_bytes;
-use std::mem;
+use serde_bytes::{ByteBuf, Bytes};
+use std::sync::Arc;
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ScaleRotationTranslation {
@@ -57,21 +58,35 @@ where
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Bitmap {
-    size_x: i32,
-    size_y: i32,
-    #[serde(with = "serde_bytes")]
-    bytes: Vec<u8>,
+    pub size_x: i32,
+    pub size_y: i32,
+    #[serde(
+        serialize_with = "bitmap_contents_ser",
+        deserialize_with = "bitmap_contents_des"
+    )]
+    pub colors: Arc<Vec<ColorU>>,
 }
 
 impl Bitmap {
     pub fn release_contents(&mut self) -> Pattern {
-        let bytes = mem::replace(&mut self.bytes, vec![]);
-        let colors = pathfinder_color::u8_vec_to_color_vec(bytes);
-        let image = Image::new(Vector2I::new(self.size_x, self.size_y), colors);
-        Pattern::new(
-            PatternSource::Image(image),
-            Transform2F::default(),
-            PatternFlags::empty(),
-        )
+        let image = Image::new(Vector2I::new(self.size_x, self.size_y), self.colors.clone());
+        Pattern::from_image(image)
     }
+}
+
+pub fn bitmap_contents_des<'de, D>(deserializer: D) -> Result<Arc<Vec<ColorU>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let bytes = ByteBuf::deserialize(deserializer)?;
+    let colors = pathfinder_color::u8_vec_to_color_vec(bytes.into_vec());
+    Ok(Arc::new(colors))
+}
+
+pub fn bitmap_contents_ser<S>(a_c: &Arc<Vec<ColorU>>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let bytes = pathfinder_color::color_slice_to_u8_slice(&a_c);
+    Bytes::serialize(&Bytes::new(&bytes), serializer)
 }

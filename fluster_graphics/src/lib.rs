@@ -1,6 +1,8 @@
 #![deny(clippy::all)]
 use fluster_core::rendering::{Coloring, Point, Renderer, Shape};
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
+use pathfinder_canvas::{
+    Canvas, CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D,
+};
 use pathfinder_color::ColorU;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::pattern::Pattern;
@@ -58,7 +60,7 @@ fn stroke_path(
     color: ColorU,
 ) {
     let path = points_to_path(&points, is_closed);
-    canvas.set_current_transform(transform);
+    canvas.set_transform(transform);
     canvas.set_line_width(stroke_style.line_width);
     canvas.set_line_cap(stroke_style.line_cap);
     canvas.set_line_join(patch_line_join(stroke_style.line_join));
@@ -99,10 +101,7 @@ where
     D: Device,
 {
     fn start_frame(&mut self, stage_size: Vector2F) {
-        self.canvas = Some(CanvasRenderingContext2D::new(
-            self.font_context.clone(),
-            stage_size,
-        ))
+        self.canvas = Some(Canvas::new(stage_size).get_context_2d(self.font_context.clone()))
     }
     fn set_background(&mut self, color: ColorU) {
         self.renderer.set_options(RendererOptions {
@@ -141,7 +140,7 @@ where
                             color
                         };
                         let path = points_to_path(points, true);
-                        canvas.set_current_transform(&transform);
+                        canvas.set_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
                     }
@@ -184,7 +183,7 @@ where
                             .map(|mp| mp.to_point(morph_index))
                             .collect::<Vec<Point>>();
                         let path = points_to_path(&points, true);
-                        canvas.set_current_transform(&transform);
+                        canvas.set_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
                     }
@@ -192,7 +191,7 @@ where
                 Shape::Clip { points } => {
                     if points.len() > 2 {
                         let path = points_to_path(points, true);
-                        canvas.set_current_transform(&transform);
+                        canvas.set_transform(&transform);
                         canvas.clip_path(path, FillRule::Winding);
                     }
                 }
@@ -227,24 +226,25 @@ where
 
     fn draw_raster(
         &mut self,
-        bitmap: &Pattern,
+        pattern: &Pattern,
         view_rect: RectF,
         transform: Transform2F,
         tint: Option<ColorU>,
     ) {
+        println!("{:?}", view_rect);
         if let Some(canvas) = &mut self.canvas {
-            canvas.set_current_transform(&transform);
+            canvas.set_transform(&transform);
             canvas.draw_subimage(
-                image,
+                pattern.clone(),
                 view_rect,
-                RectF::new(Vector2F::zero(), view_rect::size()),
+                RectF::new(Vector2F::zero(), view_rect.size()),
             );
         }
     }
     fn end_frame(&mut self) {
         if self.canvas.is_some() {
             let canvas = mem::replace(&mut self.canvas, None).unwrap();
-            let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
+            let scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(), RayonExecutor);
             scene.build_and_render(&mut self.renderer, BuildOptions::default());
             (self.on_frame_end)();
         }

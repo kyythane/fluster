@@ -230,7 +230,7 @@ impl Easing {
             }
             Easing::Step(steps) => {
                 let steps = steps as f32;
-                (percent * steps).floor() * steps
+                (percent * steps).floor() / steps
             }
             Easing::None => 1.0,
         }

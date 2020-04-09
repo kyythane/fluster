@@ -143,7 +143,7 @@ pub enum PartDefinition {
         #[serde(serialize_with = "transform_ser", deserialize_with = "transform_des")]
         transform: Transform2F,
     },
-    Bitmap {
+    Raster {
         item_id: Uuid,
         #[serde(serialize_with = "transform_ser", deserialize_with = "transform_des")]
         transform: Transform2F,
@@ -155,7 +155,7 @@ impl PartDefinition {
     pub fn item_id(&self) -> &Uuid {
         match self {
             PartDefinition::Vector { item_id, .. } => item_id,
-            PartDefinition::Bitmap { item_id, .. } => item_id,
+            PartDefinition::Raster { item_id, .. } => item_id,
         }
     }
 }
@@ -170,7 +170,7 @@ pub enum PartUpdateDefinition {
         item_id: Uuid,
         transform: Option<ScaleRotationTranslation>,
     },
-    Bitmap {
+    Raster {
         #[serde(
             serialize_with = "option_color_ser",
             deserialize_with = "option_color_des"
@@ -187,7 +187,7 @@ impl PartUpdateDefinition {
     pub fn item_id(&self) -> &Uuid {
         match self {
             PartUpdateDefinition::Vector { item_id, .. } => item_id,
-            PartUpdateDefinition::Bitmap { item_id, .. } => item_id,
+            PartUpdateDefinition::Raster { item_id, .. } => item_id,
         }
     }
 }

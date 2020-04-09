@@ -3,7 +3,6 @@ name = "fluster_editor_core"
 version = "0.1.0"
 authors = ["Lillian Primrose"]
 license = "Unlicense"
-build = "build.rs"
 edition = "2018"
 
 [dependencies]

@@ -706,7 +706,7 @@ fn add_entity(
                                 _ => None,
                             }
                         }
-                        PartDefinition::Bitmap {
+                        PartDefinition::Raster {
                             item_id,
                             transform,
                             view_rect,
@@ -826,7 +826,7 @@ fn create_part_tween(
 ) -> Result<Vec<PropertyTween>, String> {
     let mut tweens: Vec<PropertyTween> = vec![];
     match part_update {
-        PartUpdateDefinition::Bitmap {
+        PartUpdateDefinition::Raster {
             tint: end_tint,
             easing,
             transform: end_transform,
