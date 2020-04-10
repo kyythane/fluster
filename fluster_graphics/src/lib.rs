@@ -13,7 +13,7 @@ use pathfinder_geometry::vector::Vector2F;
 use pathfinder_gpu::Device;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::RendererOptions;
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer as PathfinderRenderer;
 use pathfinder_renderer::options::BuildOptions;
 use std::mem;
@@ -93,6 +93,13 @@ where
             renderer,
             on_frame_end,
         }
+    }
+
+    pub fn replace_frame_buffer(
+        &mut self,
+        new_dest_framebuffer: DestFramebuffer<D>,
+    ) -> DestFramebuffer<D> {
+        self.renderer.replace_dest_framebuffer(new_dest_framebuffer)
     }
 }
 
@@ -231,7 +238,6 @@ where
         transform: Transform2F,
         tint: Option<ColorU>,
     ) {
-        println!("{:?}", view_rect);
         if let Some(canvas) = &mut self.canvas {
             canvas.set_transform(&transform);
             canvas.draw_subimage(
