@@ -179,7 +179,7 @@ pub fn deserialize_action(bytes: &[u8], _version: u8) -> Result<Action, BinError
 mod tests {
     use super::*;
     use crate::actions::{EntityDefinition, PartDefinition};
-    use crate::rendering::{Point, Shape};
+    use crate::types::shapes::{Point, Shape};
     use pathfinder_color::ColorU;
     use pathfinder_geometry::transform2d::Transform2F;
     use pathfinder_geometry::vector::Vector2F;

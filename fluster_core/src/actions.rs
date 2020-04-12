@@ -1,8 +1,12 @@
 #![deny(clippy::all)]
 
-use super::rendering::{ColorUDef, Coloring, Shape};
 use super::tween::Easing;
-use super::types::{transform_des, transform_ser, Bitmap, ScaleRotationTranslation, Vector2FDef};
+use super::types::{
+    basic::{
+        transform_des, transform_ser, Bitmap, ColorUDef, ScaleRotationTranslation, Vector2FDef,
+    },
+    shapes::{Coloring, Shape},
+};
 use core::cmp::min;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectF;

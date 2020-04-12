@@ -1,13 +1,17 @@
 #![deny(clippy::all)]
-use super::types::{transform_des, transform_ser, Vector2FDef};
-use super::util;
-use pathfinder_content::pattern::Pattern;
+use super::types::{
+    model::{DisplayLibraryItem, Entity, Part},
+    shapes::{Coloring, Shape},
+};
 use pathfinder_color::ColorU;
-use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
+use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
-use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::hash::BuildHasher;
+use uuid::Uuid;
 
 pub trait Renderer {
     fn start_frame(&mut self, stage_size: Vector2F);
@@ -29,261 +33,97 @@ pub trait Renderer {
     fn end_frame(&mut self);
 }
 
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum Point {
-    Move(#[serde(with = "Vector2FDef")] Vector2F),
-    Line(#[serde(with = "Vector2FDef")] Vector2F),
-    Quadratic {
-        #[serde(with = "Vector2FDef")]
-        control: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        to: Vector2F,
-    },
-    Bezier {
-        #[serde(with = "Vector2FDef")]
-        control_1: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        control_2: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        to: Vector2F,
-    },
-    Arc {
-        #[serde(with = "Vector2FDef")]
-        control: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        to: Vector2F,
-        radius: f32,
-    },
+pub struct RenderData<'a> {
+    depth_list: BTreeMap<u64, &'a Entity>,
+    world_space_transforms: HashMap<Uuid, Transform2F>,
 }
 
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum MorphPoint {
-    Move(
-        #[serde(with = "Vector2FDef")] Vector2F,
-        #[serde(with = "Vector2FDef")] Vector2F,
-    ),
-    Line(
-        #[serde(with = "Vector2FDef")] Vector2F,
-        #[serde(with = "Vector2FDef")] Vector2F,
-    ),
-    Quadratic {
-        #[serde(with = "Vector2FDef")]
-        control_start: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        to_start: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        control_end: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        to_end: Vector2F,
-    },
-    Bezier {
-        #[serde(with = "Vector2FDef")]
-        control_1_start: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        control_2_start: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        to_start: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        control_1_end: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        control_2_end: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        to_end: Vector2F,
-    },
-    Arc {
-        #[serde(with = "Vector2FDef")]
-        control_start: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        to_start: Vector2F,
-        radius_start: f32,
-        #[serde(with = "Vector2FDef")]
-        control_end: Vector2F,
-        #[serde(with = "Vector2FDef")]
-        to_end: Vector2F,
-        radius_end: f32,
-    },
-}
-
-impl MorphPoint {
-    pub fn to_point(&self, percent: f32) -> Point {
-        match self {
-            MorphPoint::Move(start, end) => Point::Move(start.lerp(*end, percent)),
-            MorphPoint::Line(start, end) => Point::Line(start.lerp(*end, percent)),
-            MorphPoint::Quadratic {
-                control_start,
-                to_start,
-                control_end,
-                to_end,
-            } => Point::Quadratic {
-                control: control_start.lerp(*control_end, percent),
-                to: to_start.lerp(*to_end, percent),
-            },
-            MorphPoint::Bezier {
-                control_1_start,
-                control_2_start,
-                to_start,
-                control_1_end,
-                control_2_end,
-                to_end,
-            } => Point::Bezier {
-                control_1: control_1_start.lerp(*control_1_end, percent),
-                control_2: control_2_start.lerp(*control_2_end, percent),
-                to: to_start.lerp(*to_end, percent),
-            },
-            MorphPoint::Arc {
-                control_start,
-                to_start,
-                radius_start,
-                control_end,
-                to_end,
-                radius_end,
-            } => Point::Arc {
-                control: control_start.lerp(*control_end, percent),
-                to: to_start.lerp(*to_end, percent),
-                radius: util::lerp(*radius_start, *radius_end, percent),
-            },
-        }
+//TODO: add a concept of "dirty/clean" entities. Ideally we would structure our renderer to do partial rerenders
+pub fn compute_render_data<'a, S: BuildHasher>(
+    root_entity_id: &Uuid,
+    display_list: &'a HashMap<Uuid, Entity, S>,
+) -> Result<RenderData<'a>, String> {
+    use std::collections::VecDeque;
+    let mut depth_list: BTreeMap<u64, &'a Entity> = BTreeMap::new();
+    let mut world_space_transforms: HashMap<Uuid, Transform2F> = HashMap::new();
+    let root = display_list.get(root_entity_id);
+    if root.is_none() {
+        return Err("Root Entity unloaded.".to_string());
     }
-}
-
-//TODO: since these vecs are immutable, replace with Box<[T]> (into_boxed_slice())
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum Shape {
-    Path {
-        points: Vec<Point>,
-        #[serde(with = "ColorUDef")]
-        color: ColorU,
-        #[serde(with = "StrokeStyleDef")]
-        stroke_style: StrokeStyle,
-        is_closed: bool,
-    },
-    Fill {
-        points: Vec<Point>,
-        #[serde(with = "ColorUDef")]
-        color: ColorU,
-    },
-    MorphPath {
-        points: Vec<MorphPoint>,
-        #[serde(with = "ColorUDef")]
-        color: ColorU,
-        #[serde(with = "StrokeStyleDef")]
-        stroke_style: StrokeStyle,
-        is_closed: bool,
-    },
-    MorphFill {
-        points: Vec<MorphPoint>,
-        #[serde(with = "ColorUDef")]
-        color: ColorU,
-    },
-    Clip {
-        points: Vec<Point>,
-    },
-    Group {
-        shapes: Vec<AugmentedShape>,
-    },
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct AugmentedShape {
-    pub shape: Shape,
-    #[serde(serialize_with = "transform_ser", deserialize_with = "transform_des")]
-    pub transform: Transform2F,
-}
-
-impl Shape {
-    pub fn color(&self) -> Coloring {
-        match self {
-            Shape::Path { color, .. } => Coloring::Color(*color),
-            Shape::Fill { color, .. } => Coloring::Color(*color),
-            Shape::MorphPath { color, .. } => Coloring::Color(*color),
-            Shape::MorphFill { color, .. } => Coloring::Color(*color),
-            Shape::Clip { .. } => Coloring::None,
-            Shape::Group { shapes } => {
-                Coloring::Colorings(shapes.iter().map(|s| s.shape.color()).collect())
-            }
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum Coloring {
-    Color(#[serde(with = "ColorUDef")] ColorU),
-    Colorings(Vec<Coloring>),
-    //TODO: Gradient!
-    None,
-}
-
-impl Coloring {
-    #[inline]
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-
-    pub fn lerp(&self, end: &Coloring, percent: f32) -> Coloring {
-        match self {
-            Coloring::Color(start_color) => {
-                if let Coloring::Color(end_color) = end {
-                    Coloring::Color(
-                        start_color
-                            .to_f32()
-                            .lerp(end_color.to_f32(), percent)
-                            .to_u8(),
-                    )
-                } else {
-                    Coloring::None
+    let root = root.unwrap();
+    world_space_transforms.insert(*root.id(), *root.transform());
+    let mut nodes = VecDeque::new();
+    nodes.push_back(root);
+    while !nodes.is_empty() {
+        if let Some(node) = nodes.pop_front() {
+            for child_id in node.children() {
+                if let Some(child) = display_list.get(child_id) {
+                    nodes.push_back(child);
                 }
             }
-            Coloring::Colorings(start_colorings) => {
-                if let Coloring::Colorings(end_colorings) = end {
-                    if start_colorings.len() != end_colorings.len() {
-                        Coloring::None
-                    } else {
-                        let mut new_colorings: Vec<Coloring> =
-                            vec![Coloring::None; start_colorings.len()];
-                        for i in 0..start_colorings.len() {
-                            new_colorings[i] = start_colorings[i].lerp(&end_colorings[i], percent);
-                        }
-                        Coloring::Colorings(new_colorings)
+            let mut depth = (node.depth() as u64) << 32;
+            while depth_list.contains_key(&depth) {
+                depth += 1;
+            }
+            depth_list.insert(depth, node);
+            if let Some(parent_transform) = world_space_transforms.get(node.parent()) {
+                let parent_transform = *parent_transform;
+                world_space_transforms.insert(*node.id(), parent_transform * *node.transform());
+            } else {
+                return Err(format!(
+                    "Could not find parent {} of entity {} in world_space_transforms",
+                    node.parent(),
+                    node.id()
+                ));
+            }
+        }
+    }
+    Ok(RenderData {
+        depth_list,
+        world_space_transforms,
+    })
+}
+
+pub fn paint<S: BuildHasher>(
+    renderer: &mut impl Renderer,
+    render_data: RenderData,
+    library: &HashMap<Uuid, DisplayLibraryItem, S>,
+) {
+    //Render from back to front (TODO: Does Pathfinder work better front to back or back to front?)
+    for entity in render_data.depth_list.values() {
+        let world_space_transform = render_data.world_space_transforms.get(entity.id()).unwrap();
+        for part in entity.parts() {
+            match part {
+                Part::Vector {
+                    item_id,
+                    transform,
+                    color,
+                } => {
+                    if let Some(&DisplayLibraryItem::Vector(ref shape)) = library.get(&item_id) {
+                        renderer.draw_shape(
+                            shape,
+                            *world_space_transform * *transform,
+                            color,
+                            entity.morph_index(),
+                        );
                     }
-                } else {
-                    Coloring::None
+                }
+                Part::Raster {
+                    item_id,
+                    transform,
+                    view_rect,
+                    tint,
+                } => {
+                    if let Some(&DisplayLibraryItem::Raster(ref bitmap)) = library.get(&item_id) {
+                        renderer.draw_raster(
+                            bitmap,
+                            *view_rect,
+                            *world_space_transform * *transform,
+                            *tint,
+                        );
+                    }
                 }
             }
-            Coloring::None => Coloring::None,
         }
     }
-}
-
-//The following deffinitions add serde support to pathfinder types
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "ColorU")]
-pub struct ColorUDef {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "StrokeStyle")]
-pub struct StrokeStyleDef {
-    pub line_width: f32,
-    #[serde(with = "LineCapDef")]
-    pub line_cap: LineCap,
-    #[serde(with = "LineJoinDef")]
-    pub line_join: LineJoin,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "LineCap")]
-pub enum LineCapDef {
-    Butt,
-    Square,
-    Round,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "LineJoin")]
-pub enum LineJoinDef {
-    Miter(f32),
-    Bevel,
-    Round,
 }

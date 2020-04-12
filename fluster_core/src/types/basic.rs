@@ -8,6 +8,15 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::{ByteBuf, Bytes};
 use std::sync::Arc;
 
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "ColorU")]
+pub struct ColorUDef {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ScaleRotationTranslation {
     #[serde(with = "Vector2FDef")]

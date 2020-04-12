@@ -1,5 +1,6 @@
 #![deny(clippy::all)]
-use fluster_core::rendering::{Coloring, Point, Renderer, Shape};
+use fluster_core::rendering::Renderer;
+use fluster_core::types::shapes::{Coloring, Point, Shape};
 use pathfinder_canvas::{
     Canvas, CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D,
 };
@@ -107,6 +108,7 @@ impl<D> Renderer for FlusterRenderer<D>
 where
     D: Device,
 {
+    //TODO: handle stage_size changing
     fn start_frame(&mut self, stage_size: Vector2F) {
         self.canvas = Some(Canvas::new(stage_size).get_context_2d(self.font_context.clone()))
     }

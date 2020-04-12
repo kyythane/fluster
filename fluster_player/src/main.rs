@@ -2,10 +2,12 @@ use fluster_core::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
     PartUpdateDefinition,
 };
-use fluster_core::rendering::{AugmentedShape, Coloring, MorphPoint, Point, Shape};
 use fluster_core::runner;
 use fluster_core::tween::Easing;
-use fluster_core::types::ScaleRotationTranslation;
+use fluster_core::types::{
+    basic::ScaleRotationTranslation,
+    shapes::{AugmentedShape, Coloring, MorphPoint, Point, Shape},
+};
 use fluster_graphics::FlusterRenderer;
 use pathfinder_canvas::CanvasFontContext;
 use pathfinder_color::{ColorF, ColorU};
