@@ -1,5 +1,4 @@
-mod graphics;
-
+mod rendering;
 
 #[cfg(test)]
 mod tests {
