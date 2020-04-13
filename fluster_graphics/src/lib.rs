@@ -10,8 +10,8 @@ use pathfinder_content::pattern::Pattern;
 use pathfinder_content::stroke::{LineJoin as StrokeLineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::Vector2F;
-use pathfinder_gpu::Device;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_gpu::{Device, TextureFormat};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
@@ -69,7 +69,7 @@ fn stroke_path(
     canvas.stroke_path(path);
 }
 
-pub struct FlusterRenderer<D>
+pub struct FlusterRendererImpl<D>
 where
     D: Device,
 {
@@ -79,7 +79,7 @@ where
     on_frame_end: Box<dyn Fn() -> ()>,
 }
 
-impl<D> FlusterRenderer<D>
+impl<D> FlusterRendererImpl<D>
 where
     D: Device,
 {
@@ -87,8 +87,8 @@ where
         font_context: CanvasFontContext,
         renderer: PathfinderRenderer<D>,
         on_frame_end: Box<dyn Fn() -> ()>,
-    ) -> FlusterRenderer<D> {
-        FlusterRenderer {
+    ) -> FlusterRendererImpl<D> {
+        FlusterRendererImpl {
             font_context,
             canvas: None,
             renderer,
@@ -96,15 +96,25 @@ where
         }
     }
 
-    pub fn replace_frame_buffer(
-        &mut self,
-        new_dest_framebuffer: DestFramebuffer<D>,
-    ) -> DestFramebuffer<D> {
-        self.renderer.replace_dest_framebuffer(new_dest_framebuffer)
+    //TODO: Should this be in the Renderer Trait? Move if fluster_player uses it
+    pub fn replace_frame_buffer(&mut self, stage_size: Vector2I) -> Result<D::Framebuffer, String> {
+        let new_dest_framebuffer = self.renderer.device.create_framebuffer(
+            self.renderer
+                .device
+                .create_texture(TextureFormat::RGBA8, stage_size),
+        );
+        let old = self
+            .renderer
+            .replace_dest_framebuffer(DestFramebuffer::Other(new_dest_framebuffer));
+        if let DestFramebuffer::Other(buffer) = old {
+            Ok(buffer)
+        } else {
+            Err("Could not extract texture from framebuffer".to_owned())
+        }
     }
 }
 
-impl<D> Renderer for FlusterRenderer<D>
+impl<D> Renderer for FlusterRendererImpl<D>
 where
     D: Device,
 {

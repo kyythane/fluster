@@ -8,7 +8,7 @@ use fluster_core::types::{
     basic::ScaleRotationTranslation,
     shapes::{AugmentedShape, Coloring, MorphPoint, Point, Shape},
 };
-use fluster_graphics::FlusterRenderer;
+use fluster_graphics::FlusterRendererImpl;
 use pathfinder_canvas::CanvasFontContext;
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
@@ -325,7 +325,7 @@ fn main() {
 
     let font_context = CanvasFontContext::from_system_source();
 
-    let mut fluster_renderer = FlusterRenderer::new(
+    let mut fluster_renderer = FlusterRendererImpl::new(
         font_context,
         renderer,
         Box::new(move || window.gl_swap_window()),
