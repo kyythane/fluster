@@ -38,6 +38,18 @@ pub struct RenderData<'a> {
     world_space_transforms: HashMap<Uuid, Transform2F>,
 }
 
+impl<'a> RenderData<'a> {
+    pub fn new(
+        depth_list: BTreeMap<u64, &'a Entity>,
+        world_space_transforms: HashMap<Uuid, Transform2F>,
+    ) -> RenderData<'a> {
+        RenderData {
+            depth_list,
+            world_space_transforms,
+        }
+    }
+}
+
 //TODO: add a concept of "dirty/clean" entities. Ideally we would structure our renderer to do partial rerenders
 pub fn compute_render_data<'a, S: BuildHasher>(
     root_entity_id: &Uuid,

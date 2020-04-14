@@ -1,5 +1,6 @@
 #![deny(clippy::all)]
-use fluster_core::rendering::{paint, Renderer as FlusterRenderer};
+use fluster_core::rendering::{paint, RenderData, Renderer as FlusterRenderer};
+use fluster_core::types::model::DisplayLibraryItem;
 use fluster_graphics::FlusterRendererImpl;
 use gl::{GetTextureImage, RGBA, UNSIGNED_BYTE};
 use pathfinder_canvas::CanvasFontContext;
@@ -11,7 +12,10 @@ use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_resources::fs::FilesystemResourceLoader;
 use sdl2::video::{GLProfile, Window};
+use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::ffi::c_void;
+use uuid::Uuid;
 
 pub struct StageRenderer {
     renderer: FlusterRendererImpl<GLDevice>,
@@ -28,11 +32,7 @@ impl StageRenderer {
         gl_attributes.set_context_profile(GLProfile::Core);
         gl_attributes.set_context_version(3, 3);
         let window = video
-            .window(
-                "stage render target",
-                stage_size.x() as u32,
-                stage_size.y() as u32,
-            )
+            .window("Stage", stage_size.x() as u32, stage_size.y() as u32)
             .hidden()
             .opengl()
             .build();
@@ -78,11 +78,19 @@ impl StageRenderer {
         - prototype edit handles
         - ???
     */
+    fn compute_render_data<'a>(&self) -> RenderData<'a> {
+        RenderData::new(BTreeMap::new(), HashMap::new())
+    }
 
-    pub fn draw_frame(&mut self, background_color: ColorU) -> Result<Vec<u8>, String> {
+    pub fn draw_frame(
+        &mut self,
+        background_color: ColorU,
+        library: &HashMap<Uuid, DisplayLibraryItem>,
+    ) -> Result<Vec<u8>, String> {
         self.renderer.start_frame(self.stage_size.to_f32());
         self.renderer.set_background(background_color);
-        //paint(&mut self.renderer, render_data, library);
+        let render_data = self.compute_render_data();
+        paint(&mut self.renderer, render_data, library);
         self.renderer.end_frame();
         self.window.gl_swap_window();
         let buffer = self.renderer.replace_frame_buffer(self.stage_size)?;
@@ -105,19 +113,5 @@ impl StageRenderer {
             Vec::from_raw_parts(ptr, buffer_size as usize, buffer_size as usize)
         };
         Ok(texture)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn it_works() {
-        let mut stage_renderer = StageRenderer::new(Vector2I::splat(100)).unwrap();
-        let texture = stage_renderer
-            .draw_frame(ColorU::new(254, 200, 216, 255))
-            .unwrap();
-        println!("{:?} {:?}", texture.len(), &texture[..16]);
-        assert_eq!(2 + 2, 4);
     }
 }
