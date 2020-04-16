@@ -2,12 +2,11 @@
 use fluster_core::rendering::{paint, RenderData, Renderer as FlusterRenderer};
 use fluster_core::types::model::DisplayLibraryItem;
 use fluster_graphics::FlusterRendererImpl;
-use gl::{GetTextureImage, RGBA, UNSIGNED_BYTE};
+use gl::{ReadPixels, BGRA, UNSIGNED_BYTE};
 use pathfinder_canvas::CanvasFontContext;
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gl::{GLDevice, GLVersion};
-use pathfinder_gpu::{Device, TextureFormat};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_resources::fs::FilesystemResourceLoader;
@@ -44,13 +43,10 @@ impl StageRenderer {
         gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
         window.gl_make_current(&gl_context)?;
 
-        let device = GLDevice::new(GLVersion::GL3, 0);
-        let pathfinder_framebuffer =
-            device.create_framebuffer(device.create_texture(TextureFormat::RGBA8, stage_size));
         let renderer = Renderer::new(
-            device,
+            GLDevice::new(GLVersion::GL3, 0),
             &FilesystemResourceLoader::locate(),
-            DestFramebuffer::Other(pathfinder_framebuffer),
+            DestFramebuffer::default(),
             RendererOptions {
                 background_color: Some(ColorF::white()),
             },
@@ -92,26 +88,22 @@ impl StageRenderer {
         let render_data = self.compute_render_data();
         paint(&mut self.renderer, render_data, library);
         self.renderer.end_frame();
-        self.window.gl_swap_window();
-        let buffer = self.renderer.replace_frame_buffer(self.stage_size)?;
-        let buffer_texture = buffer.gl_framebuffer;
-        let buffer_size = {
-            let buffer_size = buffer.texture.size;
-            buffer_size.x() * buffer_size.y()
-        };
         let texture = unsafe {
+            let buffer_size = self.stage_size.x() * self.stage_size.y() * 4;
             let mut target: Vec<u8> = vec![0; buffer_size as usize];
             let ptr = (&mut target).as_mut_ptr();
-            GetTextureImage(
-                buffer_texture,
+            ReadPixels(
                 0,
-                RGBA,
+                0,
+                self.stage_size.x(),
+                self.stage_size.y(),
+                BGRA,
                 UNSIGNED_BYTE,
-                buffer_size,
                 ptr as *mut c_void,
             );
             Vec::from_raw_parts(ptr, buffer_size as usize, buffer_size as usize)
         };
+        self.window.gl_swap_window();
         Ok(texture)
     }
 }

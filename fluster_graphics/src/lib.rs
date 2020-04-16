@@ -10,11 +10,11 @@ use pathfinder_content::pattern::Pattern;
 use pathfinder_content::stroke::{LineJoin as StrokeLineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use pathfinder_gpu::{Device, TextureFormat};
+use pathfinder_geometry::vector::Vector2F;
+use pathfinder_gpu::Device;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::options::RendererOptions;
 use pathfinder_renderer::gpu::renderer::Renderer as PathfinderRenderer;
 use pathfinder_renderer::options::BuildOptions;
 use std::mem;
@@ -93,23 +93,6 @@ where
             canvas: None,
             renderer,
             on_frame_end,
-        }
-    }
-
-    //TODO: Should this be in the Renderer Trait? Move if fluster_player uses it
-    pub fn replace_frame_buffer(&mut self, stage_size: Vector2I) -> Result<D::Framebuffer, String> {
-        let new_dest_framebuffer = self.renderer.device.create_framebuffer(
-            self.renderer
-                .device
-                .create_texture(TextureFormat::RGBA8, stage_size),
-        );
-        let old = self
-            .renderer
-            .replace_dest_framebuffer(DestFramebuffer::Other(new_dest_framebuffer));
-        if let DestFramebuffer::Other(buffer) = old {
-            Ok(buffer)
-        } else {
-            Err("Could not extract texture from framebuffer".to_owned())
         }
     }
 }
