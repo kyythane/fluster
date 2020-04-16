@@ -10,7 +10,7 @@ use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_resources::fs::FilesystemResourceLoader;
-use sdl2::video::{GLProfile, Window};
+use sdl2::video::{GLContext, GLProfile, Window};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -20,6 +20,9 @@ pub struct StageRenderer {
     renderer: FlusterRendererImpl<GLDevice>,
     window: Window,
     stage_size: Vector2I,
+    //Need to keep gl_context around so it doesn't get freed, but we don't actually need it for anything
+    #[allow(unused_variables, dead_code)]
+    gl_context: GLContext,
 }
 
 impl StageRenderer {
@@ -46,7 +49,7 @@ impl StageRenderer {
         let renderer = Renderer::new(
             GLDevice::new(GLVersion::GL3, 0),
             &FilesystemResourceLoader::locate(),
-            DestFramebuffer::default(),
+            DestFramebuffer::full_window(stage_size),
             RendererOptions {
                 background_color: Some(ColorF::white()),
             },
@@ -63,6 +66,7 @@ impl StageRenderer {
             renderer: fluster_renderer,
             window,
             stage_size,
+            gl_context,
         })
     }
 
@@ -101,7 +105,7 @@ impl StageRenderer {
                 UNSIGNED_BYTE,
                 ptr as *mut c_void,
             );
-            Vec::from_raw_parts(ptr, buffer_size as usize, buffer_size as usize)
+            target
         };
         self.window.gl_swap_window();
         Ok(texture)

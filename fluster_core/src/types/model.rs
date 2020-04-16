@@ -31,6 +31,28 @@ pub enum Part {
 }
 
 impl Part {
+    pub fn new_vector(item_id: Uuid, transform: Transform2F, color: Option<Coloring>) -> Part {
+        Part::Vector {
+            item_id,
+            transform,
+            color,
+        }
+    }
+
+    pub fn new_raster(
+        item_id: Uuid,
+        view_rect: RectF,
+        transform: Transform2F,
+        tint: Option<ColorU>,
+    ) -> Part {
+        Part::Raster {
+            item_id,
+            view_rect,
+            transform,
+            tint,
+        }
+    }
+
     pub fn item_id(&self) -> &Uuid {
         match self {
             Part::Vector { item_id, .. } => item_id,
