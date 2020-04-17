@@ -8,7 +8,6 @@ edition = "2018"
 [dependencies]
 gl = "0.14"
 sdl2 = "0.33"
-# sdl2-sys = "0.33"
 fluster_core = { path = "../fluster_core" }
 fluster_graphics = { path = "../fluster_graphics" }
 pathfinder_canvas = { git = "https://github.com/kyythane/pathfinder.git" }
@@ -20,4 +19,7 @@ pathfinder_gl = { git = "https://github.com/kyythane/pathfinder.git" }
 pathfinder_renderer = { git = "https://github.com/kyythane/pathfinder.git" }
 pathfinder_resources = { git = "https://github.com/kyythane/pathfinder.git" }
 uuid = { version = "0.8", features = ["v4"] }
+iced = "0.1"
+iced_native= "0.2"
+iced_wgpu= "0.2"
 # image = "0.23"

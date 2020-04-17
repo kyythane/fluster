@@ -1,4 +1,5 @@
 #![deny(clippy::all)]
+use crate::simulation::FrameState;
 use fluster_core::rendering::{paint, RenderData, Renderer as FlusterRenderer};
 use fluster_core::types::model::DisplayLibraryItem;
 use fluster_graphics::FlusterRendererImpl;
@@ -15,6 +16,10 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use uuid::Uuid;
+
+/*
+    Note: This is kinda a hack until there is a cleaner way to use pathfinder and iced together.
+*/
 
 pub struct StageRenderer {
     renderer: FlusterRendererImpl<GLDevice>,
@@ -82,15 +87,18 @@ impl StageRenderer {
         RenderData::new(BTreeMap::new(), HashMap::new())
     }
 
-    pub fn draw_frame(
-        &mut self,
+    pub fn update_frame_state(
         background_color: ColorU,
         library: &HashMap<Uuid, DisplayLibraryItem>,
-    ) -> Result<Vec<u8>, String> {
+    ) {
+    }
+
+    //TODO: update_frame. Make draw_frame take no arguments
+    pub fn draw_frame(&mut self, frame_state: &FrameState) -> Result<Vec<u8>, String> {
         self.renderer.start_frame(self.stage_size.to_f32());
-        self.renderer.set_background(background_color);
+        self.renderer.set_background(frame_state.background_color());
         let render_data = self.compute_render_data();
-        paint(&mut self.renderer, render_data, library);
+        paint(&mut self.renderer, render_data, frame_state.library());
         self.renderer.end_frame();
         let texture = unsafe {
             let buffer_size = self.stage_size.x() * self.stage_size.y() * 4;
