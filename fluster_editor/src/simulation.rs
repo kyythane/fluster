@@ -1,7 +1,6 @@
 #![deny(clippy::all)]
 use fluster_core::rendering::{adjust_depth, RenderData};
 use fluster_core::types::model::{DisplayLibraryItem, Entity};
-use iced_native::{MouseCursor, Point};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::transform2d::Transform2F;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -37,7 +36,7 @@ impl StageState {
 }
 
 impl StageState {
-    pub fn compute_render_data(&self, timeline: &Timeline) -> RenderData {
+    pub fn compute_render_data(&self, timeline: &TimelineState) -> RenderData {
         let mut nodes = VecDeque::new();
         let mut depth_list = BTreeMap::new();
         let mut world_space_transforms = HashMap::new();
@@ -74,12 +73,12 @@ impl Default for StageState {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Timeline {
-    layers: Vec<Layer>,
+#[derive(Debug, Clone, Default)]
+pub struct TimelineState {
+    layers: Vec<LayerState>,
 }
 
-impl Timeline {
+impl TimelineState {
     pub fn can_show_entity(&self, id: &Uuid) -> bool {
         self.layers.iter().any(|layer| layer.can_show_entity(id))
     }
@@ -99,13 +98,13 @@ impl Timeline {
 }
 
 #[derive(Debug, Clone)]
-pub struct Layer {
-    frames: Vec<(Frame, (u32, u32))>,
+pub struct LayerState {
+    frames: Vec<(FrameState, (u32, u32))>,
     current_frame_index: usize,
     visible: bool,
 }
 
-impl Layer {
+impl LayerState {
     pub fn can_show_entity(&self, id: &Uuid) -> bool {
         if !self.visible {
             return false;
@@ -136,49 +135,49 @@ impl Layer {
 }
 
 #[derive(Debug, Clone)]
-pub enum Frame {
+pub enum FrameState {
     Key { entities: HashSet<Uuid> },
     Empty,
 }
 
-impl Frame {
+impl FrameState {
     pub fn new() -> Self {
-        Frame::Empty
+        Self::Empty
     }
 
     pub fn contains_entity(&self, id: &Uuid) -> bool {
         match self {
-            Frame::Key { entities } => entities.contains(id),
-            Frame::Empty => false,
+            Self::Key { entities } => entities.contains(id),
+            Self::Empty => false,
         }
     }
 
     pub fn add_entity(&mut self, id: &Uuid) {
         match self {
-            Frame::Key { entities } => {
+            Self::Key { entities } => {
                 entities.insert(*id);
             }
-            Frame::Empty => {
+            Self::Empty => {
                 let mut entities = HashSet::new();
                 entities.insert(*id);
-                let mut new_frame = Frame::Key { entities };
+                let mut new_frame = Self::Key { entities };
                 mem::swap(self, &mut new_frame);
             }
         }
     }
 
     pub fn remove_entity(&mut self, id: &Uuid) {
-        if let Frame::Key { entities } = self {
+        if let Self::Key { entities } = self {
             entities.remove(id);
             if entities.is_empty() {
-                mem::swap(self, &mut Frame::Empty);
+                mem::swap(self, &mut FrameState::Empty);
             }
         };
     }
 }
 
-impl Default for Frame {
+impl Default for FrameState {
     fn default() -> Self {
-        Frame::Empty
+        Self::Empty
     }
 }

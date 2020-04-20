@@ -1,5 +1,6 @@
 #![deny(clippy::all)]
 use fluster_core::types::shapes::Edge;
+use iced_native::{input::mouse::Event as MouseEvent, MouseCursor, Point};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::Vector2F;
 use std::collections::HashSet;
@@ -26,12 +27,13 @@ impl MouseState {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 enum PlacementState {
     None,
     Placing,
-    Placed,
 }
 
+#[derive(Clone, Debug)]
 enum ToolState {
     Pointer, //grab: edge, point, fill, scale_x, scale_y, scale_xy, entity, group. hover
     Line {
@@ -116,8 +118,39 @@ impl ToolState {
     fn cancel_action(self) -> Self {
         ToolState::new(self.tool())
     }
+
+    fn placement_state(&self) -> PlacementState {
+        match self {
+            ToolState::Pointer => PlacementState::None,
+            ToolState::Fill { .. } => PlacementState::None,
+            ToolState::Eyedropper { .. } => PlacementState::None,
+            ToolState::Line {
+                placement_state, ..
+            }
+            | ToolState::Curve {
+                placement_state, ..
+            }
+            | ToolState::Polygon {
+                placement_state, ..
+            }
+            | ToolState::Ellipse {
+                placement_state, ..
+            } => *placement_state,
+        }
+    }
+
+    fn mouse_cursor(&self) -> MouseCursor {
+        match self {
+            ToolState::Pointer => MouseCursor::Idle,
+            _ => match self.placement_state() {
+                PlacementState::None => MouseCursor::Pointer,
+                PlacementState::Placing => MouseCursor::Grab,
+            },
+        }
+    }
 }
 
+#[derive(Clone, Debug)]
 struct Selection {
     objects: HashSet<Uuid>,
 }
@@ -128,13 +161,14 @@ impl Selection {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct EditState {
     tool_state: ToolState,
     selection: Selection,
 }
 
-impl EditState {
-    pub fn init() -> Self {
+impl Default for EditState {
+    fn default() -> Self {
         EditState {
             tool_state: ToolState::new(Tool::Pointer),
             selection: Selection {
@@ -142,7 +176,9 @@ impl EditState {
             },
         }
     }
+}
 
+impl EditState {
     pub fn cancel_action(self) -> Self {
         let mut state = self;
         state.selection.clear();
@@ -158,6 +194,14 @@ impl EditState {
             tool_state,
             selection: self.selection,
         }
+    }
+
+    pub fn mouse_cursor(&self) -> MouseCursor {
+        self.tool_state.mouse_cursor()
+    }
+
+    pub fn on_mouse_event(&self, mouse_event: MouseEvent, mouse_position: Point) -> Self {
+        unimplemented!()
     }
 
     //pub fn use_tool(self, mouse: MouseState) -> (ToolResult, Self) {}

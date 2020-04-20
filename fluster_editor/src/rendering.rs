@@ -1,5 +1,5 @@
 #![deny(clippy::all)]
-use crate::simulation::StageState;
+use crate::simulation::{StageState, TimelineState};
 use fluster_core::rendering::{paint, RenderData, Renderer as FlusterRenderer};
 use fluster_graphics::FlusterRendererImpl;
 use gl::{ReadPixels, BGRA, UNSIGNED_BYTE};
@@ -83,22 +83,20 @@ impl StageRenderer {
 
     /*TODO:
         Next steps:
-        - make layer based render_data function
-        - add library
-        - test render to texture
         - prototype edit handles
+        - bounds and debug drawing?
         - ???
     */
-    fn compute_render_data<'a>(&self) -> RenderData<'a> {
-        RenderData::new(BTreeMap::new(), HashMap::new())
-    }
 
-    //TODO: update_frame. Make draw_frame take no arguments
-    pub fn draw_frame(&mut self, frame_state: &StageState) -> Result<Vec<u8>, String> {
+    pub fn draw_frame(
+        &mut self,
+        stage_state: &StageState,
+        timeline_state: &TimelineState,
+    ) -> Result<Vec<u8>, String> {
         self.renderer.start_frame(self.stage_size.to_f32());
-        self.renderer.set_background(frame_state.background_color());
-        let render_data = self.compute_render_data();
-        paint(&mut self.renderer, render_data, frame_state.library());
+        self.renderer.set_background(stage_state.background_color());
+        let render_data = stage_state.compute_render_data(timeline_state);
+        paint(&mut self.renderer, render_data, stage_state.library());
         self.renderer.end_frame();
         let texture = unsafe {
             let buffer_size = self.stage_size.x() * self.stage_size.y() * 4;
