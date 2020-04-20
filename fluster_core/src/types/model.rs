@@ -214,8 +214,8 @@ impl Entity {
         parts: Vec<Part>,
         transform: Transform2F,
         morph_index: f32,
-    ) -> Entity {
-        Entity {
+    ) -> Self {
+        Self {
             active: true,
             children: vec![],
             depth,
@@ -227,6 +227,10 @@ impl Entity {
             tweens: HashMap::new(),
             morph_index,
         }
+    }
+
+    pub fn create_root(id: Uuid) -> Self {
+        Self::new(id, 0, "Roor", id, vec![], Transform2F::default(), 0.0)
     }
 
     #[inline]

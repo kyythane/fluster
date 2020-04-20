@@ -1,5 +1,5 @@
 #![deny(clippy::all)]
-use crate::simulation::FrameState;
+use crate::simulation::StageState;
 use fluster_core::rendering::{paint, RenderData, Renderer as FlusterRenderer};
 use fluster_graphics::FlusterRendererImpl;
 use gl::{ReadPixels, BGRA, UNSIGNED_BYTE};
@@ -14,17 +14,16 @@ use sdl2::video::{GLContext, GLProfile, Window};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use uuid::Uuid;
 
 /*
-    Note: This is kinda a hack until there is a cleaner way to use pathfinder and iced together.
-*/
+ *   Note: This is kinda a hack until there is a cleaner way to use pathfinder and iced together.
+ */
 
 pub struct StageRenderer {
     renderer: FlusterRendererImpl<GLDevice>,
     window: Window,
     stage_size: Vector2I,
-    //Need to keep gl_context around so it doesn't get freed, but we don't actually need it for anything
+    //Need to keep gl_context around so it doesn't get freed, but we don't *actually* need it for anything
     #[allow(unused_variables, dead_code)]
     gl_context: GLContext,
 }
@@ -74,6 +73,14 @@ impl StageRenderer {
         })
     }
 
+    pub fn width(&self) -> i32 {
+        self.stage_size.x()
+    }
+
+    pub fn height(&self) -> i32 {
+        self.stage_size.y()
+    }
+
     /*TODO:
         Next steps:
         - make layer based render_data function
@@ -87,7 +94,7 @@ impl StageRenderer {
     }
 
     //TODO: update_frame. Make draw_frame take no arguments
-    pub fn draw_frame(&mut self, frame_state: &FrameState) -> Result<Vec<u8>, String> {
+    pub fn draw_frame(&mut self, frame_state: &StageState) -> Result<Vec<u8>, String> {
         self.renderer.start_frame(self.stage_size.to_f32());
         self.renderer.set_background(frame_state.background_color());
         let render_data = self.compute_render_data();

@@ -50,6 +50,14 @@ impl<'a> RenderData<'a> {
     }
 }
 
+pub fn adjust_depth(depth: u32, depth_list: &BTreeMap<u64, &Entity>) -> u64 {
+    let mut depth = (depth as u64) << 32;
+    while depth_list.contains_key(&depth) {
+        depth += 1;
+    }
+    depth
+}
+
 //TODO: add a concept of "dirty/clean" entities. Ideally we would structure our renderer to do partial rerenders
 pub fn compute_render_data<'a, S: BuildHasher>(
     root_entity_id: &Uuid,
@@ -66,28 +74,23 @@ pub fn compute_render_data<'a, S: BuildHasher>(
     world_space_transforms.insert(*root.id(), *root.transform());
     let mut nodes = VecDeque::new();
     nodes.push_back(root);
-    while !nodes.is_empty() {
-        if let Some(node) = nodes.pop_front() {
-            for child_id in node.children() {
-                if let Some(child) = display_list.get(child_id) {
-                    nodes.push_back(child);
-                }
+    while let Some(node) = nodes.pop_front() {
+        for child_id in node.children() {
+            if let Some(child) = display_list.get(child_id) {
+                nodes.push_back(child);
             }
-            let mut depth = (node.depth() as u64) << 32;
-            while depth_list.contains_key(&depth) {
-                depth += 1;
-            }
-            depth_list.insert(depth, node);
-            if let Some(parent_transform) = world_space_transforms.get(node.parent()) {
-                let parent_transform = *parent_transform;
-                world_space_transforms.insert(*node.id(), parent_transform * *node.transform());
-            } else {
-                return Err(format!(
-                    "Could not find parent {} of entity {} in world_space_transforms",
-                    node.parent(),
-                    node.id()
-                ));
-            }
+        }
+        let depth = adjust_depth(node.depth(), &depth_list);
+        depth_list.insert(depth, node);
+        if let Some(parent_transform) = world_space_transforms.get(node.parent()) {
+            let parent_transform = *parent_transform;
+            world_space_transforms.insert(*node.id(), parent_transform * *node.transform());
+        } else {
+            return Err(format!(
+                "Could not find parent {} of entity {} in world_space_transforms",
+                node.parent(),
+                node.id()
+            ));
         }
     }
     Ok(RenderData {

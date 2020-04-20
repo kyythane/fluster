@@ -1,21 +1,25 @@
 #![deny(clippy::all)]
 use crate::rendering::StageRenderer;
-use crate::simulation::FrameState;
-use iced::{executor, image, Application, Command, Element, Image, Length, Size, Text};
+use crate::simulation::StageState;
+use iced::{
+    executor, image::Handle as ImageHandle, Align, Application, Column, Command, Container,
+    Element, Image, Length, Size, Text,
+};
 use iced_native::{layout, Hasher, Layout, MouseCursor, Point, Rectangle, Widget};
 use iced_wgpu::{Defaults, Primitive, Renderer};
 use pathfinder_geometry::vector::Vector2I;
+use std::convert::TryInto;
 use std::hash::Hash;
 
 pub struct Stage<'a> {
     width: u16,
     height: u16,
-    frame: image::Handle,
-    frame_state: &'a FrameState,
+    frame: ImageHandle,
+    frame_state: &'a StageState,
 }
 
 impl<'a> Stage<'a> {
-    pub fn new(width: u16, height: u16, frame: image::Handle, frame_state: &'a FrameState) -> Self {
+    pub fn new(width: u16, height: u16, frame: ImageHandle, frame_state: &'a StageState) -> Self {
         Self {
             width,
             height,
@@ -61,18 +65,26 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a> {
                     height: f32::from(self.height),
                 },
             },
-            self.frame_state.compute_mouse_state(cursor_position),
+            //self.frame_state.compute_mouse_state(cursor_position),
+            MouseCursor::Grab,
         )
+    }
+}
+
+impl<'a, Message> Into<Element<'a, Message>> for Stage<'a> {
+    fn into(self) -> Element<'a, Message> {
+        Element::new(self)
     }
 }
 
 pub struct App {
     stage_renderer: StageRenderer,
+    frame_state: StageState,
 }
 
 #[derive(Debug, Clone)]
 pub enum AppMessage {
-    FrameUpdate(FrameState),
+    FrameUpdate(StageState),
 }
 
 pub struct AppFlags {
@@ -81,13 +93,13 @@ pub struct AppFlags {
 
 impl AppFlags {
     pub fn new(stage_size: Vector2I) -> Self {
-        AppFlags { stage_size }
+        Self { stage_size }
     }
 }
 
 impl Default for AppFlags {
     fn default() -> Self {
-        AppFlags {
+        Self {
             stage_size: Vector2I::new(800, 600),
         }
     }
@@ -98,9 +110,15 @@ impl Application for App {
     type Message = AppMessage;
     type Flags = AppFlags;
 
-    fn new(flags: Self::Flags) -> (App, Command<Self::Message>) {
+    fn new(flags: Self::Flags) -> (Self, Command<Self::Message>) {
         let stage_renderer = StageRenderer::new(flags.stage_size).unwrap();
-        (App { stage_renderer }, Command::none())
+        (
+            Self {
+                stage_renderer,
+                frame_state: StageState::default(),
+            },
+            Command::none(),
+        )
     }
 
     fn title(&self) -> String {
@@ -110,13 +128,33 @@ impl Application for App {
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
             Self::Message::FrameUpdate(frame_state) => {
-                let frame_bytes = self.stage_renderer.draw_frame(&frame_state);
+                self.frame_state = frame_state;
             }
         }
         Command::none()
     }
 
     fn view(&mut self) -> Element<Self::Message> {
-        Text::new("Hello, world!").into()
+        let stage = Stage::new(
+            self.stage_renderer.width().try_into().unwrap(),
+            self.stage_renderer.height().try_into().unwrap(),
+            ImageHandle::from_pixels(
+                self.stage_renderer.width().try_into().unwrap(),
+                self.stage_renderer.height().try_into().unwrap(),
+                self.stage_renderer.draw_frame(&self.frame_state).unwrap(),
+            ),
+            &self.frame_state,
+        );
+        let content = Column::new()
+            .padding(20)
+            .spacing(20)
+            .align_items(Align::Center)
+            .push(stage);
+        Container::new(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x()
+            .center_y()
+            .into()
     }
 }
