@@ -11,11 +11,11 @@ pub struct Stage<'a> {
     width: u16,
     height: u16,
     frame: image::Handle,
-    frame_state: FrameState<'a>,
+    frame_state: &'a FrameState,
 }
 
 impl<'a> Stage<'a> {
-    pub fn new(width: u16, height: u16, frame: image::Handle, frame_state: FrameState<'a>) -> Self {
+    pub fn new(width: u16, height: u16, frame: image::Handle, frame_state: &'a FrameState) -> Self {
         Self {
             width,
             height,
@@ -66,25 +66,53 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a> {
     }
 }
 
-pub struct App;
+pub struct App {
+    stage_renderer: StageRenderer,
+}
 
 #[derive(Debug, Clone)]
-pub enum AppMessage {}
+pub enum AppMessage {
+    FrameUpdate(FrameState),
+}
+
+pub struct AppFlags {
+    stage_size: Vector2I,
+}
+
+impl AppFlags {
+    pub fn new(stage_size: Vector2I) -> Self {
+        AppFlags { stage_size }
+    }
+}
+
+impl Default for AppFlags {
+    fn default() -> Self {
+        AppFlags {
+            stage_size: Vector2I::new(800, 600),
+        }
+    }
+}
 
 impl Application for App {
     type Executor = executor::Default;
     type Message = AppMessage;
-    type Flags = ();
+    type Flags = AppFlags;
 
-    fn new(_flags: ()) -> (App, Command<Self::Message>) {
-        (App, Command::none())
+    fn new(flags: Self::Flags) -> (App, Command<Self::Message>) {
+        let stage_renderer = StageRenderer::new(flags.stage_size).unwrap();
+        (App { stage_renderer }, Command::none())
     }
 
     fn title(&self) -> String {
         String::from("An Editor for Fluster Files")
     }
 
-    fn update(&mut self, _message: Self::Message) -> Command<Self::Message> {
+    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+        match message {
+            Self::Message::FrameUpdate(frame_state) => {
+                let frame_bytes = self.stage_renderer.draw_frame(&frame_state);
+            }
+        }
         Command::none()
     }
 

@@ -6,7 +6,7 @@ use fluster_core::runner;
 use fluster_core::tween::Easing;
 use fluster_core::types::{
     basic::ScaleRotationTranslation,
-    shapes::{AugmentedShape, Coloring, MorphPoint, Point, Shape},
+    shapes::{AugmentedShape, Coloring, Edge, MorphEdge, Shape},
 };
 use fluster_graphics::FlusterRendererImpl;
 use pathfinder_canvas::CanvasFontContext;
@@ -43,10 +43,10 @@ fn build_action_list() -> ActionList {
             id: shape_id,
             shape: Shape::Fill {
                 points: vec![
-                    Point::Line(Vector2F::new(-15.0, -15.0)),
-                    Point::Line(Vector2F::new(15.0, -15.0)),
-                    Point::Line(Vector2F::new(15.0, 15.0)),
-                    Point::Line(Vector2F::new(-15.0, 15.0)),
+                    Edge::Line(Vector2F::new(-15.0, -15.0)),
+                    Edge::Line(Vector2F::new(15.0, -15.0)),
+                    Edge::Line(Vector2F::new(15.0, 15.0)),
+                    Edge::Line(Vector2F::new(-15.0, 15.0)),
                 ],
                 color: ColorU::new(149, 125, 173, 255),
             },
@@ -55,10 +55,10 @@ fn build_action_list() -> ActionList {
             id: shape2_id,
             shape: Shape::Path {
                 points: vec![
-                    Point::Line(Vector2F::new(-15.0, -15.0)),
-                    Point::Line(Vector2F::new(15.0, -15.0)),
-                    Point::Line(Vector2F::new(15.0, 15.0)),
-                    Point::Line(Vector2F::new(-15.0, 15.0)),
+                    Edge::Line(Vector2F::new(-15.0, -15.0)),
+                    Edge::Line(Vector2F::new(15.0, -15.0)),
+                    Edge::Line(Vector2F::new(15.0, 15.0)),
+                    Edge::Line(Vector2F::new(-15.0, 15.0)),
                 ],
                 stroke_style: StrokeStyle {
                     line_width: 3.0,
@@ -76,10 +76,10 @@ fn build_action_list() -> ActionList {
                     AugmentedShape {
                         shape: Shape::Fill {
                             points: vec![
-                                Point::Line(Vector2F::new(-15.0, -15.0)),
-                                Point::Line(Vector2F::new(15.0, -15.0)),
-                                Point::Line(Vector2F::new(15.0, 15.0)),
-                                Point::Line(Vector2F::new(-15.0, 15.0)),
+                                Edge::Line(Vector2F::new(-15.0, -15.0)),
+                                Edge::Line(Vector2F::new(15.0, -15.0)),
+                                Edge::Line(Vector2F::new(15.0, 15.0)),
+                                Edge::Line(Vector2F::new(-15.0, 15.0)),
                             ],
                             color: ColorU::new(149, 125, 173, 255),
                         },
@@ -92,10 +92,10 @@ fn build_action_list() -> ActionList {
                     AugmentedShape {
                         shape: Shape::Fill {
                             points: vec![
-                                Point::Line(Vector2F::new(-15.0, -15.0)),
-                                Point::Line(Vector2F::new(15.0, -15.0)),
-                                Point::Line(Vector2F::new(15.0, 15.0)),
-                                Point::Line(Vector2F::new(-15.0, 15.0)),
+                                Edge::Line(Vector2F::new(-15.0, -15.0)),
+                                Edge::Line(Vector2F::new(15.0, -15.0)),
+                                Edge::Line(Vector2F::new(15.0, 15.0)),
+                                Edge::Line(Vector2F::new(-15.0, 15.0)),
                             ],
                             color: ColorU::new(149, 125, 173, 255),
                         },
@@ -108,10 +108,10 @@ fn build_action_list() -> ActionList {
                     AugmentedShape {
                         shape: Shape::Fill {
                             points: vec![
-                                Point::Line(Vector2F::new(-15.0, -15.0)),
-                                Point::Line(Vector2F::new(15.0, -15.0)),
-                                Point::Line(Vector2F::new(15.0, 15.0)),
-                                Point::Line(Vector2F::new(-15.0, 15.0)),
+                                Edge::Line(Vector2F::new(-15.0, -15.0)),
+                                Edge::Line(Vector2F::new(15.0, -15.0)),
+                                Edge::Line(Vector2F::new(15.0, 15.0)),
+                                Edge::Line(Vector2F::new(-15.0, 15.0)),
                             ],
                             color: ColorU::new(149, 125, 173, 255),
                         },
@@ -124,10 +124,10 @@ fn build_action_list() -> ActionList {
                     AugmentedShape {
                         shape: Shape::Fill {
                             points: vec![
-                                Point::Line(Vector2F::new(-15.0, -15.0)),
-                                Point::Line(Vector2F::new(15.0, -15.0)),
-                                Point::Line(Vector2F::new(15.0, 15.0)),
-                                Point::Line(Vector2F::new(-15.0, 15.0)),
+                                Edge::Line(Vector2F::new(-15.0, -15.0)),
+                                Edge::Line(Vector2F::new(15.0, -15.0)),
+                                Edge::Line(Vector2F::new(15.0, 15.0)),
+                                Edge::Line(Vector2F::new(-15.0, 15.0)),
                             ],
                             color: ColorU::new(149, 125, 173, 255),
                         },
@@ -144,19 +144,19 @@ fn build_action_list() -> ActionList {
             id: shape4_id,
             shape: Shape::Path {
                 points: vec![
-                    Point::Move(Vector2F::new(300.0, 100.0)),
-                    Point::Line(Vector2F::new(258.0, 142.0)),
-                    Point::Bezier {
+                    Edge::Move(Vector2F::new(300.0, 100.0)),
+                    Edge::Line(Vector2F::new(258.0, 142.0)),
+                    Edge::Bezier {
                         control_1: Vector2F::new(322.0, 160.0),
                         control_2: Vector2F::new(326.0, 150.0),
                         to: Vector2F::new(330.0, 142.0),
                     },
-                    Point::Quadratic {
+                    Edge::Quadratic {
                         control: Vector2F::new(240.0, 100.0),
                         to: Vector2F::new(330.0, 62.0),
                     },
-                    Point::Move(Vector2F::new(330.0, 130.0)),
-                    Point::Arc {
+                    Edge::Move(Vector2F::new(330.0, 130.0)),
+                    Edge::Arc {
                         control: Vector2F::new(300.0, 100.0),
                         to: Vector2F::new(360.0, 92.0),
                         radius: 21.0,
@@ -175,10 +175,10 @@ fn build_action_list() -> ActionList {
             id: shape5_id,
             shape: Shape::MorphPath {
                 points: vec![
-                    MorphPoint::Line(Vector2F::new(-15.0, -15.0), Vector2F::new(-18.0, -12.0)),
-                    MorphPoint::Line(Vector2F::new(15.0, -15.0), Vector2F::new(0.0, -22.0)),
-                    MorphPoint::Line(Vector2F::new(15.0, 15.0), Vector2F::new(30.0, 15.0)),
-                    MorphPoint::Line(Vector2F::new(-15.0, 15.0), Vector2F::new(-11.0, 33.0)),
+                    MorphEdge::Line(Vector2F::new(-15.0, -15.0), Vector2F::new(-18.0, -12.0)),
+                    MorphEdge::Line(Vector2F::new(15.0, -15.0), Vector2F::new(0.0, -22.0)),
+                    MorphEdge::Line(Vector2F::new(15.0, 15.0), Vector2F::new(30.0, 15.0)),
+                    MorphEdge::Line(Vector2F::new(-15.0, 15.0), Vector2F::new(-11.0, 33.0)),
                 ],
                 stroke_style: StrokeStyle {
                     line_width: 3.0,

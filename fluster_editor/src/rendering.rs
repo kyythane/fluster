@@ -1,11 +1,10 @@
 #![deny(clippy::all)]
 use crate::simulation::FrameState;
 use fluster_core::rendering::{paint, RenderData, Renderer as FlusterRenderer};
-use fluster_core::types::model::DisplayLibraryItem;
 use fluster_graphics::FlusterRendererImpl;
 use gl::{ReadPixels, BGRA, UNSIGNED_BYTE};
 use pathfinder_canvas::CanvasFontContext;
-use pathfinder_color::{ColorF, ColorU};
+use pathfinder_color::ColorF;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
@@ -85,12 +84,6 @@ impl StageRenderer {
     */
     fn compute_render_data<'a>(&self) -> RenderData<'a> {
         RenderData::new(BTreeMap::new(), HashMap::new())
-    }
-
-    pub fn update_frame_state(
-        background_color: ColorU,
-        library: &HashMap<Uuid, DisplayLibraryItem>,
-    ) {
     }
 
     //TODO: update_frame. Make draw_frame take no arguments

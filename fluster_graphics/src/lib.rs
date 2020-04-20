@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 use fluster_core::rendering::Renderer;
-use fluster_core::types::shapes::{Coloring, Point, Shape};
+use fluster_core::types::shapes::{Coloring, Edge, Shape};
 use pathfinder_canvas::{
     Canvas, CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D,
 };
@@ -27,19 +27,19 @@ fn patch_line_join(j: StrokeLineJoin) -> LineJoin {
     }
 }
 
-fn points_to_path(points: &[Point], is_closed: bool) -> Path2D {
+fn edges_to_path(points: &[Edge], is_closed: bool) -> Path2D {
     let mut path = Path2D::new();
-    for point in points {
-        match point {
-            Point::Move(to) => path.move_to(*to),
-            Point::Line(to) => path.line_to(*to),
-            Point::Quadratic { control, to } => path.quadratic_curve_to(*control, *to),
-            Point::Bezier {
+    for edge in points {
+        match edge {
+            Edge::Move(to) => path.move_to(*to),
+            Edge::Line(to) => path.line_to(*to),
+            Edge::Quadratic { control, to } => path.quadratic_curve_to(*control, *to),
+            Edge::Bezier {
                 control_1,
                 control_2,
                 to,
             } => path.bezier_curve_to(*control_1, *control_2, *to),
-            Point::Arc {
+            Edge::Arc {
                 control,
                 to,
                 radius,
@@ -54,13 +54,13 @@ fn points_to_path(points: &[Point], is_closed: bool) -> Path2D {
 
 fn stroke_path(
     canvas: &mut CanvasRenderingContext2D,
-    points: &[Point],
+    points: &[Edge],
     is_closed: bool,
     stroke_style: &StrokeStyle,
     transform: &Transform2F,
     color: ColorU,
 ) {
-    let path = points_to_path(&points, is_closed);
+    let path = edges_to_path(&points, is_closed);
     canvas.set_transform(transform);
     canvas.set_line_width(stroke_style.line_width);
     canvas.set_line_cap(stroke_style.line_cap);
@@ -141,7 +141,7 @@ where
                         } else {
                             color
                         };
-                        let path = points_to_path(points, true);
+                        let path = edges_to_path(points, true);
                         canvas.set_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
@@ -162,7 +162,7 @@ where
                         let points = points
                             .iter()
                             .map(|mp| mp.to_point(morph_index))
-                            .collect::<Vec<Point>>();
+                            .collect::<Vec<Edge>>();
                         stroke_path(
                             canvas,
                             &points,
@@ -183,8 +183,8 @@ where
                         let points = points
                             .iter()
                             .map(|mp| mp.to_point(morph_index))
-                            .collect::<Vec<Point>>();
-                        let path = points_to_path(&points, true);
+                            .collect::<Vec<Edge>>();
+                        let path = edges_to_path(&points, true);
                         canvas.set_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
@@ -192,7 +192,7 @@ where
                 }
                 Shape::Clip { points } => {
                     if points.len() > 2 {
-                        let path = points_to_path(points, true);
+                        let path = edges_to_path(points, true);
                         canvas.set_transform(&transform);
                         canvas.clip_path(path, FillRule::Winding);
                     }

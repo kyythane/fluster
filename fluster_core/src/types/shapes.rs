@@ -7,7 +7,7 @@ use pathfinder_geometry::vector::Vector2F;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum Point {
+pub enum Edge {
     Move(#[serde(with = "Vector2FDef")] Vector2F),
     Line(#[serde(with = "Vector2FDef")] Vector2F),
     Quadratic {
@@ -34,7 +34,7 @@ pub enum Point {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum MorphPoint {
+pub enum MorphEdge {
     Move(
         #[serde(with = "Vector2FDef")] Vector2F,
         #[serde(with = "Vector2FDef")] Vector2F,
@@ -81,40 +81,40 @@ pub enum MorphPoint {
     },
 }
 
-impl MorphPoint {
-    pub fn to_point(&self, percent: f32) -> Point {
+impl MorphEdge {
+    pub fn to_point(&self, percent: f32) -> Edge {
         match self {
-            MorphPoint::Move(start, end) => Point::Move(start.lerp(*end, percent)),
-            MorphPoint::Line(start, end) => Point::Line(start.lerp(*end, percent)),
-            MorphPoint::Quadratic {
+            MorphEdge::Move(start, end) => Edge::Move(start.lerp(*end, percent)),
+            MorphEdge::Line(start, end) => Edge::Line(start.lerp(*end, percent)),
+            MorphEdge::Quadratic {
                 control_start,
                 to_start,
                 control_end,
                 to_end,
-            } => Point::Quadratic {
+            } => Edge::Quadratic {
                 control: control_start.lerp(*control_end, percent),
                 to: to_start.lerp(*to_end, percent),
             },
-            MorphPoint::Bezier {
+            MorphEdge::Bezier {
                 control_1_start,
                 control_2_start,
                 to_start,
                 control_1_end,
                 control_2_end,
                 to_end,
-            } => Point::Bezier {
+            } => Edge::Bezier {
                 control_1: control_1_start.lerp(*control_1_end, percent),
                 control_2: control_2_start.lerp(*control_2_end, percent),
                 to: to_start.lerp(*to_end, percent),
             },
-            MorphPoint::Arc {
+            MorphEdge::Arc {
                 control_start,
                 to_start,
                 radius_start,
                 control_end,
                 to_end,
                 radius_end,
-            } => Point::Arc {
+            } => Edge::Arc {
                 control: control_start.lerp(*control_end, percent),
                 to: to_start.lerp(*to_end, percent),
                 radius: util::lerp(*radius_start, *radius_end, percent),
@@ -126,7 +126,7 @@ impl MorphPoint {
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Shape {
     Path {
-        points: Vec<Point>,
+        points: Vec<Edge>,
         #[serde(with = "ColorUDef")]
         color: ColorU,
         #[serde(with = "StrokeStyleDef")]
@@ -134,12 +134,12 @@ pub enum Shape {
         is_closed: bool,
     },
     Fill {
-        points: Vec<Point>,
+        points: Vec<Edge>,
         #[serde(with = "ColorUDef")]
         color: ColorU,
     },
     MorphPath {
-        points: Vec<MorphPoint>,
+        points: Vec<MorphEdge>,
         #[serde(with = "ColorUDef")]
         color: ColorU,
         #[serde(with = "StrokeStyleDef")]
@@ -147,12 +147,12 @@ pub enum Shape {
         is_closed: bool,
     },
     MorphFill {
-        points: Vec<MorphPoint>,
+        points: Vec<MorphEdge>,
         #[serde(with = "ColorUDef")]
         color: ColorU,
     },
     Clip {
-        points: Vec<Point>,
+        points: Vec<Edge>,
     },
     Group {
         shapes: Vec<AugmentedShape>,
@@ -186,6 +186,7 @@ pub enum Coloring {
     Color(#[serde(with = "ColorUDef")] ColorU),
     Colorings(Vec<Coloring>),
     //TODO: Gradient(Vector2F, Vec<ColorU>) ???
+    //TODO: Patterns ???
     None,
 }
 

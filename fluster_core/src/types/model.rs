@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::mem;
 use uuid::Uuid;
 
+#[derive(Clone, PartialEq, Debug)]
 pub enum DisplayLibraryItem {
     Vector(Shape),
     Raster(Pattern),

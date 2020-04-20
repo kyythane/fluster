@@ -366,7 +366,7 @@ mod tests {
     use crate::tween::Easing;
     use crate::tween::PropertyTween;
     use crate::types::basic::ScaleRotationTranslation;
-    use crate::types::shapes::{Coloring, Point};
+    use crate::types::shapes::{Coloring, Edge};
     use mockall::predicate::*;
     use mockall::*;
     use pathfinder_content::pattern::Pattern;
@@ -426,10 +426,10 @@ mod tests {
                 id: shape_id,
                 shape: Shape::Fill {
                     points: vec![
-                        Point::Line(Vector2F::new(-15.0, -15.0)),
-                        Point::Line(Vector2F::new(15.0, -15.0)),
-                        Point::Line(Vector2F::new(15.0, 15.0)),
-                        Point::Line(Vector2F::new(-15.0, 15.0)),
+                        Edge::Line(Vector2F::new(-15.0, -15.0)),
+                        Edge::Line(Vector2F::new(15.0, -15.0)),
+                        Edge::Line(Vector2F::new(15.0, 15.0)),
+                        Edge::Line(Vector2F::new(-15.0, 15.0)),
                     ],
                     color: ColorU::new(0, 255, 0, 255),
                 },
@@ -612,10 +612,10 @@ mod tests {
             shape_id,
             DisplayLibraryItem::Vector(Shape::Fill {
                 points: vec![
-                    Point::Line(Vector2F::new(-15.0, -15.0)),
-                    Point::Line(Vector2F::new(15.0, -15.0)),
-                    Point::Line(Vector2F::new(15.0, 15.0)),
-                    Point::Line(Vector2F::new(-15.0, 15.0)),
+                    Edge::Line(Vector2F::new(-15.0, -15.0)),
+                    Edge::Line(Vector2F::new(15.0, -15.0)),
+                    Edge::Line(Vector2F::new(15.0, 15.0)),
+                    Edge::Line(Vector2F::new(-15.0, 15.0)),
                 ],
                 color: ColorU::new(0, 255, 0, 255),
             }),
@@ -677,10 +677,10 @@ mod tests {
             .withf(|drawn_shape, transform, color_override, morph_index| {
                 let model_shape = Shape::Fill {
                     points: vec![
-                        Point::Line(Vector2F::new(-15.0, -15.0)),
-                        Point::Line(Vector2F::new(15.0, -15.0)),
-                        Point::Line(Vector2F::new(15.0, 15.0)),
-                        Point::Line(Vector2F::new(-15.0, 15.0)),
+                        Edge::Line(Vector2F::new(-15.0, -15.0)),
+                        Edge::Line(Vector2F::new(15.0, -15.0)),
+                        Edge::Line(Vector2F::new(15.0, 15.0)),
+                        Edge::Line(Vector2F::new(-15.0, 15.0)),
                     ],
                     color: ColorU::new(0, 255, 0, 255),
                 };

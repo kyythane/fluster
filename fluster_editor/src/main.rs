@@ -2,9 +2,11 @@
 mod application;
 mod rendering;
 mod simulation;
-use application::App;
+mod tools;
+use application::{App, AppFlags};
 use iced::{Application, Settings};
+use pathfinder_geometry::vector::Vector2I;
 
 fn main() {
-    App::run(Settings::default());
+    App::run(Settings::with_flags(AppFlags::new(Vector2I::new(800, 600))));
 }

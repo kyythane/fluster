@@ -179,7 +179,7 @@ pub fn deserialize_action(bytes: &[u8], _version: u8) -> Result<Action, BinError
 mod tests {
     use super::*;
     use crate::actions::{EntityDefinition, PartDefinition};
-    use crate::types::shapes::{Point, Shape};
+    use crate::types::shapes::{Edge, Shape};
     use pathfinder_color::ColorU;
     use pathfinder_geometry::transform2d::Transform2F;
     use pathfinder_geometry::vector::Vector2F;
@@ -213,10 +213,10 @@ mod tests {
             id: shape_id,
             shape: Shape::Fill {
                 points: vec![
-                    Point::Line(Vector2F::new(1.0, 5.0)),
-                    Point::Line(Vector2F::new(5.0, 1.0)),
-                    Point::Line(Vector2F::new(1.0, 1.0)),
-                    Point::Line(Vector2F::new(5.0, 5.0)),
+                    Edge::Line(Vector2F::new(1.0, 5.0)),
+                    Edge::Line(Vector2F::new(5.0, 1.0)),
+                    Edge::Line(Vector2F::new(1.0, 1.0)),
+                    Edge::Line(Vector2F::new(5.0, 5.0)),
                 ],
                 color: ColorU::white(),
             },
@@ -239,10 +239,10 @@ mod tests {
                 id: shape_id,
                 shape: Shape::Fill {
                     points: vec![
-                        Point::Line(Vector2F::new(1.0, 5.0)),
-                        Point::Line(Vector2F::new(5.0, 1.0)),
-                        Point::Line(Vector2F::new(1.0, 1.0)),
-                        Point::Line(Vector2F::new(5.0, 5.0)),
+                        Edge::Line(Vector2F::new(1.0, 5.0)),
+                        Edge::Line(Vector2F::new(5.0, 1.0)),
+                        Edge::Line(Vector2F::new(1.0, 1.0)),
+                        Edge::Line(Vector2F::new(5.0, 5.0)),
                     ],
                     color: ColorU::white(),
                 },
