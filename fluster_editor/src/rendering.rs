@@ -1,23 +1,46 @@
 #![deny(clippy::all)]
-use crate::simulation::{StageState, TimelineState};
-use fluster_core::rendering::{paint, RenderData, Renderer as FlusterRenderer};
+use fluster_core::rendering::{paint, PaintData, Renderer as FlusterRenderer};
+use fluster_core::types::model::DisplayLibraryItem;
 use fluster_graphics::FlusterRendererImpl;
 use gl::{ReadPixels, BGRA, UNSIGNED_BYTE};
+use iced::image::Handle as ImageHandle;
 use pathfinder_canvas::CanvasFontContext;
-use pathfinder_color::ColorF;
+use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_resources::fs::FilesystemResourceLoader;
 use sdl2::video::{GLContext, GLProfile, Window};
-use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::convert::TryInto;
+use std::error::Error;
 use std::ffi::c_void;
+use uuid::Uuid;
 
 /*
  *   Note: This is kinda a hack until there is a cleaner way to use pathfinder and iced together.
  */
+
+pub struct RenderData<'a, 'b> {
+    paint_data: PaintData<'a>,
+    background_color: ColorU,
+    library: &'b HashMap<Uuid, DisplayLibraryItem>,
+}
+
+impl<'a, 'b> RenderData<'a, 'b> {
+    pub fn new(
+        paint_data: PaintData<'a>,
+        background_color: ColorU,
+        library: &'b HashMap<Uuid, DisplayLibraryItem>,
+    ) -> Self {
+        Self {
+            paint_data,
+            background_color,
+            library,
+        }
+    }
+}
 
 pub struct StageRenderer {
     renderer: FlusterRendererImpl<GLDevice>,
@@ -60,25 +83,13 @@ impl StageRenderer {
 
         let font_context = CanvasFontContext::from_system_source();
 
-        let fluster_renderer = FlusterRendererImpl::new(
-            font_context,
-            renderer,
-            Box::new(|| ()), //Box::new(move || window.gl_swap_window()),
-        );
+        let fluster_renderer = FlusterRendererImpl::new(font_context, renderer, Box::new(|| ()));
         Ok(StageRenderer {
             renderer: fluster_renderer,
             window,
             stage_size,
             gl_context,
         })
-    }
-
-    pub fn width(&self) -> i32 {
-        self.stage_size.x()
-    }
-
-    pub fn height(&self) -> i32 {
-        self.stage_size.y()
     }
 
     /*TODO:
@@ -88,17 +99,16 @@ impl StageRenderer {
         - ???
     */
 
-    pub fn draw_frame(
-        &mut self,
-        stage_state: &StageState,
-        timeline_state: &TimelineState,
-    ) -> Result<Vec<u8>, String> {
+    pub fn draw_frame(&mut self, render_data: RenderData) -> Result<ImageHandle, Box<dyn Error>> {
         self.renderer.start_frame(self.stage_size.to_f32());
-        self.renderer.set_background(stage_state.background_color());
-        let render_data = stage_state.compute_render_data(timeline_state);
-        paint(&mut self.renderer, render_data, stage_state.library());
+        self.renderer.set_background(render_data.background_color);
+        paint(
+            &mut self.renderer,
+            render_data.paint_data,
+            render_data.library,
+        );
         self.renderer.end_frame();
-        let texture = unsafe {
+        let pixels = unsafe {
             let buffer_size = self.stage_size.x() * self.stage_size.y() * 4;
             let mut target: Vec<u8> = vec![0; buffer_size as usize];
             let ptr = (&mut target).as_mut_ptr();
@@ -114,6 +124,10 @@ impl StageRenderer {
             target
         };
         self.window.gl_swap_window();
-        Ok(texture)
+        Ok(ImageHandle::from_pixels(
+            self.stage_size.x().try_into()?,
+            self.stage_size.y().try_into()?,
+            pixels,
+        ))
     }
 }

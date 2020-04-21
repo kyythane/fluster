@@ -1,22 +1,25 @@
 #![deny(clippy::all)]
-use fluster_core::rendering::{adjust_depth, RenderData};
+use crate::rendering::RenderData;
+use fluster_core::rendering::{adjust_depth, PaintData};
 use fluster_core::types::model::{DisplayLibraryItem, Entity};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::vector::Vector2I;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem;
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
 pub struct StageState {
     background_color: ColorU,
     root_entity_id: Uuid,
     library: HashMap<Uuid, DisplayLibraryItem>,
     display_list: HashMap<Uuid, Entity>,
+    size: Vector2I,
+    scale: f32,
 }
 
 impl StageState {
-    pub fn new(background_color: ColorU) -> Self {
+    pub fn new(stage_size: Vector2I, background_color: ColorU) -> Self {
         let root_entity_id = Uuid::new_v4();
         let mut display_list = HashMap::new();
         display_list.insert(root_entity_id, Entity::create_root(root_entity_id));
@@ -25,17 +28,24 @@ impl StageState {
             root_entity_id,
             library: HashMap::new(),
             display_list,
+            size: stage_size,
+            scale: 1.0,
         }
     }
-    pub fn background_color(&self) -> ColorU {
-        self.background_color
-    }
-    pub fn library(&self) -> &HashMap<Uuid, DisplayLibraryItem> {
-        &self.library
-    }
-}
 
-impl StageState {
+    #[inline]
+    pub fn scale(&self) -> f32 {
+        self.scale
+    }
+
+    pub fn width(&self) -> i32 {
+        self.size.x()
+    }
+
+    pub fn height(&self) -> i32 {
+        self.size.y()
+    }
+
     pub fn compute_render_data(&self, timeline: &TimelineState) -> RenderData {
         let mut nodes = VecDeque::new();
         let mut depth_list = BTreeMap::new();
@@ -63,13 +73,11 @@ impl StageState {
                 None => continue,
             }
         }
-        RenderData::new(depth_list, world_space_transforms)
-    }
-}
-
-impl Default for StageState {
-    fn default() -> Self {
-        Self::new(ColorU::white())
+        RenderData::new(
+            PaintData::new(depth_list, world_space_transforms),
+            self.background_color,
+            &self.library,
+        )
     }
 }
 
@@ -160,8 +168,8 @@ impl FrameState {
             Self::Empty => {
                 let mut entities = HashSet::new();
                 entities.insert(*id);
-                let mut new_frame = Self::Key { entities };
-                mem::swap(self, &mut new_frame);
+                let new_frame = Self::Key { entities };
+                mem::replace(self, new_frame);
             }
         }
     }
@@ -170,7 +178,7 @@ impl FrameState {
         if let Self::Key { entities } = self {
             entities.remove(id);
             if entities.is_empty() {
-                mem::swap(self, &mut FrameState::Empty);
+                mem::take(self);
             }
         };
     }

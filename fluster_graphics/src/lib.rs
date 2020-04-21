@@ -231,7 +231,7 @@ where
         pattern: &Pattern,
         view_rect: RectF,
         transform: Transform2F,
-        tint: Option<ColorU>,
+        _tint: Option<ColorU>, //TODO: tinting?
     ) {
         if let Some(canvas) = &mut self.canvas {
             canvas.set_transform(&transform);

@@ -33,17 +33,17 @@ pub trait Renderer {
     fn end_frame(&mut self);
 }
 
-pub struct RenderData<'a> {
+pub struct PaintData<'a> {
     depth_list: BTreeMap<u64, &'a Entity>,
     world_space_transforms: HashMap<Uuid, Transform2F>,
 }
 
-impl<'a> RenderData<'a> {
+impl<'a> PaintData<'a> {
     pub fn new(
         depth_list: BTreeMap<u64, &'a Entity>,
         world_space_transforms: HashMap<Uuid, Transform2F>,
-    ) -> RenderData<'a> {
-        RenderData {
+    ) -> PaintData<'a> {
+        PaintData {
             depth_list,
             world_space_transforms,
         }
@@ -62,7 +62,7 @@ pub fn adjust_depth(depth: u32, depth_list: &BTreeMap<u64, &Entity>) -> u64 {
 pub fn compute_render_data<'a, S: BuildHasher>(
     root_entity_id: &Uuid,
     display_list: &'a HashMap<Uuid, Entity, S>,
-) -> Result<RenderData<'a>, String> {
+) -> Result<PaintData<'a>, String> {
     use std::collections::VecDeque;
     let mut depth_list: BTreeMap<u64, &'a Entity> = BTreeMap::new();
     let mut world_space_transforms: HashMap<Uuid, Transform2F> = HashMap::new();
@@ -93,7 +93,7 @@ pub fn compute_render_data<'a, S: BuildHasher>(
             ));
         }
     }
-    Ok(RenderData {
+    Ok(PaintData {
         depth_list,
         world_space_transforms,
     })
@@ -101,12 +101,12 @@ pub fn compute_render_data<'a, S: BuildHasher>(
 
 pub fn paint<S: BuildHasher>(
     renderer: &mut impl Renderer,
-    render_data: RenderData,
+    paint_data: PaintData,
     library: &HashMap<Uuid, DisplayLibraryItem, S>,
 ) {
     //Render from back to front (TODO: Does Pathfinder work better front to back or back to front?)
-    for entity in render_data.depth_list.values() {
-        let world_space_transform = render_data.world_space_transforms.get(entity.id()).unwrap();
+    for entity in paint_data.depth_list.values() {
+        let world_space_transform = paint_data.world_space_transforms.get(entity.id()).unwrap();
         for part in entity.parts() {
             match part {
                 Part::Vector {
