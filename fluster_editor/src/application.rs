@@ -1,19 +1,16 @@
 #![deny(clippy::all)]
 use crate::rendering::StageRenderer;
 use crate::simulation::{StageState, TimelineState};
-use crate::tools::{EditMessage, EditState};
+use crate::tools::{EditMessage, EditState, Tool};
 use iced::{
-    executor, image::Handle as ImageHandle, Align, Application, Column, Command, Container,
-    Element, Image, Length, Size, Text,
+    button::State as ButtonState, executor, image::Handle as ImageHandle, Align, Application,
+    Button, Column, Command, Container, Element, Image, Length, Row, Size,
 };
-use iced_native::{
-    layout, Clipboard, Event, Hasher, Layout, MouseCursor, Point, Rectangle, Widget,
-};
+use iced_native::{layout, Clipboard, Event, Hasher, Layout, MouseCursor, Point, Widget};
 use iced_wgpu::{Defaults, Primitive, Renderer};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use std::convert::TryInto;
-use std::hash::Hash;
+use std::{convert::TryInto, hash::Hash};
 
 pub struct Stage<'a, Message> {
     width: u16,
@@ -98,7 +95,6 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
         );
         match event {
             Event::Mouse(mouse_event) => {
-                println!("{:?} {:?}", mouse_event, stage_position);
                 //TODO: mouse picking for existing shapes/entities
                 //TODO: how are shapes/entities tracked in edit
                 if let Some(edit_message) =
@@ -128,12 +124,14 @@ where
     }
 }
 
-pub struct App {
-    stage_state: StageState,
-    stage_renderer: StageRenderer,
-    edit_state: EditState,
-    timeline_state: TimelineState,
-    frame_handle: ImageHandle,
+#[derive(Default)]
+pub struct ToolPaneState {
+    pointer_state: ButtonState,
+    path_state: ButtonState,
+    polygon_state: ButtonState,
+    ellipse_state: ButtonState,
+    fill_state: ButtonState,
+    eyedropper_state: ButtonState,
 }
 
 #[derive(Debug, Clone)]
@@ -161,9 +159,63 @@ impl Default for AppFlags {
     }
 }
 
+pub struct App {
+    stage_state: StageState,
+    stage_renderer: StageRenderer,
+    edit_state: EditState,
+    timeline_state: TimelineState,
+    frame_handle: ImageHandle,
+    tool_pane_state: ToolPaneState,
+}
+
 impl App {
     fn convert_edit_message(edit_message: EditMessage) -> AppMessage {
         AppMessage::EditMessage(edit_message)
+    }
+
+    fn tool_pane(tool_pane_state: &mut ToolPaneState) -> Column<AppMessage> {
+        fn button_factory(button_state: &mut ButtonState, tool: Tool) -> Button<AppMessage> {
+            Button::new(button_state, Image::new(tool.image_handle()))
+                .on_press(AppMessage::EditMessage(tool.change_message()))
+                .width(Length::Fill)
+        }
+
+        Column::new()
+            .padding(20)
+            .spacing(3)
+            .push(
+                Row::new()
+                    .spacing(3)
+                    .align_items(Align::Center)
+                    .push(button_factory(
+                        &mut tool_pane_state.pointer_state,
+                        Tool::Pointer,
+                    ))
+                    .push(button_factory(&mut tool_pane_state.path_state, Tool::Path)),
+            )
+            .push(
+                Row::new()
+                    .spacing(3)
+                    .align_items(Align::Center)
+                    .push(button_factory(
+                        &mut tool_pane_state.polygon_state,
+                        Tool::Polygon,
+                    ))
+                    .push(button_factory(
+                        &mut tool_pane_state.ellipse_state,
+                        Tool::Ellipse,
+                    )),
+            )
+            .push(
+                Row::new()
+                    .spacing(3)
+                    .align_items(Align::Center)
+                    .push(button_factory(&mut tool_pane_state.fill_state, Tool::Fill))
+                    .push(button_factory(
+                        &mut tool_pane_state.eyedropper_state,
+                        Tool::Eyedropper,
+                    )),
+            )
     }
 }
 
@@ -186,6 +238,7 @@ impl Application for App {
                 edit_state: EditState::default(),
                 timeline_state,
                 frame_handle,
+                tool_pane_state: ToolPaneState::default(),
             },
             Command::none(),
         )
@@ -196,6 +249,9 @@ impl Application for App {
     }
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+        match message {
+            Self::Message::EditMessage(edit_message) => self.edit_state.update(edit_message),
+        }
         Command::none()
     }
 
@@ -206,11 +262,13 @@ impl Application for App {
             &self.edit_state,
             Box::new(Self::convert_edit_message),
         );
-        let content = Column::new()
+        let tools = Self::tool_pane(&mut self.tool_pane_state);
+        let content = Row::new()
             .padding(20)
             .spacing(20)
             .align_items(Align::Center)
-            .push(stage);
+            .push(stage)
+            .push(tools);
         Container::new(content)
             .width(Length::Fill)
             .height(Length::Fill)

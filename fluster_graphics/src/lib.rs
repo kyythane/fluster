@@ -161,7 +161,7 @@ where
                         };
                         let points = points
                             .iter()
-                            .map(|mp| mp.to_point(morph_index))
+                            .map(|mp| mp.to_edge(morph_index))
                             .collect::<Vec<Edge>>();
                         stroke_path(
                             canvas,
@@ -182,7 +182,7 @@ where
                         };
                         let points = points
                             .iter()
-                            .map(|mp| mp.to_point(morph_index))
+                            .map(|mp| mp.to_edge(morph_index))
                             .collect::<Vec<Edge>>();
                         let path = edges_to_path(&points, true);
                         canvas.set_transform(&transform);

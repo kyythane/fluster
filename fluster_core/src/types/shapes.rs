@@ -82,7 +82,7 @@ pub enum MorphEdge {
 }
 
 impl MorphEdge {
-    pub fn to_point(&self, percent: f32) -> Edge {
+    pub fn to_edge(&self, percent: f32) -> Edge {
         match self {
             MorphEdge::Move(start, end) => Edge::Move(start.lerp(*end, percent)),
             MorphEdge::Line(start, end) => Edge::Line(start.lerp(*end, percent)),

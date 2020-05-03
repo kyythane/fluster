@@ -19,7 +19,7 @@ pathfinder_gl = { git = "https://github.com/kyythane/pathfinder.git" }
 pathfinder_renderer = { git = "https://github.com/kyythane/pathfinder.git" }
 pathfinder_resources = { git = "https://github.com/kyythane/pathfinder.git" }
 uuid = { version = "0.8", features = ["v4"] }
-iced = "0.1"
+iced = { version = "0.1", features = ["image"] }
 iced_native= "0.2"
 iced_wgpu= "0.2"
 # image = "0.23"
