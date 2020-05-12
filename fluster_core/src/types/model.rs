@@ -279,6 +279,11 @@ impl Entity {
     }
 
     #[inline]
+    pub fn remove_part(&mut self, item_id: &Uuid) {
+        self.parts.retain(|part| part.item_id() != item_id);
+    }
+
+    #[inline]
     pub fn children(&self) -> &Vec<Uuid> {
         &self.children
     }

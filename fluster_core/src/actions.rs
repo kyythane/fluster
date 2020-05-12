@@ -46,11 +46,6 @@ impl ActionList {
         self.action_index
     }
 
-    pub fn jump_to_frame(&mut self, frame: u32) -> Result<(usize, u32), String> {
-        unimplemented!()
-    }
-
-    // TODO : this should return a tuple of (usize, u32) where the first is the action_index and the second is the new frame index
     pub fn jump_to_label(&mut self, label: &str) -> Result<(usize, u32), String> {
         let new_index = match self.labels.get(label) {
             Some(index) => *index,

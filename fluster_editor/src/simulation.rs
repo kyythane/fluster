@@ -19,7 +19,7 @@ use uuid::Uuid;
 struct ShapeScratchPad {
     id: Uuid,
     edges: Vec<Edge>,
-    preview_edge: Option<Edge>,
+    committed_edges: usize,
 }
 
 impl ShapeScratchPad {
@@ -27,43 +27,87 @@ impl ShapeScratchPad {
         ShapeScratchPad {
             id: Uuid::new_v4(),
             edges: vec![],
-            preview_edge: None,
+            committed_edges: 0,
         }
     }
 
-    fn init(&mut self, start_position: Vector2F) {
-        self.preview_edge = None;
-        self.id = Uuid::new_v4();
-        self.edges.clear();
-        self.edges.push(Edge::Move(start_position));
-    }
-
-    fn next_point(&mut self, next_position: Vector2F) {
-        self.preview_edge = None;
-        //TODO: other path types
-        self.edges.push(Edge::Line(next_position));
-    }
-
-    fn update_preview_edge(&mut self, temp_position: Vector2F) {
-        if self.edges.len() > 0 {
-            self.preview_edge = Some(Edge::Line(temp_position));
-        } else if self.preview_edge.is_some() {
-            self.preview_edge = None;
-        }
-    }
-
-    fn complete_shape(&mut self) -> (Uuid, Shape) {
-        self.preview_edge = None;
-        let edges = mem::take(&mut self.edges);
-        (
+    fn update_library(&mut self, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
+        library.insert(
             self.id,
-            Shape::Path {
-                points: edges,
+            DisplayLibraryItem::Vector(Shape::Path {
+                points: self.edges.clone(),
                 color: ColorU::black(),
                 is_closed: false,
                 stroke_style: StrokeStyle::default(),
-            },
-        )
+            }),
+        );
+    }
+
+    fn init(
+        &mut self,
+        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+        display_list: &mut HashMap<Uuid, Entity>,
+        root_entity_id: &Uuid,
+        start_position: Vector2F,
+    ) {
+        self.committed_edges = 1;
+        self.id = Uuid::new_v4();
+        self.edges.clear();
+        self.edges.push(Edge::Move(start_position));
+        let part = Part::Vector {
+            item_id: self.id,
+            transform: Transform2F::default(),
+            color: None,
+        };
+        display_list
+            .entry(*root_entity_id)
+            .and_modify(|root| root.add_part(part));
+        self.update_library(library)
+    }
+
+    fn next_point(
+        &mut self,
+        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+        next_position: Vector2F,
+    ) {
+        if self.committed_edges < self.edges.len() {
+            self.edges.pop();
+        }
+        //TODO: other path types
+        self.edges.push(Edge::Line(next_position));
+        self.committed_edges = self.edges.len();
+        self.update_library(library);
+    }
+
+    fn update_preview_edge(
+        &mut self,
+        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+        temp_position: Vector2F,
+    ) {
+        if self.committed_edges < self.edges.len() {
+            self.edges.pop();
+        }
+        self.edges.push(Edge::Line(temp_position));
+        self.update_library(library);
+    }
+
+    fn complete_shape(
+        &mut self,
+        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+        display_list: &mut HashMap<Uuid, Entity>,
+        root_entity_id: &Uuid,
+    ) {
+        if self.committed_edges < self.edges.len() {
+            self.edges.pop();
+        }
+        if self.committed_edges <= 1 {
+            library.remove(&self.id);
+            display_list
+                .entry(*root_entity_id)
+                .and_modify(|root| root.remove_part(&self.id));
+        } else {
+            self.update_library(library);
+        }
     }
 }
 pub struct StageState {
@@ -98,33 +142,34 @@ impl StageState {
 
     pub fn apply_edit(&mut self, edit_message: &EditMessage) -> bool {
         match edit_message {
-            EditMessage::ToolUpdate(tool_message) => match tool_message {
-                ToolMessage::PathStart { start_position } => {
-                    self.shape_scratch_pad.init(*start_position);
-                    false
+            EditMessage::ToolUpdate(tool_message) => {
+                match tool_message {
+                    ToolMessage::PathStart { start_position } => {
+                        self.shape_scratch_pad.init(
+                            &mut self.library,
+                            &mut self.display_list,
+                            &self.root_entity_id,
+                            *start_position,
+                        );
+                    }
+                    ToolMessage::PathNext { next_position } => {
+                        self.shape_scratch_pad
+                            .next_point(&mut self.library, *next_position);
+                    }
+                    ToolMessage::PathPlaceHover { hover_position } => {
+                        self.shape_scratch_pad
+                            .update_preview_edge(&mut self.library, *hover_position);
+                    }
+                    ToolMessage::PathEnd => {
+                        self.shape_scratch_pad.complete_shape(
+                            &mut self.library,
+                            &mut self.display_list,
+                            &self.root_entity_id,
+                        );
+                    }
                 }
-                ToolMessage::PathNext { next_position } => {
-                    self.shape_scratch_pad.next_point(*next_position);
-                    false
-                }
-                ToolMessage::PathPlaceHover { hover_position } => {
-                    self.shape_scratch_pad.update_preview_edge(*hover_position);
-                    false
-                }
-                ToolMessage::PathEnd => {
-                    let (id, shape) = self.shape_scratch_pad.complete_shape();
-                    self.library.insert(id, DisplayLibraryItem::Vector(shape));
-                    let part = Part::Vector {
-                        item_id: id,
-                        transform: Transform2F::default(),
-                        color: None,
-                    };
-                    self.display_list
-                        .entry(self.root_entity_id)
-                        .and_modify(|root| root.add_part(part));
-                    true
-                }
-            },
+                true
+            }
             _ => false,
         }
     }
@@ -142,6 +187,7 @@ impl StageState {
         self.size.y()
     }
 
+    //TODO: how does root interact with layers? Should I support more than one root?
     pub fn compute_render_data(&self, timeline: &TimelineState) -> RenderData {
         let mut nodes = VecDeque::new();
         let mut depth_list = BTreeMap::new();

@@ -126,28 +126,28 @@ impl ToolState {
 
     fn start_placing(&mut self) {
         match self {
-            Self::Path {
-                ..
-            } => {
-                mem::replace(self,
-                Self::Path {
-                    placement_state: PlacementState::Placing,
-                });
-            },
+            Self::Path { .. } => {
+                mem::replace(
+                    self,
+                    Self::Path {
+                        placement_state: PlacementState::Placing,
+                    },
+                );
+            }
             _ => (),
         }
     }
 
     fn stop_placing(&mut self) {
         match self {
-            Self::Path {
-                ..
-            } => {
-                mem::replace(self,
-                Self::Path {
-                    placement_state: PlacementState::None,
-                });
-            },
+            Self::Path { .. } => {
+                mem::replace(
+                    self,
+                    Self::Path {
+                        placement_state: PlacementState::None,
+                    },
+                );
+            }
             _ => (),
         }
     }
@@ -157,7 +157,7 @@ impl ToolState {
             Self::Pointer => MouseCursor::Idle,
             _ => match self.placement_state() {
                 PlacementState::None => MouseCursor::Pointer,
-                PlacementState::Placing => MouseCursor::Grab,
+                PlacementState::Placing => MouseCursor::Grabbing,
             },
         }
     }
@@ -167,6 +167,7 @@ impl ToolState {
         mouse_event: MouseEvent,
         stage_position: Vector2F,
     ) -> Option<ToolMessage> {
+        //println!("{:?}", stage_position);
         match self {
             Self::Pointer => None,
             Self::Path {
