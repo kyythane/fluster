@@ -10,7 +10,7 @@ use iced_native::{layout, Clipboard, Event, Hasher, Layout, MouseCursor, Point, 
 use iced_wgpu::{Defaults, Primitive, Renderer};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use std::{convert::TryInto, hash::Hash};
+use std::{convert::TryInto, hash::Hash, mem};
 
 pub struct Stage<'a, Message> {
     width: u16,
@@ -137,6 +137,7 @@ pub struct ToolPaneState {
 #[derive(Debug, Clone)]
 pub enum AppMessage {
     EditMessage(EditMessage),
+    StageUpdateMessage,
 }
 
 pub struct AppFlags {
@@ -217,6 +218,12 @@ impl App {
                     )),
             )
     }
+
+    fn refresh_stage(&mut self) {
+        let render_data = self.stage_state.compute_render_data(&self.timeline_state);
+        let frame_handle = self.stage_renderer.draw_frame(render_data).unwrap();
+        mem::replace(&mut self.frame_handle, frame_handle);
+    }
 }
 
 impl Application for App {
@@ -224,10 +231,11 @@ impl Application for App {
     type Message = AppMessage;
     type Flags = AppFlags;
 
+    // TODO: saving/loading/new
     fn new(flags: Self::Flags) -> (Self, Command<Self::Message>) {
         let stage_state = StageState::new(flags.stage_size, flags.background_color);
         let mut stage_renderer = StageRenderer::new(flags.stage_size).unwrap();
-        let timeline_state = TimelineState::default();
+        let timeline_state = TimelineState::new(stage_state.root());
         let frame_handle = stage_renderer
             .draw_frame(stage_state.compute_render_data(&timeline_state))
             .unwrap();
@@ -250,7 +258,16 @@ impl Application for App {
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
-            Self::Message::EditMessage(edit_message) => self.edit_state.update(edit_message),
+            Self::Message::EditMessage(edit_message) => {
+                self.edit_state.update(&edit_message);
+                let refresh_stage = self.stage_state.apply_edit(&edit_message);
+                if refresh_stage {
+                    self.refresh_stage();
+                }
+            }
+            Self::Message::StageUpdateMessage => {
+                self.refresh_stage();
+            }
         }
         Command::none()
     }

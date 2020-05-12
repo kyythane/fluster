@@ -22,6 +22,7 @@ use uuid::Uuid;
  *   Note: This is kinda a hack until there is a cleaner way to use pathfinder and iced together.
  */
 
+#[derive(Debug)]
 pub struct RenderData<'a, 'b> {
     paint_data: PaintData<'a>,
     background_color: ColorU,

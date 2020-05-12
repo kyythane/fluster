@@ -230,7 +230,7 @@ impl Entity {
     }
 
     pub fn create_root(id: Uuid) -> Self {
-        Self::new(id, 0, "Roor", id, vec![], Transform2F::default(), 0.0)
+        Self::new(id, 0, "Root", id, vec![], Transform2F::default(), 0.0)
     }
 
     #[inline]
@@ -271,6 +271,11 @@ impl Entity {
     #[inline]
     pub fn parts(&self) -> &Vec<Part> {
         &self.parts
+    }
+
+    #[inline]
+    pub fn add_part(&mut self, part: Part) {
+        self.parts.push(part);
     }
 
     #[inline]

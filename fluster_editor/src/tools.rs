@@ -38,23 +38,11 @@ impl Tool {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum Segment {
-    Line {
-        start_position: Vector2F,
-        end_position: Vector2F,
-    },
-}
-
-#[derive(Clone, Copy, Debug)]
 pub enum ToolMessage {
     PathStart { start_position: Vector2F },
     PathNext { next_position: Vector2F },
     PathPlaceHover { hover_position: Vector2F },
-    PathEnd { end_position: Vector2F },
-}
-#[derive(Clone, Copy, Debug)]
-pub enum ToolResultMessage {
-    PathSegmentCreate { segment: Segment },
+    PathEnd,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -67,9 +55,6 @@ enum PlacementState {
 enum ToolState {
     Pointer, //grab: edge, point, fill, scale_x, scale_y, scale_xy, entity, group. hover
     Path {
-        //TODO: color
-        start: Vector2F,
-        end: Vector2F,
         placement_state: PlacementState,
     },
     Polygon {
@@ -97,8 +82,6 @@ impl ToolState {
         match tool {
             Tool::Pointer => Self::Pointer,
             Tool::Path => Self::Path {
-                start: Vector2F::zero(),
-                end: Vector2F::zero(),
                 placement_state: PlacementState::None,
             },
             _ => todo!(),
@@ -106,7 +89,7 @@ impl ToolState {
     }
 
     fn switch_tool(&mut self, tool: Tool) {
-        mem::replace(self, Self::new(self.tool()));
+        mem::replace(self, Self::new(tool));
     }
 
     fn cancel_action(&mut self) {
@@ -138,6 +121,34 @@ impl ToolState {
             | Self::Ellipse {
                 placement_state, ..
             } => *placement_state,
+        }
+    }
+
+    fn start_placing(&mut self) {
+        match self {
+            Self::Path {
+                ..
+            } => {
+                mem::replace(self,
+                Self::Path {
+                    placement_state: PlacementState::Placing,
+                });
+            },
+            _ => (),
+        }
+    }
+
+    fn stop_placing(&mut self) {
+        match self {
+            Self::Path {
+                ..
+            } => {
+                mem::replace(self,
+                Self::Path {
+                    placement_state: PlacementState::None,
+                });
+            },
+            _ => (),
         }
     }
 
@@ -176,9 +187,7 @@ impl ToolState {
                 MouseEvent::Input { state, .. } if state == ButtonState::Pressed => {
                     match placement_state {
                         PlacementState::None => None,
-                        PlacementState::Placing => Some(ToolMessage::PathEnd {
-                            end_position: stage_position,
-                        }),
+                        PlacementState::Placing => Some(ToolMessage::PathEnd),
                     }
                 }
                 MouseEvent::CursorMoved { .. } => {
@@ -196,68 +205,12 @@ impl ToolState {
         }
     }
 
-    fn update(&mut self, tool_message: ToolMessage) {
-        //} -> Option<ToolResultMessage> {
-        println!("{:?}", tool_message);
+    fn update(&mut self, tool_message: &ToolMessage) {
         match tool_message {
-            ToolMessage::PathStart { start_position } => {
-                if let ToolState::Path { .. } = self {
-                    let new_state = ToolState::Path {
-                        start: start_position,
-                        end: start_position,
-                        placement_state: PlacementState::Placing,
-                    };
-                    mem::replace(self, new_state);
-                }
-            }
-            ToolMessage::PathNext { next_position } => {
-                if let ToolState::Path { start, .. } = self {
-                    let path_create_message = ToolResultMessage::PathSegmentCreate {
-                        segment: Segment::Line {
-                            start_position: *start,
-                            end_position: next_position,
-                        },
-                    };
-                    let new_state = ToolState::Path {
-                        start: next_position,
-                        end: next_position,
-                        placement_state: PlacementState::Placing,
-                    };
-                    mem::replace(self, new_state);
-                }
-            }
-            ToolMessage::PathPlaceHover { hover_position } => {
-                if let ToolState::Path {
-                    start,
-                    placement_state,
-                    ..
-                } = self
-                {
-                    let new_state = ToolState::Path {
-                        start: *start,
-                        end: hover_position,
-                        placement_state: *placement_state,
-                    };
-                    mem::replace(self, new_state);
-                }
-            }
-            ToolMessage::PathEnd { end_position } => {
-                if let ToolState::Path { start, .. } = self {
-                    let path_create_message = ToolResultMessage::PathSegmentCreate {
-                        segment: Segment::Line {
-                            start_position: *start,
-                            end_position,
-                        },
-                    };
-                    let new_state = ToolState::Path {
-                        start: Vector2F::zero(),
-                        end: Vector2F::zero(),
-                        placement_state: PlacementState::None,
-                    };
-                    mem::replace(self, new_state);
-                }
-            }
-        }
+            ToolMessage::PathStart { .. } => self.start_placing(),
+            ToolMessage::PathEnd { .. } => self.stop_placing(),
+            _ => (),
+        };
     }
 }
 
@@ -303,8 +256,8 @@ impl Default for EditState {
 }
 
 impl EditState {
-    pub fn switch_tool(&mut self, tool: Tool) {
-        self.tool_state.switch_tool(tool);
+    pub fn switch_tool(&mut self, tool: &Tool) {
+        self.tool_state.switch_tool(*tool);
         //TODO: conditionally clear selection
     }
 
@@ -328,10 +281,10 @@ impl EditState {
         }
     }
 
-    pub fn update(&mut self, message: EditMessage) {
+    pub fn update(&mut self, message: &EditMessage) {
         match message {
             EditMessage::ToolUpdate(tool_message) => {
-                self.tool_state.update(tool_message);
+                self.tool_state.update(&tool_message);
             }
             EditMessage::ToolChange(tool) => {
                 self.switch_tool(tool);

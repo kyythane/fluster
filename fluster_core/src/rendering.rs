@@ -32,7 +32,7 @@ pub trait Renderer {
     ); //TODO: filters?
     fn end_frame(&mut self);
 }
-
+#[derive(Debug)]
 pub struct PaintData<'a> {
     depth_list: BTreeMap<u64, &'a Entity>,
     world_space_transforms: HashMap<Uuid, Transform2F>,
