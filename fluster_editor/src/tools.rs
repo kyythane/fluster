@@ -37,11 +37,18 @@ impl Tool {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum ToolMessage {
-    PathStart { start_position: Vector2F },
-    PathNext { next_position: Vector2F },
-    PathPlaceHover { hover_position: Vector2F },
+    PathStart {
+        start_position: Vector2F,
+        options: Vec<ToolOption>,
+    },
+    PathNext {
+        next_position: Vector2F,
+    },
+    PathPlaceHover {
+        hover_position: Vector2F,
+    },
     PathEnd,
 }
 
@@ -58,8 +65,8 @@ enum ToolState {
         placement_state: PlacementState,
     },
     Polygon {
-        num_edges: u8, //don't support edges over some reasonable size.
         center: Vector2F,
+        lock_aspect_ratio: bool,
         placement_state: PlacementState,
     },
     Ellipse {
@@ -82,6 +89,17 @@ impl ToolState {
         match tool {
             Tool::Pointer => Self::Pointer,
             Tool::Path => Self::Path {
+                placement_state: PlacementState::None,
+            },
+            Tool::Polygon => Self::Polygon {
+                center: Vector2F::default(),
+                lock_aspect_ratio: false,
+                placement_state: PlacementState::None,
+            },
+            Tool::Ellipse => Self::Ellipse {
+                focus_1: Vector2F::default(),
+                focus_2: Vector2F::default(),
+                lock_aspect_ratio: false,
                 placement_state: PlacementState::None,
             },
             _ => todo!(),
@@ -166,8 +184,10 @@ impl ToolState {
         &self,
         mouse_event: MouseEvent,
         stage_position: Vector2F,
+        tool_options: &Vec<ToolOption>,
     ) -> Option<ToolMessage> {
         //println!("{:?}", stage_position);
+        let tool_options = self.get_options(tool_options);
         match self {
             Self::Pointer => None,
             Self::Path {
@@ -179,6 +199,7 @@ impl ToolState {
                     match placement_state {
                         PlacementState::None => Some(ToolMessage::PathStart {
                             start_position: stage_position,
+                            options: tool_options,
                         }),
                         PlacementState::Placing => Some(ToolMessage::PathNext {
                             next_position: stage_position,
@@ -213,12 +234,50 @@ impl ToolState {
             _ => (),
         };
     }
+
+    fn get_options(&self, tool_options: &Vec<ToolOption>) -> Vec<ToolOption> {
+        tool_options
+            .iter()
+            .filter(|option| match option {
+                ToolOption::LineColor(..) => match self {
+                    Self::Path { .. } | Self::Ellipse { .. } | Self::Polygon { .. } => true,
+                    _ => false,
+                },
+                ToolOption::FillColor(..) => match self {
+                    Self::Path { .. } | Self::Ellipse { .. } | Self::Polygon { .. } => true,
+                    _ => false,
+                },
+                ToolOption::NumEdges(..) => match self {
+                    Self::Polygon { .. } => true,
+                    _ => false,
+                },
+                ToolOption::StrokeWidth(..) => match self {
+                    Self::Path { .. } | Self::Ellipse { .. } | Self::Polygon { .. } => true,
+                    _ => false,
+                },
+                ToolOption::ClosedPath(..) => match self {
+                    Self::Path { .. } => true,
+                    _ => false,
+                },
+            })
+            .map(|o| *o)
+            .collect::<Vec<ToolOption>>()
+    }
 }
 
 impl Default for ToolState {
     fn default() -> Self {
         Self::new(Tool::Pointer)
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ToolOption {
+    LineColor(Option<ColorU>),
+    FillColor(Option<ColorU>),
+    NumEdges(u8),
+    StrokeWidth(f32),
+    ClosedPath(bool),
 }
 
 #[derive(Debug, Clone)]
@@ -242,6 +301,7 @@ impl Selection {
 #[derive(Clone, Debug)]
 pub struct EditState {
     tool_state: ToolState,
+    tool_options: Vec<ToolOption>,
     selection: Selection,
 }
 
@@ -249,6 +309,13 @@ impl Default for EditState {
     fn default() -> Self {
         EditState {
             tool_state: ToolState::default(),
+            //TODO: configure/persist defaults
+            tool_options: vec![
+                ToolOption::LineColor(Some(ColorU::black())),
+                ToolOption::FillColor(Some(ColorU::white())),
+                ToolOption::StrokeWidth(3.0),
+                ToolOption::NumEdges(4),
+            ],
             selection: Selection {
                 objects: HashSet::new(),
             },
@@ -275,9 +342,9 @@ impl EditState {
         if !in_bounds {
             None
         } else {
-            let tool_message = self
-                .tool_state
-                .on_mouse_event(mouse_event, stage_position)?;
+            let tool_message =
+                self.tool_state
+                    .on_mouse_event(mouse_event, stage_position, &self.tool_options)?;
             Some(EditMessage::ToolUpdate(tool_message))
         }
     }

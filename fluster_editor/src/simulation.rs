@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 use crate::{
     rendering::RenderData,
-    tools::{EditMessage, ToolMessage},
+    tools::{EditMessage, ToolMessage, ToolOption},
 };
 use fluster_core::rendering::{adjust_depth, PaintData};
 use fluster_core::types::{
@@ -20,6 +20,7 @@ struct ShapeScratchPad {
     id: Uuid,
     edges: Vec<Edge>,
     committed_edges: usize,
+    shape_prototype: Option<Shape>,
 }
 
 impl ShapeScratchPad {
@@ -28,28 +29,67 @@ impl ShapeScratchPad {
             id: Uuid::new_v4(),
             edges: vec![],
             committed_edges: 0,
+            shape_prototype: None,
         }
     }
 
-    fn update_library(&mut self, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
-        library.insert(
-            self.id,
-            DisplayLibraryItem::Vector(Shape::Path {
-                points: self.edges.clone(),
-                color: ColorU::black(),
-                is_closed: false,
-                stroke_style: StrokeStyle::default(),
-            }),
-        );
+    fn create_path_prototype(&mut self, options: &Vec<ToolOption>) {
+        //TODO: Fill and StrokedFill, rename Path to Stroke
+        let mut line_color = None;
+        //let mut fill_color = None;
+        let mut stroke_width = 1.0;
+        let mut is_closed = false;
+        for option in options {
+            match option {
+                ToolOption::LineColor(color) => line_color = *color,
+                //   ToolOption::FillColor(color) => fill_color = *color,
+                ToolOption::StrokeWidth(width) => stroke_width = *width,
+                ToolOption::ClosedPath(closed) => is_closed = *closed,
+                _ => {}
+            }
+        }
+        self.shape_prototype = Some(Shape::Path {
+            points: vec![],
+            color: line_color.unwrap_or(ColorU::black()),
+            is_closed,
+            stroke_style: StrokeStyle {
+                line_width: stroke_width,
+                line_cap: LineCap::default(),
+                line_join: LineJoin::default(),
+            },
+        });
     }
 
-    fn init(
+    fn update_library(&mut self, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
+        if let Some(shape_prototype) = &self.shape_prototype {
+            let shape = match shape_prototype {
+                Shape::Path {
+                    color,
+                    is_closed,
+                    stroke_style,
+                    ..
+                } => Shape::Path {
+                    points: self.edges.clone(),
+                    color: *color,
+                    is_closed: *is_closed,
+                    stroke_style: *stroke_style,
+                },
+                _ => todo!(),
+            };
+
+            library.insert(self.id, DisplayLibraryItem::Vector(shape));
+        }
+    }
+
+    fn start_path(
         &mut self,
         library: &mut HashMap<Uuid, DisplayLibraryItem>,
         display_list: &mut HashMap<Uuid, Entity>,
         root_entity_id: &Uuid,
         start_position: Vector2F,
+        options: &Vec<ToolOption>,
     ) {
+        self.create_path_prototype(options);
         self.committed_edges = 1;
         self.id = Uuid::new_v4();
         self.edges.clear();
@@ -65,7 +105,7 @@ impl ShapeScratchPad {
         self.update_library(library)
     }
 
-    fn next_point(
+    fn next_edge(
         &mut self,
         library: &mut HashMap<Uuid, DisplayLibraryItem>,
         next_position: Vector2F,
@@ -91,7 +131,7 @@ impl ShapeScratchPad {
         self.update_library(library);
     }
 
-    fn complete_shape(
+    fn complete_path(
         &mut self,
         library: &mut HashMap<Uuid, DisplayLibraryItem>,
         display_list: &mut HashMap<Uuid, Entity>,
@@ -108,6 +148,9 @@ impl ShapeScratchPad {
         } else {
             self.update_library(library);
         }
+        self.edges.clear();
+        self.committed_edges = 0;
+        self.shape_prototype = None;
     }
 }
 pub struct StageState {
@@ -144,24 +187,28 @@ impl StageState {
         match edit_message {
             EditMessage::ToolUpdate(tool_message) => {
                 match tool_message {
-                    ToolMessage::PathStart { start_position } => {
-                        self.shape_scratch_pad.init(
+                    ToolMessage::PathStart {
+                        start_position,
+                        options,
+                    } => {
+                        self.shape_scratch_pad.start_path(
                             &mut self.library,
                             &mut self.display_list,
                             &self.root_entity_id,
                             *start_position,
+                            options,
                         );
                     }
                     ToolMessage::PathNext { next_position } => {
                         self.shape_scratch_pad
-                            .next_point(&mut self.library, *next_position);
+                            .next_edge(&mut self.library, *next_position);
                     }
                     ToolMessage::PathPlaceHover { hover_position } => {
                         self.shape_scratch_pad
                             .update_preview_edge(&mut self.library, *hover_position);
                     }
                     ToolMessage::PathEnd => {
-                        self.shape_scratch_pad.complete_shape(
+                        self.shape_scratch_pad.complete_path(
                             &mut self.library,
                             &mut self.display_list,
                             &self.root_entity_id,
