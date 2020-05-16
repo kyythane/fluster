@@ -1,10 +1,10 @@
 #![deny(clippy::all)]
 use crate::rendering::StageRenderer;
 use crate::simulation::{StageState, TimelineState};
-use crate::tools::{EditMessage, EditState, Tool};
+use crate::tools::{EditMessage, EditState, Tool, ToolOption};
 use iced::{
     button::State as ButtonState, executor, image::Handle as ImageHandle, Align, Application,
-    Button, Column, Command, Container, Element, Image, Length, Row, Size,
+    Button, Column, Command, Container, Element, Image, Length, Row, Size, Text,
 };
 use iced_native::{layout, Clipboard, Event, Hasher, Layout, MouseCursor, Point, Widget};
 use iced_wgpu::{Defaults, Primitive, Renderer};
@@ -219,6 +219,20 @@ impl App {
             )
     }
 
+    fn tool_options_pane<'a>(mut options: Vec<ToolOption>) -> Column<'a, AppMessage> {
+        println!("{:?}", options);
+        let children = options.drain(..).map(|option| {
+            Row::new()
+                .push(Text::new(option.display_name()))
+                .push(Text::new(option.display_value()))
+        });
+        let mut column = Column::new().padding(20).spacing(3);
+        for child in children {
+            column = column.push(child);
+        }
+        column
+    }
+
     fn refresh_stage(&mut self) {
         let render_data = self.stage_state.compute_render_data(&self.timeline_state);
         let frame_handle = self.stage_renderer.draw_frame(render_data).unwrap();
@@ -280,12 +294,13 @@ impl Application for App {
             Box::new(Self::convert_edit_message),
         );
         let tools = Self::tool_pane(&mut self.tool_pane_state);
+        let tool_options = Self::tool_options_pane(self.edit_state.tool_options());
         let content = Row::new()
             .padding(20)
             .spacing(20)
             .align_items(Align::Center)
             .push(stage)
-            .push(tools);
+            .push(Column::new().push(tools).push(tool_options));
         Container::new(content)
             .width(Length::Fill)
             .height(Length::Fill)

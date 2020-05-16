@@ -60,7 +60,7 @@ enum PlacementState {
 
 #[derive(Clone, Debug)]
 enum ToolState {
-    Pointer, //grab: edge, point, fill, scale_x, scale_y, scale_xy, entity, group. hover
+    Pointer, //TODO: grab: edge, point, fill, scale_x, scale_y, scale_xy, entity, group. hover
     Path {
         placement_state: PlacementState,
     },
@@ -186,7 +186,6 @@ impl ToolState {
         stage_position: Vector2F,
         tool_options: &Vec<ToolOption>,
     ) -> Option<ToolMessage> {
-        //println!("{:?}", stage_position);
         let tool_options = self.get_options(tool_options);
         match self {
             Self::Pointer => None,
@@ -280,6 +279,28 @@ pub enum ToolOption {
     ClosedPath(bool),
 }
 
+impl ToolOption {
+    pub fn display_name(&self) -> &str {
+        match self {
+            Self::LineColor(..) => "Line Color",
+            Self::FillColor(..) => "Fille Color",
+            Self::NumEdges(..) => "Sides",
+            Self::StrokeWidth(..) => "Stroke Width",
+            Self::ClosedPath(..) => "Close Shape",
+        }
+    }
+
+    pub fn display_value(&self) -> String {
+        match self {
+            Self::LineColor(color) => format!("{:?}", color),
+            Self::FillColor(color) => format!("{:?}", color),
+            Self::NumEdges(edges) => format!("{:?}", edges),
+            Self::StrokeWidth(width) => format!("{:?}", width),
+            Self::ClosedPath(closed) => format!("{:?}", closed),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum EditMessage {
     ToolUpdate(ToolMessage),
@@ -315,6 +336,7 @@ impl Default for EditState {
                 ToolOption::FillColor(Some(ColorU::white())),
                 ToolOption::StrokeWidth(3.0),
                 ToolOption::NumEdges(4),
+                ToolOption::ClosedPath(false),
             ],
             selection: Selection {
                 objects: HashSet::new(),
@@ -362,6 +384,10 @@ impl EditState {
                 self.selection.clear();
             }
         }
+    }
+
+    pub fn tool_options(&self) -> Vec<ToolOption> {
+        self.tool_state.get_options(&self.tool_options)
     }
 }
 
