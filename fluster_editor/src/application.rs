@@ -1,7 +1,9 @@
 #![deny(clippy::all)]
+use crate::messages::{AppMessage, EditMessage};
 use crate::rendering::StageRenderer;
 use crate::simulation::{StageState, TimelineState};
-use crate::tools::{EditMessage, EditState, Tool, ToolOption};
+use crate::tools::{EditState, Tool, ToolOption};
+
 use iced::{
     button::State as ButtonState, executor, image::Handle as ImageHandle, Align, Application,
     Button, Column, Command, Container, Element, Image, Length, Row, Size, Text,
@@ -91,7 +93,9 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
         let in_bounds = layout.bounds().contains(cursor_position);
         let stage_position = Vector2F::new(
             (cursor_position.x - layout.bounds().x) * self.stage_state.scale(),
-            (cursor_position.y - layout.bounds().y) * self.stage_state.scale(),
+            //TODO: Potential BUG: Is the inversion of the Y-axis here at all correct or is it making up for another issue elsewhere
+            (self.height as f32 - (cursor_position.y - layout.bounds().y))
+                * self.stage_state.scale(),
         );
         match event {
             Event::Mouse(mouse_event) => {
@@ -134,12 +138,6 @@ pub struct ToolPaneState {
     eyedropper_state: ButtonState,
 }
 
-#[derive(Debug, Clone)]
-pub enum AppMessage {
-    EditMessage(EditMessage),
-    StageUpdateMessage,
-}
-
 pub struct AppFlags {
     stage_size: Vector2I,
     background_color: ColorU,
@@ -172,6 +170,12 @@ pub struct App {
 impl App {
     fn convert_edit_message(edit_message: EditMessage) -> AppMessage {
         AppMessage::EditMessage(edit_message)
+    }
+
+    fn refresh_stage(&mut self) {
+        let render_data = self.stage_state.compute_render_data(&self.timeline_state);
+        let frame_handle = self.stage_renderer.draw_frame(render_data).unwrap();
+        mem::replace(&mut self.frame_handle, frame_handle);
     }
 
     fn tool_pane(tool_pane_state: &mut ToolPaneState) -> Column<AppMessage> {
@@ -217,26 +221,6 @@ impl App {
                         Tool::Eyedropper,
                     )),
             )
-    }
-
-    fn tool_options_pane<'a>(mut options: Vec<ToolOption>) -> Column<'a, AppMessage> {
-        println!("{:?}", options);
-        let children = options.drain(..).map(|option| {
-            Row::new()
-                .push(Text::new(option.display_name()))
-                .push(Text::new(option.display_value()))
-        });
-        let mut column = Column::new().padding(20).spacing(3);
-        for child in children {
-            column = column.push(child);
-        }
-        column
-    }
-
-    fn refresh_stage(&mut self) {
-        let render_data = self.stage_state.compute_render_data(&self.timeline_state);
-        let frame_handle = self.stage_renderer.draw_frame(render_data).unwrap();
-        mem::replace(&mut self.frame_handle, frame_handle);
     }
 }
 
@@ -294,13 +278,13 @@ impl Application for App {
             Box::new(Self::convert_edit_message),
         );
         let tools = Self::tool_pane(&mut self.tool_pane_state);
-        let tool_options = Self::tool_options_pane(self.edit_state.tool_options());
+        let options_pane = self.edit_state.options_pane();
         let content = Row::new()
             .padding(20)
             .spacing(20)
             .align_items(Align::Center)
             .push(stage)
-            .push(Column::new().push(tools).push(tool_options));
+            .push(Column::new().push(tools).push(options_pane));
         Container::new(content)
             .width(Length::Fill)
             .height(Length::Fill)

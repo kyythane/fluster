@@ -1,8 +1,6 @@
 #![deny(clippy::all)]
-use crate::{
-    rendering::RenderData,
-    tools::{EditMessage, ToolMessage, ToolOption},
-};
+use crate::messages::{AppMessage, EditMessage, ToolMessage};
+use crate::{rendering::RenderData, tools::ToolOption};
 use fluster_core::rendering::{adjust_depth, PaintData};
 use fluster_core::types::{
     model::{DisplayLibraryItem, Entity, Part},

@@ -1,7 +1,10 @@
 #![deny(clippy::all)]
+use crate::messages::{AppMessage, EditMessage, ToolMessage};
+use iced::{Checkbox, Column, Element, Row, Text, TextInput};
 use iced_native::{
     image::Handle as ImageHandle, input::mouse::Button as MouseButton,
-    input::mouse::Event as MouseEvent, input::ButtonState, MouseCursor,
+    input::mouse::Event as MouseEvent, input::ButtonState, text_input::State as TextInputState,
+    MouseCursor,
 };
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::Vector2F;
@@ -35,21 +38,6 @@ impl Tool {
     pub fn change_message(&self) -> EditMessage {
         EditMessage::ToolChange(*self)
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum ToolMessage {
-    PathStart {
-        start_position: Vector2F,
-        options: Vec<ToolOption>,
-    },
-    PathNext {
-        next_position: Vector2F,
-    },
-    PathPlaceHover {
-        hover_position: Vector2F,
-    },
-    PathEnd,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -289,23 +277,6 @@ impl ToolOption {
             Self::ClosedPath(..) => "Close Shape",
         }
     }
-
-    pub fn display_value(&self) -> String {
-        match self {
-            Self::LineColor(color) => format!("{:?}", color),
-            Self::FillColor(color) => format!("{:?}", color),
-            Self::NumEdges(edges) => format!("{:?}", edges),
-            Self::StrokeWidth(width) => format!("{:?}", width),
-            Self::ClosedPath(closed) => format!("{:?}", closed),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum EditMessage {
-    ToolUpdate(ToolMessage),
-    ToolChange(Tool),
-    Cancel,
 }
 
 #[derive(Clone, Debug)]
@@ -319,10 +290,16 @@ impl Selection {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+struct EditOptionUiState {
+    stroke_width: TextInputState,
+}
+
 #[derive(Clone, Debug)]
 pub struct EditState {
     tool_state: ToolState,
     tool_options: Vec<ToolOption>,
+    option_states: EditOptionUiState,
     selection: Selection,
 }
 
@@ -338,6 +315,7 @@ impl Default for EditState {
                 ToolOption::NumEdges(4),
                 ToolOption::ClosedPath(false),
             ],
+            option_states: EditOptionUiState::default(),
             selection: Selection {
                 objects: HashSet::new(),
             },
@@ -362,7 +340,7 @@ impl EditState {
         in_bounds: bool,
     ) -> Option<EditMessage> {
         if !in_bounds {
-            None
+            Some(EditMessage::Cancel)
         } else {
             let tool_message =
                 self.tool_state
@@ -383,11 +361,44 @@ impl EditState {
                 self.tool_state.cancel_action();
                 self.selection.clear();
             }
+            EditMessage::ChangeOption(option) => todo!(),
         }
     }
 
     pub fn tool_options(&self) -> Vec<ToolOption> {
         self.tool_state.get_options(&self.tool_options)
+    }
+
+    pub fn options_pane(&mut self) -> Column<AppMessage> {
+        let mut column = Column::new().padding(20).spacing(3);
+        for option in self.tool_options() {
+            let option_value: Element<AppMessage> = match option {
+                ToolOption::LineColor(color) => todo!(),
+                ToolOption::FillColor(color) => todo!(),
+                ToolOption::NumEdges(edges) => todo!(),
+                ToolOption::StrokeWidth(width) => TextInput::new(
+                    &mut self.option_states.stroke_width,
+                    "",
+                    &format!("{}", width),
+                    move |value| {
+                        AppMessage::from_tool_option(ToolOption::StrokeWidth(
+                            value.parse::<f32>().unwrap_or(width),
+                        ))
+                    },
+                )
+                .into(),
+                ToolOption::ClosedPath(closed) => Checkbox::new(closed, "", |value| {
+                    AppMessage::from_tool_option(ToolOption::ClosedPath(value))
+                })
+                .into(),
+            };
+            column = column.push(
+                Row::new()
+                    .push(Text::new(option.display_name()))
+                    .push(option_value),
+            );
+        }
+        column
     }
 }
 

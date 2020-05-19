@@ -1,5 +1,6 @@
 #![deny(clippy::all)]
 mod application;
+mod messages;
 mod rendering;
 mod simulation;
 mod tools;
