@@ -1,5 +1,5 @@
 #![deny(clippy::all)]
-use crate::messages::{AppMessage, EditMessage, ToolMessage};
+use crate::messages::{EditMessage, ToolMessage};
 use crate::{rendering::RenderData, tools::ToolOption};
 use fluster_core::rendering::{adjust_depth, PaintData};
 use fluster_core::types::{
@@ -35,14 +35,18 @@ impl ShapeScratchPad {
         //TODO: Fill and StrokedFill, rename Path to Stroke
         let mut line_color = None;
         //let mut fill_color = None;
-        let mut stroke_width = 1.0;
+        let mut line_width = 1.0;
+        let mut line_cap = LineCap::default();
+        let mut line_join = LineJoin::default();
         let mut is_closed = false;
         for option in options {
             match option {
                 ToolOption::LineColor(color) => line_color = *color,
                 //   ToolOption::FillColor(color) => fill_color = *color,
-                ToolOption::StrokeWidth(width) => stroke_width = *width,
+                ToolOption::StrokeWidth(width) => line_width = *width,
                 ToolOption::ClosedPath(closed) => is_closed = *closed,
+                ToolOption::LineCap(cap) => line_cap = *cap,
+                ToolOption::LineJoin(join) => line_join = *join,
                 _ => {}
             }
         }
@@ -51,9 +55,9 @@ impl ShapeScratchPad {
             color: line_color.unwrap_or(ColorU::black()),
             is_closed,
             stroke_style: StrokeStyle {
-                line_width: stroke_width,
-                line_cap: LineCap::default(),
-                line_join: LineJoin::default(),
+                line_width,
+                line_cap,
+                line_join,
             },
         });
     }

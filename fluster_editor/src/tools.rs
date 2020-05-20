@@ -1,12 +1,13 @@
 #![deny(clippy::all)]
 use crate::messages::{AppMessage, EditMessage, ToolMessage};
-use iced::{Checkbox, Column, Element, Row, Text, TextInput};
+use iced::{Checkbox, Column, Row, Text, TextInput};
 use iced_native::{
     image::Handle as ImageHandle, input::mouse::Button as MouseButton,
     input::mouse::Event as MouseEvent, input::ButtonState, text_input::State as TextInputState,
     MouseCursor,
 };
 use pathfinder_color::ColorU;
+use pathfinder_content::stroke::{LineCap, LineJoin};
 use pathfinder_geometry::vector::Vector2F;
 use std::collections::{HashMap, HashSet};
 use std::mem;
@@ -230,16 +231,24 @@ impl ToolState {
                     Self::Path { .. } | Self::Ellipse { .. } | Self::Polygon { .. } => true,
                     _ => false,
                 },
+                ToolOption::StrokeWidth(..) => match self {
+                    Self::Path { .. } | Self::Ellipse { .. } | Self::Polygon { .. } => true,
+                    _ => false,
+                },
+                ToolOption::LineCap(..) => match self {
+                    Self::Path { .. } => true,
+                    _ => false,
+                },
+                ToolOption::LineJoin(..) => match self {
+                    Self::Path { .. } | Self::Polygon { .. } => true,
+                    _ => false,
+                },
                 ToolOption::FillColor(..) => match self {
                     Self::Path { .. } | Self::Ellipse { .. } | Self::Polygon { .. } => true,
                     _ => false,
                 },
                 ToolOption::NumEdges(..) => match self {
                     Self::Polygon { .. } => true,
-                    _ => false,
-                },
-                ToolOption::StrokeWidth(..) => match self {
-                    Self::Path { .. } | Self::Ellipse { .. } | Self::Polygon { .. } => true,
                     _ => false,
                 },
                 ToolOption::ClosedPath(..) => match self {
@@ -260,18 +269,22 @@ impl Default for ToolState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum ToolOptionHandle {
     LineColor,
+    StrokeWidth,
+    LineCap,
+    LineJoin,
     FillColor,
     NumEdges,
-    StrokeWidth,
     ClosedPath,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum ToolOption {
     LineColor(Option<ColorU>),
+    StrokeWidth(f32),
+    LineCap(LineCap),
+    LineJoin(LineJoin),
     FillColor(Option<ColorU>),
     NumEdges(u8),
-    StrokeWidth(f32),
     ClosedPath(bool),
 }
 
@@ -279,9 +292,11 @@ impl ToolOption {
     pub fn handle(&self) -> ToolOptionHandle {
         match self {
             Self::LineColor(..) => ToolOptionHandle::LineColor,
+            Self::StrokeWidth(..) => ToolOptionHandle::StrokeWidth,
+            Self::LineCap(..) => ToolOptionHandle::LineCap,
+            Self::LineJoin(..) => ToolOptionHandle::LineJoin,
             Self::FillColor(..) => ToolOptionHandle::FillColor,
             Self::NumEdges(..) => ToolOptionHandle::NumEdges,
-            Self::StrokeWidth(..) => ToolOptionHandle::StrokeWidth,
             Self::ClosedPath(..) => ToolOptionHandle::ClosedPath,
         }
     }
@@ -301,8 +316,10 @@ impl Selection {
 #[derive(Clone, Debug)]
 struct Options {
     line_color: Option<ColorU>,
-    fill_color: Option<ColorU>,
     stroke_width: f32,
+    line_cap: LineCap,
+    line_join: LineJoin,
+    fill_color: Option<ColorU>,
     num_edges: u8,
     closed_path: bool,
 }
@@ -321,8 +338,10 @@ impl Default for EditState {
             //TODO: configure/persist defaults
             options: Options {
                 line_color: Some(ColorU::black()),
-                fill_color: Some(ColorU::white()),
                 stroke_width: 3.0,
+                line_cap: LineCap::default(),
+                line_join: LineJoin::default(),
+                fill_color: Some(ColorU::white()),
                 num_edges: 4,
                 closed_path: false,
             },
@@ -350,7 +369,12 @@ impl EditState {
         in_bounds: bool,
     ) -> Option<EditMessage> {
         if !in_bounds {
-            Some(EditMessage::Cancel)
+            match mouse_event {
+                MouseEvent::Input { state, .. } if state == ButtonState::Pressed => {
+                    Some(EditMessage::Cancel)
+                }
+                _ => None,
+            }
         } else {
             let tool_message =
                 self.tool_state
@@ -362,8 +386,10 @@ impl EditState {
     fn tool_options(&self) -> Vec<ToolOption> {
         vec![
             ToolOption::LineColor(self.options.line_color),
-            ToolOption::FillColor(self.options.line_color),
             ToolOption::StrokeWidth(self.options.stroke_width),
+            ToolOption::LineCap(self.options.line_cap),
+            ToolOption::LineJoin(self.options.line_join),
+            ToolOption::FillColor(self.options.fill_color),
             ToolOption::NumEdges(self.options.num_edges),
             ToolOption::ClosedPath(self.options.closed_path),
         ]
@@ -391,8 +417,10 @@ impl EditState {
             }
             EditMessage::ChangeOption(option) => match option {
                 ToolOption::LineColor(line_color) => self.options.line_color = *line_color,
-                ToolOption::FillColor(fill_color) => self.options.fill_color = *fill_color,
                 ToolOption::StrokeWidth(stroke_width) => self.options.stroke_width = *stroke_width,
+                ToolOption::LineCap(line_cap) => self.options.line_cap = *line_cap,
+                ToolOption::LineJoin(line_join) => self.options.line_join = *line_join,
+                ToolOption::FillColor(fill_color) => self.options.fill_color = *fill_color,
                 ToolOption::NumEdges(num_edges) => self.options.num_edges = *num_edges,
                 ToolOption::ClosedPath(closed_path) => self.options.closed_path = *closed_path,
             },
@@ -410,6 +438,22 @@ impl EditDisplayState {
     pub fn options_pane(&mut self, edit_state: &EditState) -> Column<AppMessage> {
         let enabled_options = edit_state.enabled_options();
         let mut column = Column::new().padding(20).spacing(3);
+        //Order here is display order. MAYBE TODO: abstract display order?
+        if let Some(ToolOption::NumEdges(num_edges)) =
+            enabled_options.get(&ToolOptionHandle::NumEdges)
+        {
+            let num_edges = *num_edges;
+            column = column.push(Row::new().push(Text::new("Sides:")).push(TextInput::new(
+                &mut self.num_edges,
+                "",
+                &format!("{}", num_edges),
+                move |value| {
+                    AppMessage::from_tool_option(ToolOption::NumEdges(
+                        value.parse::<u8>().unwrap_or(num_edges),
+                    ))
+                },
+            )))
+        }
         if let Some(ToolOption::LineColor(line_color)) =
             enabled_options.get(&ToolOptionHandle::LineColor)
         {}
@@ -434,21 +478,6 @@ impl EditDisplayState {
                         },
                     )),
             )
-        }
-        if let Some(ToolOption::NumEdges(num_edges)) =
-            enabled_options.get(&ToolOptionHandle::NumEdges)
-        {
-            let num_edges = *num_edges;
-            column = column.push(Row::new().push(Text::new("Sides:")).push(TextInput::new(
-                &mut self.num_edges,
-                "",
-                &format!("{}", num_edges),
-                move |value| {
-                    AppMessage::from_tool_option(ToolOption::NumEdges(
-                        value.parse::<u8>().unwrap_or(num_edges),
-                    ))
-                },
-            )))
         }
         if let Some(ToolOption::ClosedPath(closed_path)) =
             enabled_options.get(&ToolOptionHandle::ClosedPath)

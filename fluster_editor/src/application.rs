@@ -2,11 +2,11 @@
 use crate::messages::{AppMessage, EditMessage};
 use crate::rendering::StageRenderer;
 use crate::simulation::{StageState, TimelineState};
-use crate::tools::{EditDisplayState, EditState, Tool, ToolOption};
+use crate::tools::{EditDisplayState, EditState, Tool};
 
 use iced::{
     button::State as ButtonState, executor, image::Handle as ImageHandle, Align, Application,
-    Button, Column, Command, Container, Element, Image, Length, Row, Size, Text,
+    Button, Column, Command, Container, Element, Image, Length, Row, Size,
 };
 use iced_native::{layout, Clipboard, Event, Hasher, Layout, MouseCursor, Point, Widget};
 use iced_wgpu::{Defaults, Primitive, Renderer};
