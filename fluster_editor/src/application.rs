@@ -2,7 +2,7 @@
 use crate::messages::{AppMessage, EditMessage};
 use crate::rendering::StageRenderer;
 use crate::simulation::{StageState, TimelineState};
-use crate::tools::{EditState, Tool, ToolOption};
+use crate::tools::{EditDisplayState, EditState, Tool, ToolOption};
 
 use iced::{
     button::State as ButtonState, executor, image::Handle as ImageHandle, Align, Application,
@@ -162,6 +162,7 @@ pub struct App {
     stage_state: StageState,
     stage_renderer: StageRenderer,
     edit_state: EditState,
+    edit_display_state: EditDisplayState,
     timeline_state: TimelineState,
     frame_handle: ImageHandle,
     tool_pane_state: ToolPaneState,
@@ -242,6 +243,7 @@ impl Application for App {
                 stage_state,
                 stage_renderer,
                 edit_state: EditState::default(),
+                edit_display_state: EditDisplayState::default(),
                 timeline_state,
                 frame_handle,
                 tool_pane_state: ToolPaneState::default(),
@@ -278,7 +280,7 @@ impl Application for App {
             Box::new(Self::convert_edit_message),
         );
         let tools = Self::tool_pane(&mut self.tool_pane_state);
-        let options_pane = self.edit_state.options_pane();
+        let options_pane = self.edit_display_state.options_pane(&self.edit_state);
         let content = Row::new()
             .padding(20)
             .spacing(20)

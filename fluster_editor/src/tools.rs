@@ -8,7 +8,7 @@ use iced_native::{
 };
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::Vector2F;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 use uuid::Uuid;
 
@@ -172,7 +172,7 @@ impl ToolState {
         &self,
         mouse_event: MouseEvent,
         stage_position: Vector2F,
-        tool_options: &Vec<ToolOption>,
+        tool_options: Vec<ToolOption>,
     ) -> Option<ToolMessage> {
         let tool_options = self.get_options(tool_options);
         match self {
@@ -222,9 +222,9 @@ impl ToolState {
         };
     }
 
-    fn get_options(&self, tool_options: &Vec<ToolOption>) -> Vec<ToolOption> {
+    fn get_options(&self, mut tool_options: Vec<ToolOption>) -> Vec<ToolOption> {
         tool_options
-            .iter()
+            .drain(..)
             .filter(|option| match option {
                 ToolOption::LineColor(..) => match self {
                     Self::Path { .. } | Self::Ellipse { .. } | Self::Polygon { .. } => true,
@@ -247,7 +247,6 @@ impl ToolState {
                     _ => false,
                 },
             })
-            .map(|o| *o)
             .collect::<Vec<ToolOption>>()
     }
 }
@@ -256,6 +255,15 @@ impl Default for ToolState {
     fn default() -> Self {
         Self::new(Tool::Pointer)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum ToolOptionHandle {
+    LineColor,
+    FillColor,
+    NumEdges,
+    StrokeWidth,
+    ClosedPath,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -268,13 +276,13 @@ pub enum ToolOption {
 }
 
 impl ToolOption {
-    pub fn display_name(&self) -> &str {
+    pub fn handle(&self) -> ToolOptionHandle {
         match self {
-            Self::LineColor(..) => "Line Color",
-            Self::FillColor(..) => "Fille Color",
-            Self::NumEdges(..) => "Sides",
-            Self::StrokeWidth(..) => "Stroke Width",
-            Self::ClosedPath(..) => "Close Shape",
+            Self::LineColor(..) => ToolOptionHandle::LineColor,
+            Self::FillColor(..) => ToolOptionHandle::FillColor,
+            Self::NumEdges(..) => ToolOptionHandle::NumEdges,
+            Self::StrokeWidth(..) => ToolOptionHandle::StrokeWidth,
+            Self::ClosedPath(..) => ToolOptionHandle::ClosedPath,
         }
     }
 }
@@ -290,16 +298,19 @@ impl Selection {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-struct EditOptionUiState {
-    stroke_width: TextInputState,
+#[derive(Clone, Debug)]
+struct Options {
+    line_color: Option<ColorU>,
+    fill_color: Option<ColorU>,
+    stroke_width: f32,
+    num_edges: u8,
+    closed_path: bool,
 }
 
 #[derive(Clone, Debug)]
 pub struct EditState {
     tool_state: ToolState,
-    tool_options: Vec<ToolOption>,
-    option_states: EditOptionUiState,
+    options: Options,
     selection: Selection,
 }
 
@@ -308,14 +319,13 @@ impl Default for EditState {
         EditState {
             tool_state: ToolState::default(),
             //TODO: configure/persist defaults
-            tool_options: vec![
-                ToolOption::LineColor(Some(ColorU::black())),
-                ToolOption::FillColor(Some(ColorU::white())),
-                ToolOption::StrokeWidth(3.0),
-                ToolOption::NumEdges(4),
-                ToolOption::ClosedPath(false),
-            ],
-            option_states: EditOptionUiState::default(),
+            options: Options {
+                line_color: Some(ColorU::black()),
+                fill_color: Some(ColorU::white()),
+                stroke_width: 3.0,
+                num_edges: 4,
+                closed_path: false,
+            },
             selection: Selection {
                 objects: HashSet::new(),
             },
@@ -344,9 +354,27 @@ impl EditState {
         } else {
             let tool_message =
                 self.tool_state
-                    .on_mouse_event(mouse_event, stage_position, &self.tool_options)?;
+                    .on_mouse_event(mouse_event, stage_position, self.tool_options())?;
             Some(EditMessage::ToolUpdate(tool_message))
         }
+    }
+
+    fn tool_options(&self) -> Vec<ToolOption> {
+        vec![
+            ToolOption::LineColor(self.options.line_color),
+            ToolOption::FillColor(self.options.line_color),
+            ToolOption::StrokeWidth(self.options.stroke_width),
+            ToolOption::NumEdges(self.options.num_edges),
+            ToolOption::ClosedPath(self.options.closed_path),
+        ]
+    }
+
+    fn enabled_options(&self) -> HashMap<ToolOptionHandle, ToolOption> {
+        self.tool_state
+            .get_options(self.tool_options())
+            .drain(..)
+            .map(|o| (o.handle(), o))
+            .collect::<HashMap<ToolOptionHandle, ToolOption>>()
     }
 
     pub fn update(&mut self, message: &EditMessage) {
@@ -361,42 +389,77 @@ impl EditState {
                 self.tool_state.cancel_action();
                 self.selection.clear();
             }
-            EditMessage::ChangeOption(option) => todo!(),
+            EditMessage::ChangeOption(option) => match option {
+                ToolOption::LineColor(line_color) => self.options.line_color = *line_color,
+                ToolOption::FillColor(fill_color) => self.options.fill_color = *fill_color,
+                ToolOption::StrokeWidth(stroke_width) => self.options.stroke_width = *stroke_width,
+                ToolOption::NumEdges(num_edges) => self.options.num_edges = *num_edges,
+                ToolOption::ClosedPath(closed_path) => self.options.closed_path = *closed_path,
+            },
         }
     }
+}
 
-    pub fn tool_options(&self) -> Vec<ToolOption> {
-        self.tool_state.get_options(&self.tool_options)
-    }
+#[derive(Clone, Debug, Default)]
+pub struct EditDisplayState {
+    stroke_width: TextInputState,
+    num_edges: TextInputState,
+}
 
-    pub fn options_pane(&mut self) -> Column<AppMessage> {
+impl EditDisplayState {
+    pub fn options_pane(&mut self, edit_state: &EditState) -> Column<AppMessage> {
+        let enabled_options = edit_state.enabled_options();
         let mut column = Column::new().padding(20).spacing(3);
-        for option in self.tool_options() {
-            let option_value: Element<AppMessage> = match option {
-                ToolOption::LineColor(color) => todo!(),
-                ToolOption::FillColor(color) => todo!(),
-                ToolOption::NumEdges(edges) => todo!(),
-                ToolOption::StrokeWidth(width) => TextInput::new(
-                    &mut self.option_states.stroke_width,
-                    "",
-                    &format!("{}", width),
-                    move |value| {
-                        AppMessage::from_tool_option(ToolOption::StrokeWidth(
-                            value.parse::<f32>().unwrap_or(width),
-                        ))
-                    },
-                )
-                .into(),
-                ToolOption::ClosedPath(closed) => Checkbox::new(closed, "", |value| {
-                    AppMessage::from_tool_option(ToolOption::ClosedPath(value))
-                })
-                .into(),
-            };
+        if let Some(ToolOption::LineColor(line_color)) =
+            enabled_options.get(&ToolOptionHandle::LineColor)
+        {}
+        if let Some(ToolOption::FillColor(fill_color)) =
+            enabled_options.get(&ToolOptionHandle::FillColor)
+        {}
+        if let Some(ToolOption::StrokeWidth(stroke_width)) =
+            enabled_options.get(&ToolOptionHandle::StrokeWidth)
+        {
+            let stroke_width = *stroke_width;
             column = column.push(
                 Row::new()
-                    .push(Text::new(option.display_name()))
-                    .push(option_value),
-            );
+                    .push(Text::new("Stroke Width:"))
+                    .push(TextInput::new(
+                        &mut self.stroke_width,
+                        "",
+                        &format!("{}", stroke_width),
+                        move |value| {
+                            AppMessage::from_tool_option(ToolOption::StrokeWidth(
+                                value.parse::<f32>().unwrap_or(stroke_width),
+                            ))
+                        },
+                    )),
+            )
+        }
+        if let Some(ToolOption::NumEdges(num_edges)) =
+            enabled_options.get(&ToolOptionHandle::NumEdges)
+        {
+            let num_edges = *num_edges;
+            column = column.push(Row::new().push(Text::new("Sides:")).push(TextInput::new(
+                &mut self.num_edges,
+                "",
+                &format!("{}", num_edges),
+                move |value| {
+                    AppMessage::from_tool_option(ToolOption::NumEdges(
+                        value.parse::<u8>().unwrap_or(num_edges),
+                    ))
+                },
+            )))
+        }
+        if let Some(ToolOption::ClosedPath(closed_path)) =
+            enabled_options.get(&ToolOptionHandle::ClosedPath)
+        {
+            column = column.push(
+                Row::new()
+                    .push(Text::new("Close Path:"))
+                    .push(Checkbox::new(*closed_path, "", |value| {
+                        AppMessage::from_tool_option(ToolOption::ClosedPath(value))
+                    })),
+            )
         }
         column
     }
