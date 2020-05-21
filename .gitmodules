@@ -1,4 +1,0 @@
-[submodule "resources"]
-	path = resources
-	url = https://github.com/kyythane/pathfinder.git
-	branch = resources_only
