@@ -192,7 +192,7 @@ pub enum Coloring {
 
 impl Coloring {
     #[inline]
-    //#[allow(clippy::trivially_copy_pass_by_ref)]
+    //TODO: evaluate if tweens should operate using a proper linear space from palette?
     //If the Colorings don't match return None. In effect this means we'll return to the default Coloring of the shape.
     pub fn lerp(&self, end: &Coloring, percent: f32) -> Coloring {
         match self {

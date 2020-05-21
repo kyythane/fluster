@@ -10,16 +10,16 @@ gl = "0.14"
 sdl2 = "0.33"
 fluster_core = { path = "../fluster_core" }
 fluster_graphics = { path = "../fluster_graphics" }
-pathfinder_canvas = { git = "https://github.com/kyythane/pathfinder.git" }
-pathfinder_color = { git = "https://github.com/kyythane/pathfinder.git" }
-pathfinder_content = { git = "https://github.com/kyythane/pathfinder.git" }
-pathfinder_geometry = { git = "https://github.com/kyythane/pathfinder.git" }
-pathfinder_gpu = { git = "https://github.com/kyythane/pathfinder.git" }
-pathfinder_gl = { git = "https://github.com/kyythane/pathfinder.git" }
-pathfinder_renderer = { git = "https://github.com/kyythane/pathfinder.git" }
-pathfinder_resources = { git = "https://github.com/kyythane/pathfinder.git" }
+pathfinder_canvas = "0.5.*"
+pathfinder_color = "0.5.*"
+pathfinder_content = "0.5.*"
+pathfinder_geometry = "0.5.*"
+pathfinder_gpu = "0.5.*"
+pathfinder_gl = "0.5.*"
+pathfinder_renderer = "0.5.*"
+pathfinder_resources = "0.5.*"
 uuid = { version = "0.8", features = ["v4"] }
 iced = { version = "0.1", features = ["image"] }
-iced_native= "0.2"
-iced_wgpu= "0.2"
-# image = "0.23"
+iced_native = "0.2"
+iced_wgpu = "0.2"
+palette="0.5"

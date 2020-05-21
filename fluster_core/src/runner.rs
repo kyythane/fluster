@@ -10,6 +10,7 @@ use super::types::{
     model::{DisplayLibraryItem, Entity, Part},
     shapes::Shape,
 };
+use aabb_quadtree_pathfinder::QuadTree;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;

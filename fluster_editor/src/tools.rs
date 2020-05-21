@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 use crate::messages::{AppMessage, EditMessage, ToolMessage};
-use iced::{Checkbox, Column, Row, Text, TextInput};
+use iced::{Checkbox, Column, Radio, Row, Text, TextInput};
 use iced_native::{
     image::Handle as ImageHandle, input::mouse::Button as MouseButton,
     input::mouse::Event as MouseEvent, input::ButtonState, text_input::State as TextInputState,
@@ -479,16 +479,26 @@ impl EditDisplayState {
                     )),
             )
         }
+        if let Some(ToolOption::LineCap(line_cap)) = enabled_options.get(&ToolOptionHandle::LineCap)
+        {
+            //TODO: combobox once Iced supports it
+        }
+        if let Some(ToolOption::LineJoin(line_join)) =
+            enabled_options.get(&ToolOptionHandle::LineJoin)
+        {
+            //TODO: combobox once Iced supports it
+            /*column = column.push(Column::new().push(Text::new("Line Join Method")).push(
+                Radio::new(LineJoin::Bevel, "Bevel", Some(*line_join), |bevel| {
+                    AppMessage::from_tool_option(ToolOption::LineJoin(bevel))
+                }),
+            ))*/
+        }
         if let Some(ToolOption::ClosedPath(closed_path)) =
             enabled_options.get(&ToolOptionHandle::ClosedPath)
         {
-            column = column.push(
-                Row::new()
-                    .push(Text::new("Close Path:"))
-                    .push(Checkbox::new(*closed_path, "", |value| {
-                        AppMessage::from_tool_option(ToolOption::ClosedPath(value))
-                    })),
-            )
+            column = column.push(Checkbox::new(*closed_path, "Close Path", |value| {
+                AppMessage::from_tool_option(ToolOption::ClosedPath(value))
+            }))
         }
         column
     }
