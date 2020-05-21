@@ -10,7 +10,7 @@ use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
-use pathfinder_resources::fs::FilesystemResourceLoader;
+use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use sdl2::video::{GLContext, GLProfile, Window};
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -75,7 +75,7 @@ impl StageRenderer {
 
         let renderer = Renderer::new(
             GLDevice::new(GLVersion::GL3, 0),
-            &FilesystemResourceLoader::locate(),
+            &EmbeddedResourceLoader,
             DestFramebuffer::full_window(stage_size),
             RendererOptions {
                 background_color: Some(ColorF::white()),
