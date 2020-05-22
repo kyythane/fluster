@@ -15,7 +15,7 @@ use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use streaming_iterator::StreamingIterator;
@@ -71,6 +71,14 @@ pub fn play(
 ) -> Result<(), String> {
     let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
     let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
+    let mut quad_tree = QuadTree::new(
+        RectF::from_points(Vector2F::zero(), stage_size),
+        true,
+        //TODO: experiment with parameters!
+        3,
+        10,
+        8,
+    );
     let mut state = initialize(
         actions,
         &mut display_list,
@@ -96,6 +104,7 @@ pub fn play(
                     //TODO: scripts
                     //TODO: tweens should update consistently w/ frame index instead of via timer
                     update_tweens(state.delta_time, &mut display_list);
+                    recompute_bounds(&state, &mut display_list, &library, &mut quad_tree);
                     draw_frame(renderer, &state, &display_list, &library)?;
                     state = on_frame_complete(state);
                     if !state.running {
@@ -125,6 +134,43 @@ pub fn play(
         actions.advance();
     }
     Ok(())
+}
+
+fn recompute_bounds(
+    state: &State,
+    display_list: &mut HashMap<Uuid, Entity>,
+    library: &HashMap<Uuid, DisplayLibraryItem>,
+    quad_tree: &mut QuadTree<Uuid>,
+) {
+    // First pass algorithm. O(m log n), where m is # dirty nodes and n is # total nodes.
+    let mut dirty_roots = display_list
+        .iter()
+        .filter(|(_, entity)| entity.dirty())
+        .map(|(id, entity)| {
+            let mut entity = entity;
+            let mut maximal_id = id;
+            let mut query_id = id;
+            while query_id != &state.root_entity_id {
+                query_id = entity.parent();
+                entity = display_list.get(query_id).unwrap();
+                if entity.dirty() {
+                    maximal_id = query_id;
+                }
+            }
+            *maximal_id
+        })
+        .collect::<HashSet<Uuid>>();
+    let mut queue = VecDeque::with_capacity(dirty_roots.len());
+    for dirty_root in dirty_roots {
+        queue.push_back(dirty_root);
+        while let Some(next_node) = queue.pop_front() {
+            if let Some(next_entity) = display_list.get_mut(&next_node) {
+                for child_id in next_entity.children() {
+                    queue.push_back(*child_id);
+                }
+            }
+        }
+    }
 }
 
 #[inline]

@@ -58,7 +58,7 @@ pub fn adjust_depth(depth: u32, depth_list: &BTreeMap<u64, &Entity>) -> u64 {
     depth
 }
 
-//TODO: add a concept of "dirty/clean" entities. Ideally we would structure our renderer to do partial rerenders
+//TODO: Ideally we would structure our renderer to do partial rerenders
 pub fn compute_render_data<'a, S: BuildHasher>(
     root_entity_id: &Uuid,
     display_list: &'a HashMap<Uuid, Entity, S>,

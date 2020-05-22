@@ -181,6 +181,7 @@ impl Part {
 #[derive(Clone, Debug)]
 pub struct Entity {
     active: bool,
+    dirty: bool,
     children: Vec<Uuid>,
     depth: u32,
     id: Uuid,
@@ -192,6 +193,7 @@ pub struct Entity {
     tweens: HashMap<Uuid, Vec<PropertyTween>>,
 }
 
+// TODO: why did I do this?
 impl PartialEq for Entity {
     //Tweens are ignored for the purpose of equality
     fn eq(&self, other: &Self) -> bool {
@@ -217,6 +219,7 @@ impl Entity {
     ) -> Self {
         Self {
             active: true,
+            dirty: true,
             children: vec![],
             depth,
             id,
@@ -231,6 +234,18 @@ impl Entity {
 
     pub fn create_root(id: Uuid) -> Self {
         Self::new(id, 0, "Root", id, vec![], Transform2F::default(), 0.0)
+    }
+
+    pub fn dirty(&self) -> bool {
+        self.dirty
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
+    pub fn mark_clean(&mut self) {
+        self.dirty = false;
     }
 
     #[inline]

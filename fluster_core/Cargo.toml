@@ -17,6 +17,7 @@ serde = "1.0"
 serde_bytes = "0.11"
 streaming-iterator = "0.1"
 uuid = { version = "0.8", features = ["serde"] }
+reduce = "0.1"
 
 [dev-dependencies]
 iobuffer = "0.2.0"
