@@ -51,7 +51,7 @@ impl ShapeScratchPad {
             }
         }
         self.shape_prototype = Some(Shape::Path {
-            points: vec![],
+            edges: vec![],
             color: line_color.unwrap_or(ColorU::black()),
             is_closed,
             stroke_style: StrokeStyle {
@@ -71,7 +71,7 @@ impl ShapeScratchPad {
                     stroke_style,
                     ..
                 } => Shape::Path {
-                    points: self.edges.clone(),
+                    edges: self.edges.clone(),
                     color: *color,
                     is_closed: *is_closed,
                     stroke_style: *stroke_style,

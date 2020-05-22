@@ -3,7 +3,8 @@ use crate::util;
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::{rect::RectF, vector::Vector2F};
+use reduce::Reduce;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -31,6 +32,24 @@ pub enum Edge {
         to: Vector2F,
         radius: f32,
     },
+}
+
+impl Edge {
+    fn end_point(&self) -> Vector2F {
+        match self {
+            Self::Move(v) => *v,
+            Self::Line(v) => *v,
+            Self::Quadratic { to, .. } | Self::Bezier { to, .. } | Self::Arc { to, .. } => *to,
+        }
+    }
+
+    fn compute_bounding(
+        &self,
+        start_point: Vector2F,
+        coords: (Vector2F, Vector2F),
+    ) -> (Vector2F, Vector2F) {
+        todo!();
+    }
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -126,7 +145,7 @@ impl MorphEdge {
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Shape {
     Path {
-        points: Vec<Edge>,
+        edges: Vec<Edge>,
         #[serde(with = "ColorUDef")]
         color: ColorU,
         #[serde(with = "StrokeStyleDef")]
@@ -134,12 +153,12 @@ pub enum Shape {
         is_closed: bool,
     },
     Fill {
-        points: Vec<Edge>,
+        edges: Vec<Edge>,
         #[serde(with = "ColorUDef")]
         color: ColorU,
     },
     MorphPath {
-        points: Vec<MorphEdge>,
+        edges: Vec<MorphEdge>,
         #[serde(with = "ColorUDef")]
         color: ColorU,
         #[serde(with = "StrokeStyleDef")]
@@ -147,12 +166,12 @@ pub enum Shape {
         is_closed: bool,
     },
     MorphFill {
-        points: Vec<MorphEdge>,
+        edges: Vec<MorphEdge>,
         #[serde(with = "ColorUDef")]
         color: ColorU,
     },
     Clip {
-        points: Vec<Edge>,
+        edges: Vec<Edge>,
     },
     Group {
         shapes: Vec<AugmentedShape>,
@@ -166,13 +185,63 @@ pub struct AugmentedShape {
     pub transform: Transform2F,
 }
 
+impl AugmentedShape {
+    pub fn compute_bounding(&self, transform: Transform2F, morph_percent: f32) -> RectF {
+        self.shape
+            .compute_bounding(transform * self.transform, morph_percent)
+    }
+}
+
 impl Shape {
+    pub fn compute_bounding(&self, transform: Transform2F, morph_percent: f32) -> RectF {
+        match self {
+            Shape::Path { edges, .. } | Shape::Fill { edges, .. } | Shape::Clip { edges, .. } => {
+                let (_, (origin, lower_right)) = edges[1..].iter().fold(
+                    (
+                        edges[0].end_point(),
+                        (
+                            Vector2F::splat(std::f32::MAX),
+                            Vector2F::splat(std::f32::MIN),
+                        ),
+                    ),
+                    |(start_point, coords), edge| {
+                        let coords = edge.compute_bounding(start_point, coords);
+                        (edge.end_point(), coords)
+                    },
+                );
+                RectF::from_points(origin, lower_right)
+            }
+            Shape::MorphPath { edges, .. } | Shape::MorphFill { edges, .. } => {
+                let (_, (origin, lower_right)) = edges[1..].iter().fold(
+                    (
+                        edges[0].to_edge(morph_percent).end_point(),
+                        (
+                            Vector2F::splat(std::f32::MAX),
+                            Vector2F::splat(std::f32::MIN),
+                        ),
+                    ),
+                    |(start_point, coords), morph_edge| {
+                        let edge = morph_edge.to_edge(morph_percent);
+                        let coords = edge.compute_bounding(start_point, coords);
+                        (edge.end_point(), coords)
+                    },
+                );
+                RectF::from_points(origin, lower_right)
+            }
+            Shape::Group { shapes } => shapes
+                .iter()
+                .map(|s| s.compute_bounding(transform, morph_percent))
+                .reduce(|a, b| a.union_rect(b))
+                .unwrap(),
+        }
+    }
+
     pub fn color(&self) -> Coloring {
         match self {
-            Shape::Path { color, .. } => Coloring::Color(*color),
-            Shape::Fill { color, .. } => Coloring::Color(*color),
-            Shape::MorphPath { color, .. } => Coloring::Color(*color),
-            Shape::MorphFill { color, .. } => Coloring::Color(*color),
+            Shape::Path { color, .. }
+            | Shape::Fill { color, .. }
+            | Shape::MorphPath { color, .. }
+            | Shape::MorphFill { color, .. } => Coloring::Color(*color),
             Shape::Clip { .. } => Coloring::None,
             Shape::Group { shapes } => {
                 Coloring::Colorings(shapes.iter().map(|s| s.shape.color()).collect())

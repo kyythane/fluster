@@ -42,7 +42,7 @@ fn build_action_list() -> ActionList {
         Action::DefineShape {
             id: shape_id,
             shape: Shape::Fill {
-                points: vec![
+                edges: vec![
                     Edge::Line(Vector2F::new(-15.0, -15.0)),
                     Edge::Line(Vector2F::new(15.0, -15.0)),
                     Edge::Line(Vector2F::new(15.0, 15.0)),
@@ -54,7 +54,7 @@ fn build_action_list() -> ActionList {
         Action::DefineShape {
             id: shape2_id,
             shape: Shape::Path {
-                points: vec![
+                edges: vec![
                     Edge::Line(Vector2F::new(-15.0, -15.0)),
                     Edge::Line(Vector2F::new(15.0, -15.0)),
                     Edge::Line(Vector2F::new(15.0, 15.0)),
@@ -75,7 +75,7 @@ fn build_action_list() -> ActionList {
                 shapes: vec![
                     AugmentedShape {
                         shape: Shape::Fill {
-                            points: vec![
+                            edges: vec![
                                 Edge::Line(Vector2F::new(-15.0, -15.0)),
                                 Edge::Line(Vector2F::new(15.0, -15.0)),
                                 Edge::Line(Vector2F::new(15.0, 15.0)),
@@ -91,7 +91,7 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            points: vec![
+                            edges: vec![
                                 Edge::Line(Vector2F::new(-15.0, -15.0)),
                                 Edge::Line(Vector2F::new(15.0, -15.0)),
                                 Edge::Line(Vector2F::new(15.0, 15.0)),
@@ -107,7 +107,7 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            points: vec![
+                            edges: vec![
                                 Edge::Line(Vector2F::new(-15.0, -15.0)),
                                 Edge::Line(Vector2F::new(15.0, -15.0)),
                                 Edge::Line(Vector2F::new(15.0, 15.0)),
@@ -123,7 +123,7 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            points: vec![
+                            edges: vec![
                                 Edge::Line(Vector2F::new(-15.0, -15.0)),
                                 Edge::Line(Vector2F::new(15.0, -15.0)),
                                 Edge::Line(Vector2F::new(15.0, 15.0)),
@@ -143,7 +143,7 @@ fn build_action_list() -> ActionList {
         Action::DefineShape {
             id: shape4_id,
             shape: Shape::Path {
-                points: vec![
+                edges: vec![
                     Edge::Move(Vector2F::new(300.0, 100.0)),
                     Edge::Line(Vector2F::new(258.0, 142.0)),
                     Edge::Bezier {
@@ -174,7 +174,7 @@ fn build_action_list() -> ActionList {
         Action::DefineShape {
             id: shape5_id,
             shape: Shape::MorphPath {
-                points: vec![
+                edges: vec![
                     MorphEdge::Line(Vector2F::new(-15.0, -15.0), Vector2F::new(-18.0, -12.0)),
                     MorphEdge::Line(Vector2F::new(15.0, -15.0), Vector2F::new(0.0, -22.0)),
                     MorphEdge::Line(Vector2F::new(15.0, 15.0), Vector2F::new(30.0, 15.0)),

@@ -5,7 +5,7 @@ use crate::tween::{PropertyTween, PropertyTweenUpdate, Tween};
 use pathfinder_color::ColorU;
 use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::{transform2d::Transform2F, vector::Vector2F};
 use std::collections::HashMap;
 use std::mem;
 use uuid::Uuid;
@@ -14,6 +14,19 @@ use uuid::Uuid;
 pub enum DisplayLibraryItem {
     Vector(Shape),
     Raster(Pattern),
+}
+
+impl DisplayLibraryItem {
+    pub fn compute_bounding(&self, transform: Transform2F, morph_percent: f32) -> RectF {
+        match self {
+            Self::Vector(shape) => shape.compute_bounding(transform, morph_percent),
+            Self::Raster(pattern) => {
+                let o = transform * Vector2F::default();
+                let lr = transform * pattern.size().to_f32();
+                RectF::from_points(o.min(lr), o.max(lr))
+            }
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]

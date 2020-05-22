@@ -212,7 +212,7 @@ mod tests {
         let action = Action::DefineShape {
             id: shape_id,
             shape: Shape::Fill {
-                points: vec![
+                edges: vec![
                     Edge::Line(Vector2F::new(1.0, 5.0)),
                     Edge::Line(Vector2F::new(5.0, 1.0)),
                     Edge::Line(Vector2F::new(1.0, 1.0)),
@@ -238,7 +238,7 @@ mod tests {
             Action::DefineShape {
                 id: shape_id,
                 shape: Shape::Fill {
-                    points: vec![
+                    edges: vec![
                         Edge::Line(Vector2F::new(1.0, 5.0)),
                         Edge::Line(Vector2F::new(5.0, 1.0)),
                         Edge::Line(Vector2F::new(1.0, 1.0)),

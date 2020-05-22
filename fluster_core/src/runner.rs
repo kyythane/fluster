@@ -62,6 +62,80 @@ impl State {
     }
 }
 
+pub struct SceneData {
+    quad_tree: QuadTree<Uuid>,
+    world_space_transforms: HashMap<Uuid, Transform2F>,
+}
+
+impl SceneData {
+    pub fn new(size: Vector2F) -> Self {
+        SceneData {
+            quad_tree: QuadTree::new(
+                RectF::from_points(Vector2F::zero(), size),
+                true,
+                //TODO: experiment with parameters!
+                3,
+                10,
+                8,
+            ),
+            world_space_transforms: HashMap::new(),
+        }
+    }
+
+    pub fn recompute(
+        &mut self,
+        state: &State,
+        display_list: &mut HashMap<Uuid, Entity>,
+        library: &HashMap<Uuid, DisplayLibraryItem>,
+    ) {
+        // First pass algorithm. O(m log n), where m is # dirty nodes and n is # total nodes.
+        let mut dirty_roots = display_list
+            .iter()
+            .filter(|(_, entity)| entity.dirty())
+            .map(|(id, entity)| {
+                let mut entity = entity;
+                let mut maximal_id = id;
+                let mut query_id = id;
+                while query_id != &state.root_entity_id {
+                    query_id = entity.parent();
+                    entity = display_list.get(query_id).unwrap();
+                    if entity.dirty() {
+                        maximal_id = query_id;
+                    }
+                }
+                *maximal_id
+            })
+            .collect::<HashSet<Uuid>>();
+        let mut queue = VecDeque::with_capacity(dirty_roots.len());
+        for dirty_root in dirty_roots {
+            queue.push_back(dirty_root);
+            while let Some(next_node) = queue.pop_front() {
+                if let Some(next_entity) = display_list.get_mut(&next_node) {
+                    for child_id in next_entity.children() {
+                        queue.push_back(*child_id);
+                    }
+                    if next_node == state.root_entity_id {
+                        self.world_space_transforms
+                            .insert(*next_entity.id(), *next_entity.transform());
+                    } else {
+                        // Since we are starting from the highest dirty nodes in our tree, we can always trust that the parent transform is valid
+                        let parent_transform = *self
+                            .world_space_transforms
+                            .get(next_entity.parent())
+                            .unwrap();
+                        self.world_space_transforms.insert(
+                            *next_entity.id(),
+                            parent_transform * *next_entity.transform(),
+                        );
+                    }
+                    let next_world_space_transform =
+                        *self.world_space_transforms.get(next_entity.id()).unwrap();
+                }
+            }
+        }
+    }
+}
+
 pub fn play(
     renderer: &mut impl Renderer,
     actions: &mut ActionList,
@@ -71,14 +145,7 @@ pub fn play(
 ) -> Result<(), String> {
     let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
     let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
-    let mut quad_tree = QuadTree::new(
-        RectF::from_points(Vector2F::zero(), stage_size),
-        true,
-        //TODO: experiment with parameters!
-        3,
-        10,
-        8,
-    );
+    let mut scene_data = SceneData::new(stage_size);
     let mut state = initialize(
         actions,
         &mut display_list,
@@ -104,7 +171,7 @@ pub fn play(
                     //TODO: scripts
                     //TODO: tweens should update consistently w/ frame index instead of via timer
                     update_tweens(state.delta_time, &mut display_list);
-                    recompute_bounds(&state, &mut display_list, &library, &mut quad_tree);
+                    scene_data.recompute(&state, &mut display_list, &library);
                     draw_frame(renderer, &state, &display_list, &library)?;
                     state = on_frame_complete(state);
                     if !state.running {
@@ -134,43 +201,6 @@ pub fn play(
         actions.advance();
     }
     Ok(())
-}
-
-fn recompute_bounds(
-    state: &State,
-    display_list: &mut HashMap<Uuid, Entity>,
-    library: &HashMap<Uuid, DisplayLibraryItem>,
-    quad_tree: &mut QuadTree<Uuid>,
-) {
-    // First pass algorithm. O(m log n), where m is # dirty nodes and n is # total nodes.
-    let mut dirty_roots = display_list
-        .iter()
-        .filter(|(_, entity)| entity.dirty())
-        .map(|(id, entity)| {
-            let mut entity = entity;
-            let mut maximal_id = id;
-            let mut query_id = id;
-            while query_id != &state.root_entity_id {
-                query_id = entity.parent();
-                entity = display_list.get(query_id).unwrap();
-                if entity.dirty() {
-                    maximal_id = query_id;
-                }
-            }
-            *maximal_id
-        })
-        .collect::<HashSet<Uuid>>();
-    let mut queue = VecDeque::with_capacity(dirty_roots.len());
-    for dirty_root in dirty_roots {
-        queue.push_back(dirty_root);
-        while let Some(next_node) = queue.pop_front() {
-            if let Some(next_entity) = display_list.get_mut(&next_node) {
-                for child_id in next_entity.children() {
-                    queue.push_back(*child_id);
-                }
-            }
-        }
-    }
 }
 
 #[inline]
@@ -472,7 +502,7 @@ mod tests {
             Action::DefineShape {
                 id: shape_id,
                 shape: Shape::Fill {
-                    points: vec![
+                    edges: vec![
                         Edge::Line(Vector2F::new(-15.0, -15.0)),
                         Edge::Line(Vector2F::new(15.0, -15.0)),
                         Edge::Line(Vector2F::new(15.0, 15.0)),
@@ -658,7 +688,7 @@ mod tests {
         library.insert(
             shape_id,
             DisplayLibraryItem::Vector(Shape::Fill {
-                points: vec![
+                edges: vec![
                     Edge::Line(Vector2F::new(-15.0, -15.0)),
                     Edge::Line(Vector2F::new(15.0, -15.0)),
                     Edge::Line(Vector2F::new(15.0, 15.0)),
@@ -723,7 +753,7 @@ mod tests {
             .times(1)
             .withf(|drawn_shape, transform, color_override, morph_index| {
                 let model_shape = Shape::Fill {
-                    points: vec![
+                    edges: vec![
                         Edge::Line(Vector2F::new(-15.0, -15.0)),
                         Edge::Line(Vector2F::new(15.0, -15.0)),
                         Edge::Line(Vector2F::new(15.0, 15.0)),

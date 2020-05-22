@@ -27,9 +27,9 @@ fn patch_line_join(j: StrokeLineJoin) -> LineJoin {
     }
 }
 
-fn edges_to_path(points: &[Edge], is_closed: bool) -> Path2D {
+fn edges_to_path(edges: &[Edge], is_closed: bool) -> Path2D {
     let mut path = Path2D::new();
-    for edge in points {
+    for edge in edges {
         match edge {
             Edge::Move(to) => path.move_to(*to),
             Edge::Line(to) => path.line_to(*to),
@@ -54,13 +54,13 @@ fn edges_to_path(points: &[Edge], is_closed: bool) -> Path2D {
 
 fn stroke_path(
     canvas: &mut CanvasRenderingContext2D,
-    points: &[Edge],
+    edges: &[Edge],
     is_closed: bool,
     stroke_style: &StrokeStyle,
     transform: &Transform2F,
     color: ColorU,
 ) {
-    let path = edges_to_path(&points, is_closed);
+    let path = edges_to_path(&edges, is_closed);
     canvas.set_transform(transform);
     canvas.set_line_width(stroke_style.line_width);
     canvas.set_line_cap(stroke_style.line_cap);
@@ -120,79 +120,72 @@ where
         if let Some(canvas) = &mut self.canvas {
             match shape {
                 Shape::Path {
-                    points,
+                    edges,
                     color,
                     stroke_style,
                     is_closed,
                 } => {
-                    if points.len() > 1 {
+                    if edges.len() > 1 {
                         let color = if let Some(Coloring::Color(color_override)) = color_override {
                             color_override
                         } else {
                             color
                         };
-                        stroke_path(canvas, points, *is_closed, stroke_style, &transform, *color);
+                        stroke_path(canvas, edges, *is_closed, stroke_style, &transform, *color);
                     }
                 }
-                Shape::Fill { points, color } => {
-                    if points.len() > 2 {
+                Shape::Fill { edges, color } => {
+                    if edges.len() > 2 {
                         let color = if let Some(Coloring::Color(color_override)) = color_override {
                             color_override
                         } else {
                             color
                         };
-                        let path = edges_to_path(points, true);
+                        let path = edges_to_path(edges, true);
                         canvas.set_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
                     }
                 }
                 Shape::MorphPath {
-                    points,
+                    edges,
                     color,
                     stroke_style,
                     is_closed,
                 } => {
-                    if points.len() > 1 {
+                    if edges.len() > 1 {
                         let color = if let Some(Coloring::Color(color_override)) = color_override {
                             color_override
                         } else {
                             color
                         };
-                        let points = points
+                        let edges = edges
                             .iter()
                             .map(|mp| mp.to_edge(morph_index))
                             .collect::<Vec<Edge>>();
-                        stroke_path(
-                            canvas,
-                            &points,
-                            *is_closed,
-                            stroke_style,
-                            &transform,
-                            *color,
-                        );
+                        stroke_path(canvas, &edges, *is_closed, stroke_style, &transform, *color);
                     }
                 }
-                Shape::MorphFill { points, color } => {
-                    if points.len() > 2 {
+                Shape::MorphFill { edges, color } => {
+                    if edges.len() > 2 {
                         let color = if let Some(Coloring::Color(color_override)) = color_override {
                             color_override
                         } else {
                             color
                         };
-                        let points = points
+                        let edges = edges
                             .iter()
                             .map(|mp| mp.to_edge(morph_index))
                             .collect::<Vec<Edge>>();
-                        let path = edges_to_path(&points, true);
+                        let path = edges_to_path(&edges, true);
                         canvas.set_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
                     }
                 }
-                Shape::Clip { points } => {
-                    if points.len() > 2 {
-                        let path = edges_to_path(points, true);
+                Shape::Clip { edges } => {
+                    if edges.len() > 2 {
+                        let path = edges_to_path(edges, true);
                         canvas.set_transform(&transform);
                         canvas.clip_path(path, FillRule::Winding);
                     }
