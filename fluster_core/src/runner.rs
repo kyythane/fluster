@@ -355,11 +355,9 @@ fn add_entity(
                         PartDefinition::Vector { item_id, transform } => {
                             let item = library.get(&item_id);
                             match item {
-                                Some(DisplayLibraryItem::Vector { .. }) => Some(Part::Vector {
-                                    item_id: *item_id,
-                                    transform: *transform,
-                                    color: None,
-                                }),
+                                Some(DisplayLibraryItem::Vector { .. }) => {
+                                    Some(Part::new_vector(*item_id, *transform, None))
+                                }
                                 _ => None,
                             }
                         }
@@ -368,15 +366,12 @@ fn add_entity(
                             transform,
                             view_rect,
                         } => match library.get(&item_id) {
-                            Some(DisplayLibraryItem::Raster { .. }) => Some(Part::Raster {
-                                item_id: *item_id,
-                                transform: *transform,
-                                view_rect: RectF::from_points(
-                                    view_rect.origin,
-                                    view_rect.lower_right,
-                                ),
-                                tint: None,
-                            }),
+                            Some(DisplayLibraryItem::Raster { .. }) => Some(Part::new_raster(
+                                *item_id,
+                                RectF::from_points(view_rect.origin, view_rect.lower_right),
+                                *transform,
+                                None,
+                            )),
                             _ => None,
                         },
                     })
@@ -634,11 +629,7 @@ mod tests {
                 1,
                 "entity",
                 root_id,
-                vec![Part::Vector {
-                    item_id: shape_id,
-                    transform: Transform2F::default(),
-                    color: None,
-                }],
+                vec![Part::new_vector(shape_id, Transform2F::default(), None)],
                 Transform2F::default(),
                 0.0,
             ),
@@ -716,11 +707,7 @@ mod tests {
                 1,
                 "entity",
                 root_id,
-                vec![Part::Vector {
-                    item_id: shape_id,
-                    transform: Transform2F::default(),
-                    color: None,
-                }],
+                vec![Part::new_vector(shape_id, Transform2F::default(), None)],
                 Transform2F::default(),
                 0.0,
             ),

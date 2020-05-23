@@ -2,10 +2,7 @@ use super::basic::{transform_des, transform_ser, ColorUDef, Vector2FDef};
 use crate::util;
 use pathfinder_canvas::Path2D;
 use pathfinder_color::ColorU;
-use pathfinder_content::{
-    outline::Outline,
-    stroke::{LineCap, LineJoin, StrokeStyle},
-};
+use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use reduce::Reduce;
@@ -73,7 +70,7 @@ impl Edge {
     }
 
     fn compute_bounding(edges: &[Edge], is_closed: bool, transform: &Transform2F) -> RectF {
-        let outline = Self::edges_to_path(edges, is_closed).into_outline();
+        let mut outline = Self::edges_to_path(edges, is_closed).into_outline();
         outline.transform(transform);
         outline.bounds()
     }

@@ -96,11 +96,7 @@ impl ShapeScratchPad {
         self.id = Uuid::new_v4();
         self.edges.clear();
         self.edges.push(Edge::Move(start_position));
-        let part = Part::Vector {
-            item_id: self.id,
-            transform: Transform2F::default(),
-            color: None,
-        };
+        let part = Part::new_vector(self.id, Transform2F::default(), None);
         display_list
             .entry(*root_entity_id)
             .and_modify(|root| root.add_part(part));

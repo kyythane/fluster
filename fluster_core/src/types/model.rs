@@ -441,6 +441,7 @@ impl Entity {
                         item_id,
                         transform,
                         color,
+                        bounding_box,
                     } => Part::Vector {
                         item_id: *item_id,
                         transform: if let Some(new_transform) = new_transform {
@@ -453,12 +454,14 @@ impl Entity {
                         } else {
                             color.take()
                         },
+                        bounding_box: *bounding_box,
                     },
                     Part::Raster {
                         item_id,
                         transform,
                         view_rect,
                         tint,
+                        bounding_box,
                     } => Part::Raster {
                         item_id: *item_id,
                         transform: if let Some(new_transform) = new_transform {
@@ -476,6 +479,7 @@ impl Entity {
                         } else {
                             *view_rect
                         },
+                        bounding_box: *bounding_box,
                     },
                 };
                 mem::replace(part, new_part);
