@@ -27,31 +27,6 @@ fn patch_line_join(j: StrokeLineJoin) -> LineJoin {
     }
 }
 
-fn edges_to_path(edges: &[Edge], is_closed: bool) -> Path2D {
-    let mut path = Path2D::new();
-    for edge in edges {
-        match edge {
-            Edge::Move(to) => path.move_to(*to),
-            Edge::Line(to) => path.line_to(*to),
-            Edge::Quadratic { control, to } => path.quadratic_curve_to(*control, *to),
-            Edge::Bezier {
-                control_1,
-                control_2,
-                to,
-            } => path.bezier_curve_to(*control_1, *control_2, *to),
-            Edge::Arc {
-                control,
-                to,
-                radius,
-            } => path.arc_to(*control, *to, *radius),
-        }
-    }
-    if is_closed {
-        path.close_path();
-    }
-    path
-}
-
 fn stroke_path(
     canvas: &mut CanvasRenderingContext2D,
     edges: &[Edge],
@@ -60,7 +35,7 @@ fn stroke_path(
     transform: &Transform2F,
     color: ColorU,
 ) {
-    let path = edges_to_path(&edges, is_closed);
+    let path = Edge::edges_to_path(&edges, is_closed);
     canvas.set_transform(transform);
     canvas.set_line_width(stroke_style.line_width);
     canvas.set_line_cap(stroke_style.line_cap);
@@ -141,7 +116,7 @@ where
                         } else {
                             color
                         };
-                        let path = edges_to_path(edges, true);
+                        let path = Edge::edges_to_path(edges, true);
                         canvas.set_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
@@ -177,7 +152,7 @@ where
                             .iter()
                             .map(|mp| mp.to_edge(morph_index))
                             .collect::<Vec<Edge>>();
-                        let path = edges_to_path(&edges, true);
+                        let path = Edge::edges_to_path(&edges, true);
                         canvas.set_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
@@ -185,7 +160,7 @@ where
                 }
                 Shape::Clip { edges } => {
                     if edges.len() > 2 {
-                        let path = edges_to_path(edges, true);
+                        let path = Edge::edges_to_path(edges, true);
                         canvas.set_transform(&transform);
                         canvas.clip_path(path, FillRule::Winding);
                     }

@@ -1,7 +1,11 @@
 use super::basic::{transform_des, transform_ser, ColorUDef, Vector2FDef};
 use crate::util;
+use pathfinder_canvas::Path2D;
 use pathfinder_color::ColorU;
-use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
+use pathfinder_content::{
+    outline::Outline,
+    stroke::{LineCap, LineJoin, StrokeStyle},
+};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use reduce::Reduce;
@@ -35,7 +39,7 @@ pub enum Edge {
 }
 
 impl Edge {
-    fn end_point(&self) -> Vector2F {
+    pub fn end_point(&self) -> Vector2F {
         match self {
             Self::Move(v) => *v,
             Self::Line(v) => *v,
@@ -43,12 +47,35 @@ impl Edge {
         }
     }
 
-    fn compute_bounding(
-        &self,
-        start_point: Vector2F,
-        coords: (Vector2F, Vector2F),
-    ) -> (Vector2F, Vector2F) {
-        todo!();
+    pub fn edges_to_path(edges: &[Edge], is_closed: bool) -> Path2D {
+        let mut path = Path2D::new();
+        for edge in edges {
+            match edge {
+                Edge::Move(to) => path.move_to(*to),
+                Edge::Line(to) => path.line_to(*to),
+                Edge::Quadratic { control, to } => path.quadratic_curve_to(*control, *to),
+                Edge::Bezier {
+                    control_1,
+                    control_2,
+                    to,
+                } => path.bezier_curve_to(*control_1, *control_2, *to),
+                Edge::Arc {
+                    control,
+                    to,
+                    radius,
+                } => path.arc_to(*control, *to, *radius),
+            }
+        }
+        if is_closed {
+            path.close_path();
+        }
+        path
+    }
+
+    fn compute_bounding(edges: &[Edge], is_closed: bool, transform: &Transform2F) -> RectF {
+        let outline = Self::edges_to_path(edges, is_closed).into_outline();
+        outline.transform(transform);
+        outline.bounds()
     }
 }
 
@@ -195,38 +222,31 @@ impl AugmentedShape {
 impl Shape {
     pub fn compute_bounding(&self, transform: Transform2F, morph_percent: f32) -> RectF {
         match self {
-            Shape::Path { edges, .. } | Shape::Fill { edges, .. } | Shape::Clip { edges, .. } => {
-                let (_, (origin, lower_right)) = edges[1..].iter().fold(
-                    (
-                        edges[0].end_point(),
-                        (
-                            Vector2F::splat(std::f32::MAX),
-                            Vector2F::splat(std::f32::MIN),
-                        ),
-                    ),
-                    |(start_point, coords), edge| {
-                        let coords = edge.compute_bounding(start_point, coords);
-                        (edge.end_point(), coords)
-                    },
-                );
-                RectF::from_points(origin, lower_right)
+            Shape::Path {
+                edges, is_closed, ..
+            } => Edge::compute_bounding(edges, *is_closed, &transform),
+            Shape::Fill { edges, .. } | Shape::Clip { edges, .. } => {
+                Edge::compute_bounding(edges, true, &transform)
             }
-            Shape::MorphPath { edges, .. } | Shape::MorphFill { edges, .. } => {
-                let (_, (origin, lower_right)) = edges[1..].iter().fold(
-                    (
-                        edges[0].to_edge(morph_percent).end_point(),
-                        (
-                            Vector2F::splat(std::f32::MAX),
-                            Vector2F::splat(std::f32::MIN),
-                        ),
-                    ),
-                    |(start_point, coords), morph_edge| {
-                        let edge = morph_edge.to_edge(morph_percent);
-                        let coords = edge.compute_bounding(start_point, coords);
-                        (edge.end_point(), coords)
-                    },
-                );
-                RectF::from_points(origin, lower_right)
+            Shape::MorphPath {
+                edges: morph_edges,
+                is_closed,
+                ..
+            } => {
+                let edges = morph_edges
+                    .iter()
+                    .map(|morph_edge| morph_edge.to_edge(morph_percent))
+                    .collect::<Vec<Edge>>();
+                Edge::compute_bounding(&edges, *is_closed, &transform)
+            }
+            Shape::MorphFill {
+                edges: morph_edges, ..
+            } => {
+                let edges = morph_edges
+                    .iter()
+                    .map(|morph_edge| morph_edge.to_edge(morph_percent))
+                    .collect::<Vec<Edge>>();
+                Edge::compute_bounding(&edges, true, &transform)
             }
             Shape::Group { shapes } => shapes
                 .iter()

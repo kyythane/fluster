@@ -1,5 +1,4 @@
 #![deny(clippy::all)]
-//TODO: break into smaller files... again... somehow
 
 use super::actions::{
     Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
@@ -354,7 +353,8 @@ fn add_entity(
                     .iter()
                     .map(|x| match x {
                         PartDefinition::Vector { item_id, transform } => {
-                            match library.get(&item_id) {
+                            let item = library.get(&item_id);
+                            match item {
                                 Some(DisplayLibraryItem::Vector { .. }) => Some(Part::Vector {
                                     item_id: *item_id,
                                     transform: *transform,

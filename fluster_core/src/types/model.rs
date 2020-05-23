@@ -34,12 +34,14 @@ pub enum Part {
     Vector {
         item_id: Uuid,
         transform: Transform2F,
+        bounding_box: RectF,
         color: Option<Coloring>,
     },
     Raster {
         item_id: Uuid,
         view_rect: RectF,
         transform: Transform2F,
+        bounding_box: RectF,
         tint: Option<ColorU>,
     },
 }
@@ -49,6 +51,7 @@ impl Part {
         Part::Vector {
             item_id,
             transform,
+            bounding_box: RectF::default(),
             color,
         }
     }
@@ -62,15 +65,25 @@ impl Part {
         Part::Raster {
             item_id,
             view_rect,
+            bounding_box: RectF::default(),
             transform,
             tint,
         }
     }
 
+    pub fn recompute_bounds(&mut self) -> RectF {
+        todo!()
+    }
+
+    pub fn bounds(&self) -> &RectF {
+        match self {
+            Part::Vector { bounding_box, .. } | Part::Raster { bounding_box, .. } => bounding_box,
+        }
+    }
+
     pub fn item_id(&self) -> &Uuid {
         match self {
-            Part::Vector { item_id, .. } => item_id,
-            Part::Raster { item_id, .. } => item_id,
+            Part::Vector { item_id, .. } | Part::Raster { item_id, .. } => item_id,
         }
     }
 

@@ -113,6 +113,7 @@ pub fn paint<S: BuildHasher>(
                     item_id,
                     transform,
                     color,
+                    ..
                 } => {
                     if let Some(&DisplayLibraryItem::Vector(ref shape)) = library.get(&item_id) {
                         renderer.draw_shape(
@@ -128,6 +129,7 @@ pub fn paint<S: BuildHasher>(
                     transform,
                     view_rect,
                     tint,
+                    ..
                 } => {
                     if let Some(&DisplayLibraryItem::Raster(ref bitmap)) = library.get(&item_id) {
                         renderer.draw_raster(
