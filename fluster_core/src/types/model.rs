@@ -6,10 +6,10 @@ use pathfinder_color::ColorU;
 use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::{transform2d::Transform2F, vector::Vector2F};
+use reduce::Reduce;
 use std::collections::HashMap;
 use std::mem;
 use uuid::Uuid;
-
 #[derive(Clone, PartialEq, Debug)]
 pub enum DisplayLibraryItem {
     Vector(Shape),
@@ -17,10 +17,11 @@ pub enum DisplayLibraryItem {
 }
 
 impl DisplayLibraryItem {
-    pub fn compute_bounding(&self, transform: Transform2F, morph_percent: f32) -> RectF {
+    pub fn compute_bounding(&self, transform: &Transform2F, morph_percent: f32) -> RectF {
         match self {
             Self::Vector(shape) => shape.compute_bounding(transform, morph_percent),
             Self::Raster(pattern) => {
+                let transform = *transform;
                 let o = transform * Vector2F::default();
                 let lr = transform * pattern.size().to_f32();
                 RectF::from_points(o.min(lr), o.max(lr))
@@ -48,7 +49,7 @@ pub enum Part {
 
 impl Part {
     pub fn new_vector(item_id: Uuid, transform: Transform2F, color: Option<Coloring>) -> Part {
-        Part::Vector {
+        Self::Vector {
             item_id,
             transform,
             bounding_box: RectF::default(),
@@ -62,7 +63,7 @@ impl Part {
         transform: Transform2F,
         tint: Option<ColorU>,
     ) -> Part {
-        Part::Raster {
+        Self::Raster {
             item_id,
             view_rect,
             bounding_box: RectF::default(),
@@ -71,19 +72,63 @@ impl Part {
         }
     }
 
-    pub fn recompute_bounds(&mut self) -> RectF {
-        todo!()
+    pub fn recompute_bounds(
+        &mut self,
+        world_transform: &Transform2F,
+        morph_percent: f32,
+        library: &HashMap<Uuid, DisplayLibraryItem>,
+    ) -> RectF {
+        let new_self = match self {
+            Self::Vector {
+                item_id,
+                transform,
+                color,
+                ..
+            } => {
+                let bounding_box = library
+                    .get(item_id)
+                    .unwrap()
+                    .compute_bounding(&(*world_transform * *transform), morph_percent);
+                Self::Vector {
+                    item_id: *item_id,
+                    transform: *transform,
+                    color: color.clone(),
+                    bounding_box,
+                }
+            }
+            Self::Raster {
+                item_id,
+                view_rect,
+                transform,
+                tint,
+                ..
+            } => {
+                let transform = *world_transform * *transform;
+                let o = transform * Vector2F::default();
+                let lr = transform * view_rect.size();
+                let bounding_box = RectF::from_points(o.min(lr), o.max(lr));
+                Self::Raster {
+                    item_id: *item_id,
+                    view_rect: *view_rect,
+                    transform,
+                    tint: *tint,
+                    bounding_box,
+                }
+            }
+        };
+        mem::replace(self, new_self);
+        *self.bounds()
     }
 
     pub fn bounds(&self) -> &RectF {
         match self {
-            Part::Vector { bounding_box, .. } | Part::Raster { bounding_box, .. } => bounding_box,
+            Self::Vector { bounding_box, .. } | Self::Raster { bounding_box, .. } => bounding_box,
         }
     }
 
     pub fn item_id(&self) -> &Uuid {
         match self {
-            Part::Vector { item_id, .. } | Part::Raster { item_id, .. } => item_id,
+            Self::Vector { item_id, .. } | Self::Raster { item_id, .. } => item_id,
         }
     }
 
@@ -217,6 +262,7 @@ pub struct Entity {
     parts: Vec<Part>,
     transform: Transform2F,
     tweens: HashMap<Uuid, Vec<PropertyTween>>,
+    bounding_box: RectF,
 }
 
 // TODO: why did I do this?
@@ -255,6 +301,7 @@ impl Entity {
             transform,
             tweens: HashMap::new(),
             morph_index,
+            bounding_box: RectF::default(),
         }
     }
 
@@ -272,6 +319,25 @@ impl Entity {
 
     pub fn mark_clean(&mut self) {
         self.dirty = false;
+    }
+
+    pub fn bounds(&self) -> &RectF {
+        &self.bounding_box
+    }
+
+    pub fn recompute_bounds(
+        &mut self,
+        transform: &Transform2F,
+        library: &HashMap<Uuid, DisplayLibraryItem>,
+    ) -> RectF {
+        let morph_index = self.morph_index;
+        self.bounding_box = self
+            .parts
+            .iter_mut()
+            .map(|part| part.recompute_bounds(transform, morph_index, library))
+            .reduce(|a, b| a.union_rect(b))
+            .unwrap();
+        self.bounding_box
     }
 
     #[inline]

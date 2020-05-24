@@ -128,7 +128,9 @@ impl SceneData {
                         );
                     }
                     let next_world_space_transform =
-                        *self.world_space_transforms.get(next_entity.id()).unwrap();
+                        self.world_space_transforms.get(next_entity.id()).unwrap();
+                    let new_bounds =
+                        next_entity.recompute_bounds(next_world_space_transform, library);
                 }
             }
         }

@@ -210,14 +210,14 @@ pub struct AugmentedShape {
 }
 
 impl AugmentedShape {
-    pub fn compute_bounding(&self, transform: Transform2F, morph_percent: f32) -> RectF {
+    pub fn compute_bounding(&self, transform: &Transform2F, morph_percent: f32) -> RectF {
         self.shape
-            .compute_bounding(transform * self.transform, morph_percent)
+            .compute_bounding(&(*transform * self.transform), morph_percent)
     }
 }
 
 impl Shape {
-    pub fn compute_bounding(&self, transform: Transform2F, morph_percent: f32) -> RectF {
+    pub fn compute_bounding(&self, transform: &Transform2F, morph_percent: f32) -> RectF {
         match self {
             Shape::Path {
                 edges, is_closed, ..
