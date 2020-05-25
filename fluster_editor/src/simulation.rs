@@ -2,9 +2,12 @@
 use crate::messages::{EditMessage, ToolMessage};
 use crate::{rendering::RenderData, tools::ToolOption};
 use fluster_core::rendering::{adjust_depth, PaintData};
-use fluster_core::types::{
-    model::{DisplayLibraryItem, Entity, Part},
-    shapes::{Edge, Shape},
+use fluster_core::{
+    runner::SceneData,
+    types::{
+        model::{DisplayLibraryItem, Entity, Part},
+        shapes::{Edge, Shape},
+    },
 };
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
@@ -159,6 +162,7 @@ pub struct StageState {
     size: Vector2I,
     scale: f32,
     shape_scratch_pad: ShapeScratchPad,
+    scene_data: SceneData,
 }
 
 impl StageState {
@@ -174,6 +178,7 @@ impl StageState {
             size: stage_size,
             scale: 1.0,
             shape_scratch_pad: ShapeScratchPad::new(),
+            scene_data: SceneData::new(stage_size.to_f32()),
         }
     }
 
@@ -219,6 +224,11 @@ impl StageState {
         }
     }
 
+    /*pub fn update_scene(&mut self) {
+        self.scene_data
+            .recompute(self.state, self.display_list, self.library)
+    }*/
+
     #[inline]
     pub fn scale(&self) -> f32 {
         self.scale
@@ -236,7 +246,6 @@ impl StageState {
     pub fn compute_render_data(&self, timeline: &TimelineState) -> RenderData {
         let mut nodes = VecDeque::new();
         let mut depth_list = BTreeMap::new();
-        let mut world_space_transforms = HashMap::new();
         nodes.push_back(&self.root_entity_id);
         while let Some(entity_id) = nodes.pop_front() {
             if !timeline.can_show_entity(entity_id) {
@@ -249,23 +258,14 @@ impl StageState {
                     }
                     let depth = adjust_depth(entity.depth(), &depth_list);
                     depth_list.insert(depth, entity);
-                    if let Some(parent_transform) = world_space_transforms.get(entity.parent()) {
-                        let parent_transform: Transform2F = *parent_transform;
-                        world_space_transforms
-                            .insert(*entity.id(), parent_transform * *entity.transform());
-                    } else if entity.id() == entity.parent() {
-                        // If the parent id is the same as the entity id then we are at a root
-                        world_space_transforms.insert(*entity.id(), *entity.transform());
-                    } else {
-                        continue;
-                    }
                 }
                 None => continue,
             }
         }
 
         RenderData::new(
-            PaintData::new(depth_list, world_space_transforms),
+            PaintData::new(depth_list),
+            &self.scene_data,
             self.background_color,
             &self.library,
         )

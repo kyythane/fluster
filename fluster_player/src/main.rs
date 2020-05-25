@@ -268,7 +268,7 @@ fn build_action_list() -> ActionList {
             transform: None,
             morph_index: Some(1.0),
         }),
-        Action::PresentFrame(1, 239),
+        Action::PresentFrame(1, 240),
         Action::UpdateEntity(EntityUpdateDefinition {
             duration_frames: 300,
             easing: None,

@@ -61,12 +61,17 @@ impl State {
     }
 }
 
+#[derive(Debug)]
 pub struct SceneData {
     quad_tree: QuadTree<Uuid, RandomState>,
     world_space_transforms: HashMap<Uuid, Transform2F>,
 }
 
 impl SceneData {
+    pub fn world_space_transforms(&self) -> &HashMap<Uuid, Transform2F> {
+        &self.world_space_transforms
+    }
+
     pub fn new(size: Vector2F) -> Self {
         SceneData {
             quad_tree: QuadTree::default(
@@ -130,6 +135,7 @@ impl SceneData {
                         next_entity.recompute_bounds(next_world_space_transform, library);
                     self.quad_tree.remove(&next_node);
                     self.quad_tree.insert_with_box(next_node, new_bounds);
+                    next_entity.mark_clean();
                 }
             }
         }
@@ -172,7 +178,7 @@ pub fn play(
                     //TODO: tweens should update consistently w/ frame index instead of via timer
                     update_tweens(state.delta_time, &mut display_list);
                     scene_data.recompute(&state, &mut display_list, &library);
-                    draw_frame(renderer, &state, &display_list, &library)?;
+                    draw_frame(renderer, &state, &display_list, &library, &scene_data)?;
                     state = on_frame_complete(state);
                     if !state.running {
                         break;
@@ -424,11 +430,12 @@ fn draw_frame(
     state: &State,
     display_list: &HashMap<Uuid, Entity>,
     library: &HashMap<Uuid, DisplayLibraryItem>,
+    scene_data: &SceneData,
 ) -> Result<(), String> {
     renderer.start_frame(state.stage_size);
     renderer.set_background(state.background_color);
     let render_data = compute_render_data(&state.root_entity_id, display_list)?;
-    paint(renderer, render_data, library);
+    paint(renderer, library, render_data, scene_data);
     renderer.end_frame();
     Ok(())
 }
@@ -756,11 +763,20 @@ mod tests {
             })
             .return_const(())
             .in_sequence(&mut seq);
+        let mut scene_data = SceneData::new(state.stage_size);
+        scene_data.recompute(&state, &mut display_list, &library);
         mock_renderer
             .expect_end_frame()
             .times(1)
             .return_const(())
             .in_sequence(&mut seq);
-        draw_frame(&mut mock_renderer, &state, &display_list, &library).unwrap();
+        draw_frame(
+            &mut mock_renderer,
+            &state,
+            &display_list,
+            &library,
+            &scene_data,
+        )
+        .unwrap();
     }
 }

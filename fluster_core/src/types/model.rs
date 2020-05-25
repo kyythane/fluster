@@ -336,7 +336,7 @@ impl Entity {
             .iter_mut()
             .map(|part| part.recompute_bounds(transform, morph_index, library))
             .reduce(|a, b| a.union_rect(b))
-            .unwrap();
+            .unwrap_or(RectF::default());
         self.bounding_box
     }
 
@@ -455,6 +455,7 @@ impl Entity {
                 }
             }
         }
+        self.mark_dirty();
         Ok(())
     }
 
@@ -462,6 +463,7 @@ impl Entity {
         if self.tweens.is_empty() {
             return;
         }
+        self.mark_dirty();
         for (key, tweens) in self.tweens.iter_mut() {
             if key == &self.id {
                 for update in tweens.iter_mut().map(|tween| tween.update(elapsed)) {

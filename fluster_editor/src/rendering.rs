@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 use fluster_core::rendering::{paint, PaintData, Renderer as FlusterRenderer};
-use fluster_core::types::model::DisplayLibraryItem;
+use fluster_core::{runner::SceneData, types::model::DisplayLibraryItem};
 use fluster_graphics::FlusterRendererImpl;
 use gl::{ReadPixels, BGRA, UNSIGNED_BYTE};
 use iced::image::Handle as ImageHandle;
@@ -25,6 +25,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub struct RenderData<'a, 'b> {
     paint_data: PaintData<'a>,
+    scene_data: &'b SceneData,
     background_color: ColorU,
     library: &'b HashMap<Uuid, DisplayLibraryItem>,
 }
@@ -32,6 +33,7 @@ pub struct RenderData<'a, 'b> {
 impl<'a, 'b> RenderData<'a, 'b> {
     pub fn new(
         paint_data: PaintData<'a>,
+        scene_data: &'b SceneData,
         background_color: ColorU,
         library: &'b HashMap<Uuid, DisplayLibraryItem>,
     ) -> Self {
@@ -39,6 +41,7 @@ impl<'a, 'b> RenderData<'a, 'b> {
             paint_data,
             background_color,
             library,
+            scene_data,
         }
     }
 }
@@ -105,8 +108,9 @@ impl StageRenderer {
         self.renderer.set_background(render_data.background_color);
         paint(
             &mut self.renderer,
-            render_data.paint_data,
             render_data.library,
+            render_data.paint_data,
+            render_data.scene_data,
         );
         self.renderer.end_frame();
         let pixels = unsafe {

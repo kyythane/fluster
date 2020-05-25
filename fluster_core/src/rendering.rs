@@ -3,6 +3,7 @@ use super::types::{
     model::{DisplayLibraryItem, Entity, Part},
     shapes::{Coloring, Shape},
 };
+use crate::runner::SceneData;
 use pathfinder_color::ColorU;
 use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::rect::RectF;
@@ -35,18 +36,11 @@ pub trait Renderer {
 #[derive(Debug)]
 pub struct PaintData<'a> {
     depth_list: BTreeMap<u64, &'a Entity>,
-    world_space_transforms: HashMap<Uuid, Transform2F>,
 }
 
 impl<'a> PaintData<'a> {
-    pub fn new(
-        depth_list: BTreeMap<u64, &'a Entity>,
-        world_space_transforms: HashMap<Uuid, Transform2F>,
-    ) -> PaintData<'a> {
-        PaintData {
-            depth_list,
-            world_space_transforms,
-        }
+    pub fn new(depth_list: BTreeMap<u64, &'a Entity>) -> PaintData<'a> {
+        PaintData { depth_list }
     }
 }
 
@@ -65,13 +59,11 @@ pub fn compute_render_data<'a, S: BuildHasher>(
 ) -> Result<PaintData<'a>, String> {
     use std::collections::VecDeque;
     let mut depth_list: BTreeMap<u64, &'a Entity> = BTreeMap::new();
-    let mut world_space_transforms: HashMap<Uuid, Transform2F> = HashMap::new();
     let root = display_list.get(root_entity_id);
     if root.is_none() {
         return Err("Root Entity unloaded.".to_string());
     }
     let root = root.unwrap();
-    world_space_transforms.insert(*root.id(), *root.transform());
     let mut nodes = VecDeque::new();
     nodes.push_back(root);
     while let Some(node) = nodes.pop_front() {
@@ -82,31 +74,22 @@ pub fn compute_render_data<'a, S: BuildHasher>(
         }
         let depth = adjust_depth(node.depth(), &depth_list);
         depth_list.insert(depth, node);
-        if let Some(parent_transform) = world_space_transforms.get(node.parent()) {
-            let parent_transform = *parent_transform;
-            world_space_transforms.insert(*node.id(), parent_transform * *node.transform());
-        } else {
-            return Err(format!(
-                "Could not find parent {} of entity {} in world_space_transforms",
-                node.parent(),
-                node.id()
-            ));
-        }
     }
-    Ok(PaintData {
-        depth_list,
-        world_space_transforms,
-    })
+    Ok(PaintData { depth_list })
 }
 
 pub fn paint<S: BuildHasher>(
     renderer: &mut impl Renderer,
-    paint_data: PaintData,
     library: &HashMap<Uuid, DisplayLibraryItem, S>,
+    paint_data: PaintData,
+    scene_data: &SceneData,
 ) {
     //Render from back to front (TODO: Does Pathfinder work better front to back or back to front?)
     for entity in paint_data.depth_list.values() {
-        let world_space_transform = paint_data.world_space_transforms.get(entity.id()).unwrap();
+        let world_space_transform = scene_data
+            .world_space_transforms()
+            .get(entity.id())
+            .unwrap();
         for part in entity.parts() {
             match part {
                 Part::Vector {
