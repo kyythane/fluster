@@ -11,12 +11,12 @@ use super::types::{
 };
 use aabb_quadtree_pathfinder::QuadTree;
 use pathfinder_color::ColorU;
-use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::Vector2F;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use pathfinder_geometry::{rect::RectF, transform2d::Transform2F, vector::Vector2F};
+use std::{
+    collections::{hash_map::RandomState, HashMap, HashSet, VecDeque},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
 
@@ -62,20 +62,16 @@ impl State {
 }
 
 pub struct SceneData {
-    quad_tree: QuadTree<Uuid>,
+    quad_tree: QuadTree<Uuid, RandomState>,
     world_space_transforms: HashMap<Uuid, Transform2F>,
 }
 
 impl SceneData {
     pub fn new(size: Vector2F) -> Self {
         SceneData {
-            quad_tree: QuadTree::new(
+            quad_tree: QuadTree::default(
                 RectF::from_points(Vector2F::zero(), size),
-                true,
-                //TODO: experiment with parameters!
-                3,
-                10,
-                8,
+                RandomState::new(),
             ),
             world_space_transforms: HashMap::new(),
         }
@@ -88,7 +84,7 @@ impl SceneData {
         library: &HashMap<Uuid, DisplayLibraryItem>,
     ) {
         // First pass algorithm. O(m log n), where m is # dirty nodes and n is # total nodes.
-        let mut dirty_roots = display_list
+        let dirty_roots = display_list
             .iter()
             .filter(|(_, entity)| entity.dirty())
             .map(|(id, entity)| {
@@ -113,6 +109,7 @@ impl SceneData {
                     for child_id in next_entity.children() {
                         queue.push_back(*child_id);
                     }
+                    // Update world_space transform for entity
                     if next_node == state.root_entity_id {
                         self.world_space_transforms
                             .insert(*next_entity.id(), *next_entity.transform());
@@ -131,6 +128,8 @@ impl SceneData {
                         self.world_space_transforms.get(next_entity.id()).unwrap();
                     let new_bounds =
                         next_entity.recompute_bounds(next_world_space_transform, library);
+                    self.quad_tree.remove(&next_node);
+                    self.quad_tree.insert_with_box(next_node, new_bounds);
                 }
             }
         }
