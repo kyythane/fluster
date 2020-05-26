@@ -68,10 +68,6 @@ pub struct SceneData {
 }
 
 impl SceneData {
-    pub fn world_space_transforms(&self) -> &HashMap<Uuid, Transform2F> {
-        &self.world_space_transforms
-    }
-
     pub fn new(size: Vector2F) -> Self {
         SceneData {
             quad_tree: QuadTree::default(
@@ -82,9 +78,17 @@ impl SceneData {
         }
     }
 
+    pub fn world_space_transforms(&self) -> &HashMap<Uuid, Transform2F> {
+        &self.world_space_transforms
+    }
+
+    pub fn quad_tree(&self) -> &QuadTree<Uuid, RandomState> {
+        &self.quad_tree
+    }
+
     pub fn recompute(
         &mut self,
-        state: &State,
+        root_entity_id: &Uuid,
         display_list: &mut HashMap<Uuid, Entity>,
         library: &HashMap<Uuid, DisplayLibraryItem>,
     ) {
@@ -96,7 +100,7 @@ impl SceneData {
                 let mut entity = entity;
                 let mut maximal_id = id;
                 let mut query_id = id;
-                while query_id != &state.root_entity_id {
+                while query_id != root_entity_id {
                     query_id = entity.parent();
                     entity = display_list.get(query_id).unwrap();
                     if entity.dirty() {
@@ -115,7 +119,7 @@ impl SceneData {
                         queue.push_back(*child_id);
                     }
                     // Update world_space transform for entity
-                    if next_node == state.root_entity_id {
+                    if &next_node == root_entity_id {
                         self.world_space_transforms
                             .insert(*next_entity.id(), *next_entity.transform());
                     } else {
@@ -134,7 +138,7 @@ impl SceneData {
                     let new_bounds =
                         next_entity.recompute_bounds(next_world_space_transform, library);
                     self.quad_tree.remove(&next_node);
-                    self.quad_tree.insert_with_box(next_node, new_bounds);
+                    self.quad_tree.insert(next_node, new_bounds);
                     next_entity.mark_clean();
                 }
             }
@@ -177,7 +181,7 @@ pub fn play(
                     //TODO: scripts
                     //TODO: tweens should update consistently w/ frame index instead of via timer
                     update_tweens(state.delta_time, &mut display_list);
-                    scene_data.recompute(&state, &mut display_list, &library);
+                    scene_data.recompute(&state.root_entity_id, &mut display_list, &library);
                     draw_frame(renderer, &state, &display_list, &library, &scene_data)?;
                     state = on_frame_complete(state);
                     if !state.running {
@@ -764,7 +768,7 @@ mod tests {
             .return_const(())
             .in_sequence(&mut seq);
         let mut scene_data = SceneData::new(state.stage_size);
-        scene_data.recompute(&state, &mut display_list, &library);
+        scene_data.recompute(&state.root_entity_id, &mut display_list, &library);
         mock_renderer
             .expect_end_frame()
             .times(1)

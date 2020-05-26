@@ -99,8 +99,12 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
         );
         match event {
             Event::Mouse(mouse_event) => {
-                //TODO: mouse picking for existing shapes/entities
-                //TODO: how are shapes/entities tracked in edit
+                let selection = self
+                    .stage_state
+                    .query_entities(&self.edit_state.selection_shape(stage_position));
+
+                println!("{:?}", selection);
+
                 if let Some(edit_message) =
                     self.edit_state
                         .on_mouse_event(mouse_event, stage_position, in_bounds)
@@ -110,7 +114,7 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
             }
             Event::Keyboard(keyboard_event) => {
                 //match keyboard_event {}
-                //TODO: oh fuck hot keys
+                // TODO: oh fuck hot keys
                 // TODO: modifiers for clicks!!!!!! :(
                 // delete, copy, paste, cut, uh...
             }

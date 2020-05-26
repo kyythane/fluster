@@ -1,9 +1,7 @@
 #![deny(clippy::all)]
 use fluster_core::rendering::Renderer;
 use fluster_core::types::shapes::{Coloring, Edge, Shape};
-use pathfinder_canvas::{
-    Canvas, CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D,
-};
+use pathfinder_canvas::{Canvas, CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin};
 use pathfinder_color::ColorU;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::pattern::Pattern;

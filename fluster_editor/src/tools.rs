@@ -8,7 +8,7 @@ use iced_native::{
 };
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin};
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use uuid::Uuid;
@@ -42,6 +42,13 @@ impl Tool {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub enum SelectionShape {
+    None,
+    Point(Vector2F),
+    Area(RectF),
+}
+
+#[derive(Clone, Copy, Debug)]
 enum PlacementState {
     None,
     Placing,
@@ -72,7 +79,6 @@ enum ToolState {
     },
 }
 
-//TODO: invoke_action
 impl ToolState {
     fn new(tool: Tool) -> Self {
         match tool {
@@ -167,6 +173,10 @@ impl ToolState {
                 PlacementState::Placing => MouseCursor::Grabbing,
             },
         }
+    }
+
+    fn selection_shape(&self, stage_position: Vector2F) -> SelectionShape {
+        SelectionShape::Point(stage_position)
     }
 
     fn on_mouse_event(
@@ -360,6 +370,10 @@ impl EditState {
 
     pub fn mouse_cursor(&self) -> MouseCursor {
         self.tool_state.mouse_cursor()
+    }
+
+    pub fn selection_shape(&self, stage_position: Vector2F) -> SelectionShape {
+        self.tool_state.selection_shape(stage_position)
     }
 
     pub fn on_mouse_event(

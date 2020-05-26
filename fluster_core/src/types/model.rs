@@ -248,7 +248,7 @@ impl Part {
     }
 }
 
-//TODO: Bounding boxes and hit tests for mouse interactions
+//TODO: hit tests for mouse interactions
 #[derive(Clone, Debug)]
 pub struct Entity {
     active: bool,
@@ -383,11 +383,13 @@ impl Entity {
     #[inline]
     pub fn add_part(&mut self, part: Part) {
         self.parts.push(part);
+        self.mark_dirty();
     }
 
     #[inline]
     pub fn remove_part(&mut self, item_id: &Uuid) {
         self.parts.retain(|part| part.item_id() != item_id);
+        self.mark_dirty();
     }
 
     #[inline]

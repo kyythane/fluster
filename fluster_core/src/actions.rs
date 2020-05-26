@@ -191,7 +191,6 @@ impl PartUpdateDefinition {
     }
 }
 
-//TODO: since these vecs are immutable, replace with Box<[T]> (into_boxed_slice())
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct EntityDefinition {
     pub depth: u32,

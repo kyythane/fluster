@@ -1,6 +1,9 @@
 #![deny(clippy::all)]
 use crate::messages::{EditMessage, ToolMessage};
-use crate::{rendering::RenderData, tools::ToolOption};
+use crate::{
+    rendering::RenderData,
+    tools::{SelectionShape, ToolOption},
+};
 use fluster_core::rendering::{adjust_depth, PaintData};
 use fluster_core::{
     runner::SceneData,
@@ -12,7 +15,10 @@ use fluster_core::{
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::{
+    rect::RectF,
+    vector::{Vector2F, Vector2I},
+};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem;
 use uuid::Uuid;
@@ -170,7 +176,7 @@ impl StageState {
         let root_entity_id = Uuid::new_v4();
         let mut display_list = HashMap::new();
         display_list.insert(root_entity_id, Entity::create_root(root_entity_id));
-        Self {
+        let mut new_self = Self {
             background_color,
             root_entity_id,
             library: HashMap::new(),
@@ -179,7 +185,10 @@ impl StageState {
             scale: 1.0,
             shape_scratch_pad: ShapeScratchPad::new(),
             scene_data: SceneData::new(stage_size.to_f32()),
-        }
+        };
+        // Need to init scene. Since StageState already knows how to set that up, just call into it
+        new_self.update_scene();
+        return new_self;
     }
 
     pub fn root(&self) -> &Uuid {
@@ -216,6 +225,7 @@ impl StageState {
                             &mut self.display_list,
                             &self.root_entity_id,
                         );
+                        self.update_scene();
                     }
                 }
                 true
@@ -224,10 +234,10 @@ impl StageState {
         }
     }
 
-    /*pub fn update_scene(&mut self) {
+    pub fn update_scene(&mut self) {
         self.scene_data
-            .recompute(self.state, self.display_list, self.library)
-    }*/
+            .recompute(&self.root_entity_id, &mut self.display_list, &self.library)
+    }
 
     #[inline]
     pub fn scale(&self) -> f32 {
@@ -240,6 +250,14 @@ impl StageState {
 
     pub fn height(&self) -> i32 {
         self.size.y()
+    }
+
+    pub fn query_entities(&self, selection_shape: &SelectionShape) -> Vec<(Uuid, RectF)> {
+        match selection_shape {
+            SelectionShape::None => vec![],
+            SelectionShape::Point(point) => self.scene_data.quad_tree().query_point(point),
+            SelectionShape::Area(rect) => self.scene_data.quad_tree().query_rect(rect),
+        }
     }
 
     //TODO: how does root interact with layers? Should I support more than one root?
