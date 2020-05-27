@@ -13,7 +13,7 @@ use iced_wgpu::{Defaults, Primitive, Renderer};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::{convert::TryInto, hash::Hash, mem};
-
+use uuid::Uuid;
 pub struct Stage<'a, Message> {
     width: u16,
     height: u16,
@@ -99,11 +99,19 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
         );
         match event {
             Event::Mouse(mouse_event) => {
-                let selection = self
-                    .stage_state
-                    .query_entities(&self.edit_state.selection_shape(stage_position));
+                let selection_shape = self.edit_state.selection_shape(stage_position);
+                let entity_selection = self.stage_state.query_entities(&selection_shape);
 
-                println!("{:?}", selection);
+                let part_selection = self
+                    .stage_state
+                    .query_parts(&selection_shape, &entity_selection);
+                println!(
+                    "p: {:?}",
+                    part_selection
+                        .iter()
+                        .map(|p| p.item_id())
+                        .collect::<Vec<&Uuid>>()
+                );
 
                 if let Some(edit_message) =
                     self.edit_state

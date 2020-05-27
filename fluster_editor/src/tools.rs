@@ -41,7 +41,7 @@ impl Tool {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SelectionShape {
     None,
     Point(Vector2F),
