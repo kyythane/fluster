@@ -100,11 +100,8 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
         match event {
             Event::Mouse(mouse_event) => {
                 let selection_shape = self.edit_state.selection_shape(stage_position);
-                let entity_selection = self.stage_state.query_entities(&selection_shape);
+                let part_selection = self.stage_state.query_parts(&selection_shape);
 
-                let part_selection = self
-                    .stage_state
-                    .query_parts(&selection_shape, &entity_selection);
                 println!(
                     "p: {:?}",
                     part_selection

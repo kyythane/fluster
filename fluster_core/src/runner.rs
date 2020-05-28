@@ -63,7 +63,7 @@ impl State {
 
 #[derive(Debug)]
 pub struct SceneData {
-    quad_tree: QuadTree<Uuid, RandomState>,
+    quad_tree: QuadTree<(Uuid, Uuid), RandomState>,
     world_space_transforms: HashMap<Uuid, Transform2F>,
 }
 
@@ -82,7 +82,7 @@ impl SceneData {
         &self.world_space_transforms
     }
 
-    pub fn quad_tree(&self) -> &QuadTree<Uuid, RandomState> {
+    pub fn quad_tree(&self) -> &QuadTree<(Uuid, Uuid), RandomState> {
         &self.quad_tree
     }
 
@@ -135,10 +135,12 @@ impl SceneData {
                     }
                     let next_world_space_transform =
                         self.world_space_transforms.get(next_entity.id()).unwrap();
-                    let new_bounds =
-                        next_entity.recompute_bounds(next_world_space_transform, library);
-                    self.quad_tree.remove(&next_node);
-                    self.quad_tree.insert(next_node, new_bounds);
+                    next_entity.recompute_bounds(next_world_space_transform, library);
+                    next_entity.parts().iter().for_each(|part| {
+                        let key = (next_node, *part.item_id());
+                        self.quad_tree.remove(&key);
+                        self.quad_tree.insert(key, *part.bounds());
+                    });
                     next_entity.mark_clean();
                 }
             }

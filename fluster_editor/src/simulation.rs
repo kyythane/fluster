@@ -252,38 +252,30 @@ impl StageState {
         self.size.y()
     }
 
-    pub fn query_entities(&self, selection_shape: &SelectionShape) -> Vec<(Uuid, RectF)> {
+    pub fn query_parts(&self, selection_shape: &SelectionShape) -> Vec<&Part> {
         match selection_shape {
             SelectionShape::None => vec![],
             SelectionShape::Point(point) => self.scene_data.quad_tree().query_point(point),
             SelectionShape::Area(rect) => self.scene_data.quad_tree().query_rect(rect),
         }
-    }
-
-    pub fn query_parts(
-        &self,
-        selection_shape: &SelectionShape,
-        entities: &Vec<(Uuid, RectF)>,
-    ) -> Vec<&Part> {
-        if selection_shape == &SelectionShape::None {
-            return vec![];
-        }
-
-        entities
-            .iter()
-            .flat_map(|(e_id, _)| {
-                self.display_list
-                    .get(&e_id)
-                    .unwrap()
-                    .parts()
-                    .iter()
-                    .filter(|part| match selection_shape {
-                        SelectionShape::Point(point) => part.bounds().contains_point(*point),
-                        SelectionShape::Area(rect) => part.bounds().intersects(*rect),
-                        _ => false,
-                    })
-            })
-            .collect::<Vec<&Part>>()
+        .into_iter()
+        .fold(
+            HashMap::new(),
+            |mut map: HashMap<Uuid, HashSet<Uuid>>, ((e_id, p_id), _)| {
+                map.entry(e_id).or_default().insert(p_id);
+                map
+            },
+        )
+        .into_iter()
+        .flat_map(|(e_id, p_ids)| {
+            self.display_list
+                .get(&e_id)
+                .unwrap()
+                .parts()
+                .iter()
+                .filter(move |part| p_ids.contains(part.item_id()))
+        })
+        .collect::<Vec<&Part>>()
     }
 
     //TODO: how does root interact with layers? Should I support more than one root?

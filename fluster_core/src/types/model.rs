@@ -29,7 +29,7 @@ impl DisplayLibraryItem {
         }
     }
 }
-
+//TODO: revist parts. Convert to struct (item_id, transfom, bounding_box, dirty, active) w/ metadata enum
 #[derive(Clone, PartialEq, Debug)]
 pub enum Part {
     Vector {
