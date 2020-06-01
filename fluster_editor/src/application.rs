@@ -100,15 +100,9 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
         match event {
             Event::Mouse(mouse_event) => {
                 let selection_shape = self.edit_state.selection_shape(stage_position);
-                let part_selection = self.stage_state.query_parts(&selection_shape);
+                let selection = self.stage_state.query_selection(&selection_shape);
 
-                println!(
-                    "p: {:?}",
-                    part_selection
-                        .iter()
-                        .map(|p| p.item_id())
-                        .collect::<Vec<&Uuid>>()
-                );
+                println!("{:?}", selection);
 
                 if let Some(edit_message) =
                     self.edit_state

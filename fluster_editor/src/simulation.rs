@@ -23,6 +23,37 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem;
 use uuid::Uuid;
 
+#[derive(Debug)]
+pub struct SelectionHandle {
+    entity_id: Uuid,
+    part_id: Uuid,
+    handles: Vec<VertexHandle>,
+}
+
+impl SelectionHandle {
+    fn new(entity_id: Uuid, part_id: Uuid, handles: Vec<VertexHandle>) -> Self {
+        Self {
+            entity_id,
+            part_id,
+            handles,
+        }
+    }
+}
+
+// TODO: differentiate between control point and vertex?
+#[derive(Debug)]
+pub struct VertexHandle {
+    position: Vector2F,
+    edge_id: u32,
+    library_id: Uuid,
+}
+
+impl VertexHandle {
+    pub fn position(&self) -> &Vector2F {
+        &self.position
+    }
+}
+
 struct ShapeScratchPad {
     id: Uuid,
     edges: Vec<Edge>,
@@ -252,8 +283,9 @@ impl StageState {
         self.size.y()
     }
 
-    pub fn query_parts(&self, selection_shape: &SelectionShape) -> Vec<&Part> {
+    pub fn query_selection(&self, selection_shape: &SelectionShape) -> Vec<SelectionHandle> {
         match selection_shape {
+            // Broadphase, collect all the parts with bounding boxes that overlap our query
             SelectionShape::None => vec![],
             SelectionShape::Point(point) => self.scene_data.quad_tree().query_point(point),
             SelectionShape::Area(rect) => self.scene_data.quad_tree().query_rect(rect),
@@ -274,8 +306,25 @@ impl StageState {
                 .parts()
                 .iter()
                 .filter(move |part| p_ids.contains(part.item_id()))
+                .map(move |part| {
+                    let vertex_handles = self.collect_vertex_handles(selection_shape, part);
+                    SelectionHandle::new(e_id, *part.item_id(), vertex_handles)
+                })
         })
-        .collect::<Vec<&Part>>()
+        .collect::<Vec<SelectionHandle>>()
+    }
+
+    // Narrow phase, Find all vertexes that overlap our query
+    fn collect_vertex_handles(
+        &self,
+        selection_shape: &SelectionShape,
+        part: &Part,
+    ) -> Vec<VertexHandle> {
+        match selection_shape {
+            SelectionShape::None => vec![],
+            SelectionShape::Point(point) => todo!(),
+            SelectionShape::Area(rect) => todo!(),
+        }
     }
 
     //TODO: how does root interact with layers? Should I support more than one root?
