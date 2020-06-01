@@ -44,6 +44,7 @@ impl SelectionHandle {
 #[derive(Debug)]
 pub struct VertexHandle {
     position: Vector2F,
+    vertex_id: u32,
     edge_id: u32,
     library_id: Uuid,
 }
