@@ -8,7 +8,7 @@ use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use reduce::Reduce;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Edge {
     Move(#[serde(with = "Vector2FDef")] Vector2F),
     Line(#[serde(with = "Vector2FDef")] Vector2F),
@@ -44,35 +44,123 @@ impl Edge {
         }
     }
 
-    pub fn edges_to_path(edges: &[Edge], is_closed: bool) -> Path2D {
+    pub fn edges_to_path(edges: impl Iterator<Item = Edge>, is_closed: bool) -> Path2D {
         let mut path = Path2D::new();
-        for edge in edges {
-            match edge {
-                Edge::Move(to) => path.move_to(*to),
-                Edge::Line(to) => path.line_to(*to),
-                Edge::Quadratic { control, to } => path.quadratic_curve_to(*control, *to),
-                Edge::Bezier {
-                    control_1,
-                    control_2,
-                    to,
-                } => path.bezier_curve_to(*control_1, *control_2, *to),
-                Edge::Arc {
-                    control,
-                    to,
-                    radius,
-                } => path.arc_to(*control, *to, *radius),
-            }
-        }
+        edges.for_each(|edge| match edge {
+            Edge::Move(to) => path.move_to(to),
+            Edge::Line(to) => path.line_to(to),
+            Edge::Quadratic { control, to } => path.quadratic_curve_to(control, to),
+            Edge::Bezier {
+                control_1,
+                control_2,
+                to,
+            } => path.bezier_curve_to(control_1, control_2, to),
+            Edge::Arc {
+                control,
+                to,
+                radius,
+            } => path.arc_to(control, to, radius),
+        });
         if is_closed {
             path.close_path();
         }
         path
     }
 
-    fn compute_bounding(edges: &[Edge], is_closed: bool, transform: &Transform2F) -> RectF {
+    fn compute_bounding(
+        edges: impl Iterator<Item = Edge>,
+        is_closed: bool,
+        transform: &Transform2F,
+    ) -> RectF {
         let mut outline = Self::edges_to_path(edges, is_closed).into_outline();
         outline.transform(transform);
         outline.bounds()
+    }
+
+    pub fn query_disk(
+        &self,
+        point: &Vector2F,
+        radius: f32,
+        transform: &Transform2F,
+    ) -> impl Iterator<Item = (usize, Vector2F)> {
+        let square_radius = radius * radius;
+        match self {
+            Self::Move(to) | Self::Line(to) => {
+                Self::match_points_disk(vec![*to].into_iter(), *point, square_radius, *transform)
+            }
+            Self::Quadratic { control, to } => Self::match_points_disk(
+                vec![*control, *to].into_iter(),
+                *point,
+                square_radius,
+                *transform,
+            ),
+            Self::Bezier {
+                control_1,
+                control_2,
+                to,
+            } => Self::match_points_disk(
+                vec![*control_1, *control_2, *to].into_iter(),
+                *point,
+                square_radius,
+                *transform,
+            ),
+            // TODO: oh no radius!!!!???
+            Self::Arc { control, to, .. } => Self::match_points_disk(
+                vec![*control, *to].into_iter(),
+                *point,
+                square_radius,
+                *transform,
+            ),
+        }
+    }
+
+    fn match_points_disk(
+        points: impl Iterator<Item = Vector2F>,
+        point: Vector2F,
+        square_radius: f32,
+        transform: Transform2F,
+    ) -> impl Iterator<Item = (usize, Vector2F)> {
+        points
+            .enumerate()
+            .filter(move |p| (point - transform * p.1).square_length() <= square_radius)
+    }
+
+    fn match_points_rect(
+        points: impl Iterator<Item = Vector2F>,
+        rect: RectF,
+        transform: Transform2F,
+    ) -> impl Iterator<Item = (usize, Vector2F)> {
+        points
+            .enumerate()
+            .filter(move |p| rect.contains_point(transform * p.1))
+    }
+
+    pub fn query_rect(
+        &self,
+        rect: &RectF,
+        transform: &Transform2F,
+    ) -> impl Iterator<Item = (usize, Vector2F)> {
+        match self {
+            Self::Move(to) | Self::Line(to) => {
+                Self::match_points_rect(vec![*to].into_iter(), *rect, *transform)
+            }
+            Self::Quadratic { control, to } => {
+                Self::match_points_rect(vec![*control, *to].into_iter(), *rect, *transform)
+            }
+            Self::Bezier {
+                control_1,
+                control_2,
+                to,
+            } => Self::match_points_rect(
+                vec![*control_1, *control_2, *to].into_iter(),
+                *rect,
+                *transform,
+            ),
+            // TODO: oh no radius!!!!???
+            Self::Arc { control, to, .. } => {
+                Self::match_points_rect(vec![*control, *to].into_iter(), *rect, *transform)
+            }
+        }
     }
 }
 
@@ -214,6 +302,10 @@ impl AugmentedShape {
         self.shape
             .compute_bounding(&(*transform * self.transform), morph_percent)
     }
+
+    pub fn edge_list(&self, morph_percent: f32) -> Vec<Edge> {
+        self.shape.edge_list(morph_percent)
+    }
 }
 
 impl Shape {
@@ -221,9 +313,9 @@ impl Shape {
         match self {
             Shape::Path {
                 edges, is_closed, ..
-            } => Edge::compute_bounding(edges, *is_closed, &transform),
+            } => Edge::compute_bounding(edges.iter().map(|e| *e), *is_closed, &transform),
             Shape::Fill { edges, .. } | Shape::Clip { edges, .. } => {
-                Edge::compute_bounding(edges, true, &transform)
+                Edge::compute_bounding(edges.iter().map(|e| *e), true, &transform)
             }
             Shape::MorphPath {
                 edges: morph_edges,
@@ -232,24 +324,43 @@ impl Shape {
             } => {
                 let edges = morph_edges
                     .iter()
-                    .map(|morph_edge| morph_edge.to_edge(morph_percent))
-                    .collect::<Vec<Edge>>();
-                Edge::compute_bounding(&edges, *is_closed, &transform)
+                    .map(|morph_edge| morph_edge.to_edge(morph_percent));
+                Edge::compute_bounding(edges, *is_closed, &transform)
             }
             Shape::MorphFill {
                 edges: morph_edges, ..
             } => {
                 let edges = morph_edges
                     .iter()
-                    .map(|morph_edge| morph_edge.to_edge(morph_percent))
-                    .collect::<Vec<Edge>>();
-                Edge::compute_bounding(&edges, true, &transform)
+                    .map(|morph_edge| morph_edge.to_edge(morph_percent));
+                Edge::compute_bounding(edges, true, &transform)
             }
             Shape::Group { shapes } => shapes
                 .iter()
                 .map(|s| s.compute_bounding(transform, morph_percent))
                 .reduce(|a, b| a.union_rect(b))
                 .unwrap(),
+        }
+    }
+
+    pub fn edge_list(&self, morph_percent: f32) -> Vec<Edge> {
+        match self {
+            Shape::Path { edges, .. } | Shape::Fill { edges, .. } | Shape::Clip { edges, .. } => {
+                edges.to_vec()
+            }
+            Shape::MorphPath {
+                edges: morph_edges, ..
+            }
+            | Shape::MorphFill {
+                edges: morph_edges, ..
+            } => morph_edges
+                .iter()
+                .map(|morph_edge| morph_edge.to_edge(morph_percent))
+                .collect::<Vec<Edge>>(),
+            Shape::Group { shapes } => shapes
+                .iter()
+                .flat_map(|s| s.edge_list(morph_percent))
+                .collect::<Vec<Edge>>(),
         }
     }
 

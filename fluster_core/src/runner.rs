@@ -64,6 +64,7 @@ impl State {
 #[derive(Debug)]
 pub struct SceneData {
     quad_tree: QuadTree<(Uuid, Uuid), RandomState>,
+    // TODO: should the entity track it's own world space transform instead?
     world_space_transforms: HashMap<Uuid, Transform2F>,
 }
 

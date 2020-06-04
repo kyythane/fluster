@@ -99,10 +99,10 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
         );
         match event {
             Event::Mouse(mouse_event) => {
-                /* let selection_shape = self.edit_state.selection_shape(stage_position);
+                let selection_shape = self.edit_state.selection_shape(stage_position);
                 let selection = self.stage_state.query_selection(&selection_shape);
 
-                println!("{:?}", selection);*/
+                println!("{:?}", selection);
 
                 if let Some(edit_message) =
                     self.edit_state

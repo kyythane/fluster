@@ -15,14 +15,12 @@ use fluster_core::{
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::{
-    rect::RectF,
-    vector::{Vector2F, Vector2I},
-};
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem;
 use uuid::Uuid;
 
+// TODO: Enum, EntityHandle, PartHandle, UtilityHandle, etc?
 #[derive(Debug)]
 pub struct SelectionHandle {
     entity_id: Uuid,
@@ -44,12 +42,21 @@ impl SelectionHandle {
 #[derive(Debug)]
 pub struct VertexHandle {
     position: Vector2F,
-    vertex_id: u32,
-    edge_id: u32,
+    vertex_id: usize,
+    edge_id: usize,
     library_id: Uuid,
 }
 
 impl VertexHandle {
+    pub fn new(library_id: Uuid, edge_id: usize, vertex_id: usize, position: Vector2F) -> Self {
+        Self {
+            library_id,
+            edge_id,
+            vertex_id,
+            position,
+        }
+    }
+
     pub fn position(&self) -> &Vector2F {
         &self.position
     }
@@ -293,6 +300,7 @@ impl StageState {
         }
         .into_iter()
         .fold(
+            // Since we query by part AABB, we need to collect them under the owning entity
             HashMap::new(),
             |mut map: HashMap<Uuid, HashSet<Uuid>>, ((e_id, p_id), _)| {
                 map.entry(e_id).or_default().insert(p_id);
@@ -301,14 +309,23 @@ impl StageState {
         )
         .into_iter()
         .flat_map(|(e_id, p_ids)| {
-            self.display_list
-                .get(&e_id)
-                .unwrap()
+            let entity = self.display_list.get(&e_id).unwrap();
+            let world_space_transform = self
+                .scene_data
+                .world_space_transforms()
+                .get(entity.id())
+                .unwrap();
+            entity
                 .parts()
                 .iter()
                 .filter(move |part| p_ids.contains(part.item_id()))
                 .map(move |part| {
-                    let vertex_handles = self.collect_vertex_handles(selection_shape, part);
+                    let vertex_handles = self.collect_vertex_handles(
+                        selection_shape,
+                        entity,
+                        world_space_transform,
+                        part,
+                    );
                     SelectionHandle::new(e_id, *part.item_id(), vertex_handles)
                 })
         })
@@ -319,12 +336,42 @@ impl StageState {
     fn collect_vertex_handles(
         &self,
         selection_shape: &SelectionShape,
+        entity: &Entity,
+        // Passing this in is kinda gross, but we don't want to refetch this multiple times per entity for a large selection
+        world_space_transform: &Transform2F,
         part: &Part,
     ) -> Vec<VertexHandle> {
-        match selection_shape {
-            SelectionShape::None => vec![],
-            SelectionShape::Point(point) => todo!(),
-            SelectionShape::Area(rect) => todo!(),
+        let item_id = part.item_id();
+        match self.library.get(item_id).unwrap() {
+            DisplayLibraryItem::Vector(shape) => {
+                let edges = shape
+                    .edge_list(entity.morph_index())
+                    .into_iter()
+                    .enumerate();
+                match selection_shape {
+                    SelectionShape::None => vec![],
+                    SelectionShape::Point(point) => edges
+                        .flat_map(|(index, edge)| {
+                            // TODO: configure handle radius (pixels)
+                            edge.query_disk(point, 10.0, world_space_transform).map(
+                                move |(vertex_index, vertex)| {
+                                    VertexHandle::new(*item_id, index, vertex_index, vertex)
+                                },
+                            )
+                        })
+                        .collect::<Vec<VertexHandle>>(),
+                    SelectionShape::Area(rect) => edges
+                        .flat_map(|(index, edge)| {
+                            edge.query_rect(rect, world_space_transform).map(
+                                move |(vertex_index, vertex)| {
+                                    VertexHandle::new(*item_id, index, vertex_index, vertex)
+                                },
+                            )
+                        })
+                        .collect::<Vec<VertexHandle>>(),
+                }
+            }
+            DisplayLibraryItem::Raster(..) => todo!(),
         }
     }
 
