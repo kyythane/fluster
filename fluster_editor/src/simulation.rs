@@ -21,7 +21,7 @@ use std::mem;
 use uuid::Uuid;
 
 // TODO: Enum, EntityHandle, PartHandle, UtilityHandle, etc?
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SelectionHandle {
     entity_id: Uuid,
     part_id: Uuid,
@@ -36,10 +36,14 @@ impl SelectionHandle {
             handles,
         }
     }
+
+    pub fn has_vertex(&self) -> bool {
+        self.handles.len() > 0
+    }
 }
 
 // TODO: differentiate between control point and vertex?
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct VertexHandle {
     position: Vector2F,
     vertex_id: usize,
@@ -67,6 +71,7 @@ struct ShapeScratchPad {
     edges: Vec<Edge>,
     committed_edges: usize,
     shape_prototype: Option<Shape>,
+    selected_point: (usize, usize),
 }
 
 impl ShapeScratchPad {
@@ -76,6 +81,7 @@ impl ShapeScratchPad {
             edges: vec![],
             committed_edges: 0,
             shape_prototype: None,
+            selected_point: (0, 0), // TODO: merge commited_edges and selected_point concept
         }
     }
 
@@ -108,6 +114,65 @@ impl ShapeScratchPad {
                 line_join,
             },
         });
+    }
+
+    fn start_drag(
+        &mut self,
+        selection_handle: &SelectionHandle,
+        display_list: &HashMap<Uuid, Entity>,
+        library: &HashMap<Uuid, DisplayLibraryItem>,
+    ) {
+        if let Some(vertex) = selection_handle.handles.get(0) {
+            if let Some(DisplayLibraryItem::Vector(shape)) = library.get(&vertex.library_id) {
+                let morph_index =
+                    if let Some(entity) = display_list.get(&selection_handle.entity_id) {
+                        entity.morph_index()
+                    } else {
+                        0.0
+                    };
+                self.id = vertex.library_id;
+                self.edges = shape.edge_list(morph_index);
+                self.committed_edges = self.edges.len();
+                self.shape_prototype = Some(shape.clone());
+                self.selected_point = (vertex.edge_id, vertex.vertex_id);
+            }
+        }
+    }
+
+    fn update_preview_drag(
+        &mut self,
+        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+        temp_position: Vector2F,
+    ) {
+        self.edges[self.selected_point.0].update_point(self.selected_point.1, temp_position);
+        self.update_library(library);
+    }
+
+    fn complete_drag(
+        &mut self,
+        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+        display_list: &mut HashMap<Uuid, Entity>,
+        root_entity_id: &Uuid,
+    ) {
+        if self.committed_edges < self.edges.len() {
+            self.edges.pop();
+        }
+        if self.committed_edges <= 1 {
+            library.remove(&self.id);
+            display_list
+                .entry(*root_entity_id)
+                .and_modify(|root| root.remove_part(&self.id));
+        } else {
+            self.update_library(library);
+        }
+        self.clear();
+    }
+
+    fn clear(&mut self) {
+        self.selected_point = (0, 0);
+        self.edges.clear();
+        self.committed_edges = 0;
+        self.shape_prototype = None;
     }
 
     fn update_library(&mut self, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
@@ -194,9 +259,7 @@ impl ShapeScratchPad {
         } else {
             self.update_library(library);
         }
-        self.edges.clear();
-        self.committed_edges = 0;
-        self.shape_prototype = None;
+        self.clear();
     }
 }
 pub struct StageState {
@@ -260,6 +323,21 @@ impl StageState {
                     }
                     ToolMessage::PathEnd => {
                         self.shape_scratch_pad.complete_path(
+                            &mut self.library,
+                            &mut self.display_list,
+                            &self.root_entity_id,
+                        );
+                        self.update_scene();
+                    }
+                    ToolMessage::MovePointStart { selection_handle } => self
+                        .shape_scratch_pad
+                        .start_drag(selection_handle, &self.display_list, &self.library),
+                    ToolMessage::MovePointHover { hover_position } => {
+                        self.shape_scratch_pad
+                            .update_preview_drag(&mut self.library, *hover_position);
+                    }
+                    ToolMessage::MovePointEnd => {
+                        self.shape_scratch_pad.complete_drag(
                             &mut self.library,
                             &mut self.display_list,
                             &self.root_entity_id,

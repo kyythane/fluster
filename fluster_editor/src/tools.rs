@@ -1,5 +1,8 @@
 #![deny(clippy::all)]
-use crate::messages::{AppMessage, EditMessage, ToolMessage};
+use crate::{
+    messages::{AppMessage, EditMessage, ToolMessage},
+    simulation::SelectionHandle,
+};
 use iced::{Checkbox, Column, Radio, Row, Text, TextInput};
 use iced_native::{
     image::Handle as ImageHandle, input::mouse::Button as MouseButton,
@@ -56,7 +59,9 @@ enum PlacementState {
 
 #[derive(Clone, Debug)]
 enum ToolState {
-    Pointer, //TODO: grab: edge, point, fill, scale_x, scale_y, scale_xy, entity, group. hover
+    Pointer {
+        placement_state: PlacementState,
+    }, //TODO: grab: edge, point, fill, scale_x, scale_y, scale_xy, entity, group. hover
     Path {
         placement_state: PlacementState,
     },
@@ -82,7 +87,9 @@ enum ToolState {
 impl ToolState {
     fn new(tool: Tool) -> Self {
         match tool {
-            Tool::Pointer => Self::Pointer,
+            Tool::Pointer => Self::Pointer {
+                placement_state: PlacementState::None,
+            },
             Tool::Path => Self::Path {
                 placement_state: PlacementState::None,
             },
@@ -111,7 +118,7 @@ impl ToolState {
 
     fn tool(&self) -> Tool {
         match self {
-            Self::Pointer => Tool::Pointer,
+            Self::Pointer { .. } => Tool::Pointer,
             Self::Path { .. } => Tool::Path,
             Self::Polygon { .. } => Tool::Polygon,
             Self::Ellipse { .. } => Tool::Ellipse,
@@ -122,10 +129,12 @@ impl ToolState {
 
     fn placement_state(&self) -> PlacementState {
         match self {
-            Self::Pointer => PlacementState::None,
             Self::Fill { .. } => PlacementState::None,
             Self::Eyedropper { .. } => PlacementState::None,
-            Self::Path {
+            Self::Pointer {
+                placement_state, ..
+            }
+            | Self::Path {
                 placement_state, ..
             }
             | Self::Polygon {
@@ -139,6 +148,14 @@ impl ToolState {
 
     fn start_placing(&mut self) {
         match self {
+            Self::Pointer { .. } => {
+                mem::replace(
+                    self,
+                    Self::Pointer {
+                        placement_state: PlacementState::Placing,
+                    },
+                );
+            }
             Self::Path { .. } => {
                 mem::replace(
                     self,
@@ -153,6 +170,14 @@ impl ToolState {
 
     fn stop_placing(&mut self) {
         match self {
+            Self::Pointer { .. } => {
+                mem::replace(
+                    self,
+                    Self::Pointer {
+                        placement_state: PlacementState::None,
+                    },
+                );
+            }
             Self::Path { .. } => {
                 mem::replace(
                     self,
@@ -167,7 +192,6 @@ impl ToolState {
 
     fn mouse_cursor(&self) -> MouseCursor {
         match self {
-            Self::Pointer => MouseCursor::Idle,
             _ => match self.placement_state() {
                 PlacementState::None => MouseCursor::Pointer,
                 PlacementState::Placing => MouseCursor::Grabbing,
@@ -182,12 +206,39 @@ impl ToolState {
     fn on_mouse_event(
         &self,
         mouse_event: MouseEvent,
+        mut selection: Vec<SelectionHandle>,
         stage_position: Vector2F,
         tool_options: Vec<ToolOption>,
     ) -> Option<ToolMessage> {
         let tool_options = self.get_options(tool_options);
         match self {
-            Self::Pointer => None,
+            Self::Pointer { placement_state } => match placement_state {
+                PlacementState::None => match mouse_event {
+                    MouseEvent::Input { state, button }
+                        if state == ButtonState::Pressed && button == MouseButton::Left =>
+                    {
+                        if selection.len() > 0 && selection[0].has_vertex() {
+                            Some(ToolMessage::MovePointStart {
+                                selection_handle: selection.swap_remove(0),
+                            })
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                },
+                PlacementState::Placing => match mouse_event {
+                    MouseEvent::Input { state, button }
+                        if state == ButtonState::Pressed && button == MouseButton::Left =>
+                    {
+                        Some(ToolMessage::MovePointEnd)
+                    }
+                    MouseEvent::CursorMoved { .. } => Some(ToolMessage::MovePointHover {
+                        hover_position: stage_position,
+                    }),
+                    _ => None,
+                },
+            },
             Self::Path {
                 placement_state, ..
             } => match mouse_event {
@@ -227,8 +278,10 @@ impl ToolState {
 
     fn update(&mut self, tool_message: &ToolMessage) {
         match tool_message {
-            ToolMessage::PathStart { .. } => self.start_placing(),
-            ToolMessage::PathEnd { .. } => self.stop_placing(),
+            ToolMessage::MovePointStart { .. } | ToolMessage::PathStart { .. } => {
+                self.start_placing()
+            }
+            ToolMessage::MovePointEnd | ToolMessage::PathEnd => self.stop_placing(),
             _ => (),
         };
     }
@@ -379,6 +432,7 @@ impl EditState {
     pub fn on_mouse_event(
         &self,
         mouse_event: MouseEvent,
+        selection: Vec<SelectionHandle>,
         stage_position: Vector2F,
         in_bounds: bool,
     ) -> Option<EditMessage> {
@@ -390,9 +444,12 @@ impl EditState {
                 _ => None,
             }
         } else {
-            let tool_message =
-                self.tool_state
-                    .on_mouse_event(mouse_event, stage_position, self.tool_options())?;
+            let tool_message = self.tool_state.on_mouse_event(
+                mouse_event,
+                selection,
+                stage_position,
+                self.tool_options(),
+            )?;
             Some(EditMessage::ToolUpdate(tool_message))
         }
     }

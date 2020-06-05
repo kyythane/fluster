@@ -1,4 +1,7 @@
-use crate::tools::{Tool, ToolOption};
+use crate::{
+    simulation::SelectionHandle,
+    tools::{Tool, ToolOption},
+};
 use pathfinder_geometry::vector::Vector2F;
 
 #[derive(Debug, Clone)]
@@ -38,4 +41,11 @@ pub enum ToolMessage {
         hover_position: Vector2F,
     },
     PathEnd,
+    MovePointStart {
+        selection_handle: SelectionHandle,
+    },
+    MovePointHover {
+        hover_position: Vector2F,
+    },
+    MovePointEnd,
 }

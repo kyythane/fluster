@@ -101,13 +101,12 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
             Event::Mouse(mouse_event) => {
                 let selection_shape = self.edit_state.selection_shape(stage_position);
                 let selection = self.stage_state.query_selection(&selection_shape);
-
-                println!("{:?}", selection);
-
-                if let Some(edit_message) =
-                    self.edit_state
-                        .on_mouse_event(mouse_event, stage_position, in_bounds)
-                {
+                if let Some(edit_message) = self.edit_state.on_mouse_event(
+                    mouse_event,
+                    selection,
+                    stage_position,
+                    in_bounds,
+                ) {
                     messages.push((self.on_edit)(edit_message))
                 }
             }

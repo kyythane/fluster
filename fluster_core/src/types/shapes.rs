@@ -7,6 +7,7 @@ use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use reduce::Reduce;
 use serde::{Deserialize, Serialize};
+use std::mem;
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Edge {
@@ -65,6 +66,67 @@ impl Edge {
             path.close_path();
         }
         path
+    }
+
+    pub fn update_point(&mut self, index: usize, position: Vector2F) {
+        let updated = match self {
+            Self::Move(..) => Self::Move(position),
+            Self::Line(..) => Self::Line(position),
+            Self::Quadratic { control, to } => {
+                if index == 0 {
+                    Self::Quadratic {
+                        control: position,
+                        to: *to,
+                    }
+                } else {
+                    Self::Quadratic {
+                        control: *control,
+                        to: position,
+                    }
+                }
+            }
+            Self::Bezier {
+                control_1,
+                control_2,
+                to,
+            } => match index {
+                0 => Self::Bezier {
+                    control_1: position,
+                    control_2: *control_2,
+                    to: *to,
+                },
+                1 => Self::Bezier {
+                    control_1: *control_1,
+                    control_2: position,
+                    to: *to,
+                },
+                _ => Self::Bezier {
+                    control_1: *control_1,
+                    control_2: *control_2,
+                    to: position,
+                },
+            },
+            Self::Arc {
+                control,
+                to,
+                radius,
+            } => {
+                if index == 0 {
+                    Self::Arc {
+                        control: position,
+                        to: *to,
+                        radius: *radius,
+                    }
+                } else {
+                    Self::Arc {
+                        control: *control,
+                        to: position,
+                        radius: *radius,
+                    }
+                }
+            }
+        };
+        mem::replace(self, updated);
     }
 
     fn compute_bounding(
