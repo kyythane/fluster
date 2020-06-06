@@ -1,267 +1,22 @@
 #![deny(clippy::all)]
-use crate::messages::{EditMessage, ToolMessage};
+use crate::messages::{EditMessage, SelectionHandle, ToolMessage, VertexHandle};
 use crate::{
     rendering::RenderData,
-    tools::{SelectionShape, ToolOption},
+    scratch_pad::{ScratchPad, ShapeScratchPad},
+    tools::SelectionShape,
 };
 use fluster_core::rendering::{adjust_depth, PaintData};
 use fluster_core::{
     runner::SceneData,
-    types::{
-        model::{DisplayLibraryItem, Entity, Part},
-        shapes::{Edge, Shape},
-    },
+    types::model::{DisplayLibraryItem, Entity, Part},
 };
 use pathfinder_color::ColorU;
-use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::vector::Vector2I;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem;
 use uuid::Uuid;
 
-// TODO: Enum, EntityHandle, PartHandle, UtilityHandle, etc?
-#[derive(Clone, Debug)]
-pub struct SelectionHandle {
-    entity_id: Uuid,
-    part_id: Uuid,
-    handles: Vec<VertexHandle>,
-}
-
-impl SelectionHandle {
-    fn new(entity_id: Uuid, part_id: Uuid, handles: Vec<VertexHandle>) -> Self {
-        Self {
-            entity_id,
-            part_id,
-            handles,
-        }
-    }
-
-    pub fn has_vertex(&self) -> bool {
-        self.handles.len() > 0
-    }
-}
-
-// TODO: differentiate between control point and vertex?
-#[derive(Clone, Debug)]
-pub struct VertexHandle {
-    position: Vector2F,
-    vertex_id: usize,
-    edge_id: usize,
-    library_id: Uuid,
-}
-
-impl VertexHandle {
-    pub fn new(library_id: Uuid, edge_id: usize, vertex_id: usize, position: Vector2F) -> Self {
-        Self {
-            library_id,
-            edge_id,
-            vertex_id,
-            position,
-        }
-    }
-
-    pub fn position(&self) -> &Vector2F {
-        &self.position
-    }
-}
-
-struct ShapeScratchPad {
-    id: Uuid,
-    edges: Vec<Edge>,
-    committed_edges: usize,
-    shape_prototype: Option<Shape>,
-    selected_point: (usize, usize),
-}
-
-impl ShapeScratchPad {
-    fn new() -> ShapeScratchPad {
-        ShapeScratchPad {
-            id: Uuid::new_v4(),
-            edges: vec![],
-            committed_edges: 0,
-            shape_prototype: None,
-            selected_point: (0, 0), // TODO: merge commited_edges and selected_point concept
-        }
-    }
-
-    fn create_path_prototype(&mut self, options: &Vec<ToolOption>) {
-        //TODO: Fill and StrokedFill, rename Path to Stroke
-        let mut line_color = None;
-        //let mut fill_color = None;
-        let mut line_width = 1.0;
-        let mut line_cap = LineCap::default();
-        let mut line_join = LineJoin::default();
-        let mut is_closed = false;
-        for option in options {
-            match option {
-                ToolOption::LineColor(color) => line_color = *color,
-                //   ToolOption::FillColor(color) => fill_color = *color,
-                ToolOption::StrokeWidth(width) => line_width = *width,
-                ToolOption::ClosedPath(closed) => is_closed = *closed,
-                ToolOption::LineCap(cap) => line_cap = *cap,
-                ToolOption::LineJoin(join) => line_join = *join,
-                _ => {}
-            }
-        }
-        self.shape_prototype = Some(Shape::Path {
-            edges: vec![],
-            color: line_color.unwrap_or(ColorU::black()),
-            is_closed,
-            stroke_style: StrokeStyle {
-                line_width,
-                line_cap,
-                line_join,
-            },
-        });
-    }
-
-    fn start_drag(
-        &mut self,
-        selection_handle: &SelectionHandle,
-        display_list: &HashMap<Uuid, Entity>,
-        library: &HashMap<Uuid, DisplayLibraryItem>,
-    ) {
-        if let Some(vertex) = selection_handle.handles.get(0) {
-            if let Some(DisplayLibraryItem::Vector(shape)) = library.get(&vertex.library_id) {
-                let morph_index =
-                    if let Some(entity) = display_list.get(&selection_handle.entity_id) {
-                        entity.morph_index()
-                    } else {
-                        0.0
-                    };
-                self.id = vertex.library_id;
-                self.edges = shape.edge_list(morph_index);
-                self.committed_edges = self.edges.len();
-                self.shape_prototype = Some(shape.clone());
-                self.selected_point = (vertex.edge_id, vertex.vertex_id);
-            }
-        }
-    }
-
-    fn update_preview_drag(
-        &mut self,
-        library: &mut HashMap<Uuid, DisplayLibraryItem>,
-        temp_position: Vector2F,
-    ) {
-        self.edges[self.selected_point.0].update_point(self.selected_point.1, temp_position);
-        self.update_library(library);
-    }
-
-    fn complete_drag(
-        &mut self,
-        library: &mut HashMap<Uuid, DisplayLibraryItem>,
-        display_list: &mut HashMap<Uuid, Entity>,
-        root_entity_id: &Uuid,
-    ) {
-        if self.committed_edges < self.edges.len() {
-            self.edges.pop();
-        }
-        if self.committed_edges <= 1 {
-            library.remove(&self.id);
-            display_list
-                .entry(*root_entity_id)
-                .and_modify(|root| root.remove_part(&self.id));
-        } else {
-            self.update_library(library);
-        }
-        self.clear();
-    }
-
-    fn clear(&mut self) {
-        self.selected_point = (0, 0);
-        self.edges.clear();
-        self.committed_edges = 0;
-        self.shape_prototype = None;
-    }
-
-    fn update_library(&mut self, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
-        if let Some(shape_prototype) = &self.shape_prototype {
-            let shape = match shape_prototype {
-                Shape::Path {
-                    color,
-                    is_closed,
-                    stroke_style,
-                    ..
-                } => Shape::Path {
-                    edges: self.edges.clone(),
-                    color: *color,
-                    is_closed: *is_closed,
-                    stroke_style: *stroke_style,
-                },
-                _ => todo!(),
-            };
-
-            library.insert(self.id, DisplayLibraryItem::Vector(shape));
-        }
-    }
-
-    fn start_path(
-        &mut self,
-        library: &mut HashMap<Uuid, DisplayLibraryItem>,
-        display_list: &mut HashMap<Uuid, Entity>,
-        root_entity_id: &Uuid,
-        start_position: Vector2F,
-        options: &Vec<ToolOption>,
-    ) {
-        self.create_path_prototype(options);
-        self.committed_edges = 1;
-        self.id = Uuid::new_v4();
-        self.edges.clear();
-        self.edges.push(Edge::Move(start_position));
-        let part = Part::new_vector(self.id, Transform2F::default(), None);
-        display_list
-            .entry(*root_entity_id)
-            .and_modify(|root| root.add_part(part));
-        self.update_library(library)
-    }
-
-    fn next_edge(
-        &mut self,
-        library: &mut HashMap<Uuid, DisplayLibraryItem>,
-        next_position: Vector2F,
-    ) {
-        if self.committed_edges < self.edges.len() {
-            self.edges.pop();
-        }
-        //TODO: other path types
-        self.edges.push(Edge::Line(next_position));
-        self.committed_edges = self.edges.len();
-        self.update_library(library);
-    }
-
-    fn update_preview_edge(
-        &mut self,
-        library: &mut HashMap<Uuid, DisplayLibraryItem>,
-        temp_position: Vector2F,
-    ) {
-        if self.committed_edges < self.edges.len() {
-            self.edges.pop();
-        }
-        self.edges.push(Edge::Line(temp_position));
-        self.update_library(library);
-    }
-
-    fn complete_path(
-        &mut self,
-        library: &mut HashMap<Uuid, DisplayLibraryItem>,
-        display_list: &mut HashMap<Uuid, Entity>,
-        root_entity_id: &Uuid,
-    ) {
-        if self.committed_edges < self.edges.len() {
-            self.edges.pop();
-        }
-        if self.committed_edges <= 1 {
-            library.remove(&self.id);
-            display_list
-                .entry(*root_entity_id)
-                .and_modify(|root| root.remove_part(&self.id));
-        } else {
-            self.update_library(library);
-        }
-        self.clear();
-    }
-}
 pub struct StageState {
     background_color: ColorU,
     root_entity_id: Uuid,
@@ -269,7 +24,7 @@ pub struct StageState {
     display_list: HashMap<Uuid, Entity>,
     size: Vector2I,
     scale: f32,
-    shape_scratch_pad: ShapeScratchPad,
+    scratch_pad: ScratchPad,
     scene_data: SceneData,
 }
 
@@ -285,7 +40,7 @@ impl StageState {
             display_list,
             size: stage_size,
             scale: 1.0,
-            shape_scratch_pad: ShapeScratchPad::new(),
+            scratch_pad: ScratchPad::default(),
             scene_data: SceneData::new(stage_size.to_f32()),
         };
         // Need to init scene. Since StageState already knows how to set that up, just call into it
@@ -298,56 +53,25 @@ impl StageState {
     }
 
     pub fn apply_edit(&mut self, edit_message: &EditMessage) -> bool {
-        match edit_message {
-            EditMessage::ToolUpdate(tool_message) => {
-                match tool_message {
-                    ToolMessage::PathStart {
-                        start_position,
-                        options,
-                    } => {
-                        self.shape_scratch_pad.start_path(
-                            &mut self.library,
-                            &mut self.display_list,
-                            &self.root_entity_id,
-                            *start_position,
-                            options,
-                        );
-                    }
-                    ToolMessage::PathNext { next_position } => {
-                        self.shape_scratch_pad
-                            .next_edge(&mut self.library, *next_position);
-                    }
-                    ToolMessage::PathPlaceHover { hover_position } => {
-                        self.shape_scratch_pad
-                            .update_preview_edge(&mut self.library, *hover_position);
-                    }
-                    ToolMessage::PathEnd => {
-                        self.shape_scratch_pad.complete_path(
-                            &mut self.library,
-                            &mut self.display_list,
-                            &self.root_entity_id,
-                        );
-                        self.update_scene();
-                    }
-                    ToolMessage::MovePointStart { selection_handle } => self
-                        .shape_scratch_pad
-                        .start_drag(selection_handle, &self.display_list, &self.library),
-                    ToolMessage::MovePointHover { hover_position } => {
-                        self.shape_scratch_pad
-                            .update_preview_drag(&mut self.library, *hover_position);
-                    }
-                    ToolMessage::MovePointEnd => {
-                        self.shape_scratch_pad.complete_drag(
-                            &mut self.library,
-                            &mut self.display_list,
-                            &self.root_entity_id,
-                        );
-                        self.update_scene();
-                    }
+        // TODO: return a proper message type!
+        match self.scratch_pad.apply_edit(
+            edit_message,
+            &mut self.library,
+            &mut self.display_list,
+            &self.root_entity_id,
+        ) {
+            Ok(res) => {
+                if res {
+                    self.update_scene();
+                    true
+                } else {
+                    false
                 }
-                true
             }
-            _ => false,
+            Err(error) => {
+                println!("{:}", error);
+                false
+            }
         }
     }
 
@@ -432,8 +156,14 @@ impl StageState {
                         .flat_map(|(index, edge)| {
                             // TODO: configure handle radius (pixels)
                             edge.query_disk(point, 10.0, world_space_transform).map(
-                                move |(vertex_index, vertex)| {
-                                    VertexHandle::new(*item_id, index, vertex_index, vertex)
+                                move |(vertex_index, distance, vertex)| {
+                                    VertexHandle::new(
+                                        *item_id,
+                                        index,
+                                        vertex_index,
+                                        vertex,
+                                        distance,
+                                    )
                                 },
                             )
                         })
@@ -442,7 +172,8 @@ impl StageState {
                         .flat_map(|(index, edge)| {
                             edge.query_rect(rect, world_space_transform).map(
                                 move |(vertex_index, vertex)| {
-                                    VertexHandle::new(*item_id, index, vertex_index, vertex)
+                                    // Box selection has a separation of 0, since everything is inherently "inside" the specified area rather than near a point
+                                    VertexHandle::new(*item_id, index, vertex_index, vertex, 0.0)
                                 },
                             )
                         })

@@ -2,6 +2,7 @@
 mod application;
 mod messages;
 mod rendering;
+mod scratch_pad;
 mod simulation;
 mod tools;
 use application::{App, AppFlags};

@@ -144,7 +144,7 @@ impl Edge {
         point: &Vector2F,
         radius: f32,
         transform: &Transform2F,
-    ) -> impl Iterator<Item = (usize, Vector2F)> {
+    ) -> impl Iterator<Item = (usize, f32, Vector2F)> {
         let square_radius = radius * radius;
         match self {
             Self::Move(to) | Self::Line(to) => {
@@ -181,10 +181,11 @@ impl Edge {
         point: Vector2F,
         square_radius: f32,
         transform: Transform2F,
-    ) -> impl Iterator<Item = (usize, Vector2F)> {
+    ) -> impl Iterator<Item = (usize, f32, Vector2F)> {
         points
             .enumerate()
-            .filter(move |p| (point - transform * p.1).square_length() <= square_radius)
+            .map(move |(index, p)| (index, (point - transform * p).square_length(), p))
+            .filter(move |p| p.1 <= square_radius)
     }
 
     fn match_points_rect(

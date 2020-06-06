@@ -1,8 +1,5 @@
 #![deny(clippy::all)]
-use crate::{
-    messages::{AppMessage, EditMessage, ToolMessage},
-    simulation::SelectionHandle,
-};
+use crate::messages::{AppMessage, EditMessage, SelectionHandle, ToolMessage};
 use iced::{Checkbox, Column, Radio, Row, Text, TextInput};
 use iced_native::{
     image::Handle as ImageHandle, input::mouse::Button as MouseButton,

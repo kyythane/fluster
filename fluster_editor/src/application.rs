@@ -13,7 +13,6 @@ use iced_wgpu::{Defaults, Primitive, Renderer};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::{convert::TryInto, hash::Hash, mem};
-use uuid::Uuid;
 pub struct Stage<'a, Message> {
     width: u16,
     height: u16,
