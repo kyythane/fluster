@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 use crate::messages::{AppMessage, EditMessage, SelectionHandle, ToolMessage};
-use iced::{Checkbox, Column, Radio, Row, Text, TextInput};
+use iced::{Checkbox, Column, Row, Text, TextInput};
 use iced_native::{
     image::Handle as ImageHandle, input::mouse::Button as MouseButton,
     input::mouse::Event as MouseEvent, input::ButtonState, text_input::State as TextInputState,
@@ -9,9 +9,8 @@ use iced_native::{
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin};
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::mem;
-use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Tool {
@@ -23,6 +22,7 @@ pub enum Tool {
     Eyedropper,
 }
 
+// TODO: uh... an actual real asset pipeline?????
 impl Tool {
     pub fn image_handle(&self) -> ImageHandle {
         ImageHandle::from_path(format!(
@@ -62,15 +62,16 @@ enum ToolState {
     Path {
         placement_state: PlacementState,
     },
+    // TODO: rect type seperate from polygon? i.e. polygon is just regular polygons
     Polygon {
-        center: Vector2F,
-        lock_aspect_ratio: bool,
+        // center: Vector2F,
+        //lock_aspect_ratio: bool,
         placement_state: PlacementState,
     },
     Ellipse {
-        lock_aspect_ratio: bool,
-        focus_1: Vector2F,
-        focus_2: Vector2F,
+        // lock_aspect_ratio: bool,
+        //  focus_1: Vector2F,
+        //   focus_2: Vector2F,
         placement_state: PlacementState,
     },
     Fill {
@@ -91,14 +92,14 @@ impl ToolState {
                 placement_state: PlacementState::None,
             },
             Tool::Polygon => Self::Polygon {
-                center: Vector2F::default(),
-                lock_aspect_ratio: false,
+                // center: Vector2F::default(),
+                // lock_aspect_ratio: false,
                 placement_state: PlacementState::None,
             },
             Tool::Ellipse => Self::Ellipse {
-                focus_1: Vector2F::default(),
-                focus_2: Vector2F::default(),
-                lock_aspect_ratio: false,
+                //focus_1: Vector2F::default(),
+                //focus_2: Vector2F::default(),
+                //lock_aspect_ratio: false,
                 placement_state: PlacementState::None,
             },
             _ => todo!(),
@@ -143,45 +144,22 @@ impl ToolState {
         }
     }
 
-    fn start_placing(&mut self) {
+    /* TODO: (NOTE/QUESTION) `placement_state` is starting to become the only state really contained by ToolState.
+        This implies that ToolState is likely redundant. PLAN: Combine Tool and ToolState. Move some more state management to EditState
+    */
+    fn set_placing(&mut self, placement_state: PlacementState) {
         match self {
             Self::Pointer { .. } => {
-                mem::replace(
-                    self,
-                    Self::Pointer {
-                        placement_state: PlacementState::Placing,
-                    },
-                );
+                mem::replace(self, Self::Pointer { placement_state });
             }
             Self::Path { .. } => {
-                mem::replace(
-                    self,
-                    Self::Path {
-                        placement_state: PlacementState::Placing,
-                    },
-                );
+                mem::replace(self, Self::Path { placement_state });
             }
-            _ => (),
-        }
-    }
-
-    fn stop_placing(&mut self) {
-        match self {
-            Self::Pointer { .. } => {
-                mem::replace(
-                    self,
-                    Self::Pointer {
-                        placement_state: PlacementState::None,
-                    },
-                );
+            Self::Ellipse { .. } => {
+                mem::replace(self, Self::Ellipse { placement_state });
             }
-            Self::Path { .. } => {
-                mem::replace(
-                    self,
-                    Self::Path {
-                        placement_state: PlacementState::None,
-                    },
-                );
+            Self::Polygon { .. } => {
+                mem::replace(self, Self::Polygon { placement_state });
             }
             _ => (),
         }
@@ -197,7 +175,13 @@ impl ToolState {
     }
 
     fn selection_shape(&self, stage_position: Vector2F) -> SelectionShape {
-        SelectionShape::Point(stage_position)
+        match self {
+            // TODO: click and drag selection
+            Self::Pointer { .. } => SelectionShape::Point(stage_position),
+            // TODO: Path add to shape?
+            // TODO: eyedropper, floodfill
+            _ => SelectionShape::None,
+        }
     }
 
     fn on_mouse_event(
@@ -269,16 +253,40 @@ impl ToolState {
                 }
                 _ => None,
             },
+            Self::Ellipse { placement_state } => match placement_state {
+                PlacementState::None => match mouse_event {
+                    MouseEvent::Input { state, button }
+                        if state == ButtonState::Pressed && button == MouseButton::Left =>
+                    {
+                        Some(ToolMessage::EllipseStart {
+                            start_position: stage_position,
+                            options: tool_options,
+                        })
+                    }
+                    _ => None,
+                },
+                PlacementState::Placing => match mouse_event {
+                    MouseEvent::Input { state, .. } if state == ButtonState::Pressed => {
+                        Some(ToolMessage::EllipseEnd)
+                    }
+                    MouseEvent::CursorMoved { .. } => Some(ToolMessage::EllipsePlaceHover {
+                        hover_position: stage_position,
+                    }),
+                    _ => None,
+                },
+            },
             _ => todo!(),
         }
     }
 
     fn update(&mut self, tool_message: &ToolMessage) {
         match tool_message {
-            ToolMessage::MovePointStart { .. } | ToolMessage::PathStart { .. } => {
-                self.start_placing()
+            ToolMessage::MovePointStart { .. }
+            | ToolMessage::PathStart { .. }
+            | ToolMessage::EllipseStart { .. } => self.set_placing(PlacementState::Placing),
+            ToolMessage::MovePointEnd | ToolMessage::PathEnd | ToolMessage::EllipseEnd => {
+                self.set_placing(PlacementState::None)
             }
-            ToolMessage::MovePointEnd | ToolMessage::PathEnd => self.stop_placing(),
             _ => (),
         };
     }
@@ -363,17 +371,6 @@ impl ToolOption {
 }
 
 #[derive(Clone, Debug)]
-struct Selection {
-    objects: HashSet<Uuid>,
-}
-
-impl Selection {
-    fn clear(&mut self) {
-        self.objects.clear();
-    }
-}
-
-#[derive(Clone, Debug)]
 struct Options {
     line_color: Option<ColorU>,
     stroke_width: f32,
@@ -388,7 +385,6 @@ struct Options {
 pub struct EditState {
     tool_state: ToolState,
     options: Options,
-    selection: Selection,
 }
 
 impl Default for EditState {
@@ -405,9 +401,6 @@ impl Default for EditState {
                 num_edges: 4,
                 closed_path: false,
             },
-            selection: Selection {
-                objects: HashSet::new(),
-            },
         }
     }
 }
@@ -415,7 +408,6 @@ impl Default for EditState {
 impl EditState {
     pub fn switch_tool(&mut self, tool: &Tool) {
         self.tool_state.switch_tool(*tool);
-        //TODO: conditionally clear selection
     }
 
     pub fn mouse_cursor(&self) -> MouseCursor {
@@ -481,7 +473,6 @@ impl EditState {
             }
             EditMessage::Cancel => {
                 self.tool_state.cancel_action();
-                self.selection.clear();
             }
             EditMessage::ChangeOption(option) => match option {
                 ToolOption::LineColor(line_color) => self.options.line_color = *line_color,

@@ -1,10 +1,6 @@
 #![deny(clippy::all)]
-use crate::messages::{EditMessage, SelectionHandle, ToolMessage, VertexHandle};
-use crate::{
-    rendering::RenderData,
-    scratch_pad::{ScratchPad, ShapeScratchPad},
-    tools::SelectionShape,
-};
+use crate::messages::{EditMessage, SelectionHandle, VertexHandle};
+use crate::{rendering::RenderData, scratch_pad::ScratchPad, tools::SelectionShape};
 use fluster_core::rendering::{adjust_depth, PaintData};
 use fluster_core::{
     runner::SceneData,

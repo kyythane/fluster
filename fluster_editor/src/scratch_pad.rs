@@ -9,7 +9,7 @@ use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::mem;
 use uuid::Uuid;
 
@@ -68,18 +68,17 @@ fn update_library(
     library.insert(id, DisplayLibraryItem::Vector(shape));
 }
 
-pub enum ScratchPad {
-    NewPath(ShapeScratchPad),
-    NewPolygon(),
-    NewElipse(),
-    EditVertexes(VertexScratchPad),
-    MoveShapes(TransformScratchPad),
-    None,
+pub struct ScratchPad {
+    ui_shapes: VecDeque<Uuid>,
+    state: ScratchPadState,
 }
 
 impl Default for ScratchPad {
     fn default() -> Self {
-        Self::None
+        Self {
+            state: ScratchPadState::default(),
+            ui_shapes: VecDeque::new(),
+        }
     }
 }
 
@@ -91,7 +90,34 @@ impl ScratchPad {
         display_list: &mut HashMap<Uuid, Entity>,
         root_entity_id: &Uuid,
     ) -> Result<bool, String> {
+        self.state
+            .apply_edit(edit_message, library, display_list, root_entity_id)
+    }
+}
+
+enum ScratchPadState {
+    NewPath(ShapeScratchPad),
+    NewEllipse(EllipseScratchPad),
+    EditVertexes(VertexScratchPad),
+    None,
+}
+
+impl Default for ScratchPadState {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl ScratchPadState {
+    fn apply_edit(
+        &mut self,
+        edit_message: &EditMessage,
+        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+        display_list: &mut HashMap<Uuid, Entity>,
+        root_entity_id: &Uuid,
+    ) -> Result<bool, String> {
         match edit_message {
+            // TODO: this is gonna become very large. Maybe break it up into delegated functions
             EditMessage::ToolUpdate(tool_message) => match tool_message {
                 ToolMessage::PathStart {
                     start_position,
@@ -167,6 +193,40 @@ impl ScratchPad {
                         Err("Unexpected Message \"PathEnd\"".to_owned())
                     }
                 }
+                ToolMessage::EllipseStart {
+                    start_position,
+                    options,
+                } => {
+                    if let Self::None = self {
+                        let mut ellipse_scratch_pad =
+                            EllipseScratchPad::init(*start_position, options);
+                        ellipse_scratch_pad.start_ellipse(library, display_list, root_entity_id);
+                        mem::replace(self, Self::NewEllipse(ellipse_scratch_pad));
+                        Ok(false)
+                    } else {
+                        Err(
+                            "Attempting to start a new ellipse while an edit was in progress"
+                                .to_owned(),
+                        )
+                    }
+                }
+                ToolMessage::EllipsePlaceHover { hover_position } => {
+                    if let Self::NewEllipse(ellipse_scratch_pad) = self {
+                        ellipse_scratch_pad.update_preview_ellipse(library, *hover_position);
+                        Ok(true)
+                    } else {
+                        Err("Unexpected Message \"EllipsePlaceHover\"".to_owned())
+                    }
+                }
+                ToolMessage::EllipseEnd => {
+                    if let Self::NewEllipse(ellipse_scratch_pad) = self {
+                        ellipse_scratch_pad.complete_ellipse(library);
+                        mem::replace(self, Self::None);
+                        Ok(true) //TODO: update scene message
+                    } else {
+                        Err("Unexpected Message \"EllipseEnd\"".to_owned())
+                    }
+                }
             },
             // This isn't the kind of message that scratchpad handles, so just move on
             _ => Ok(false),
@@ -189,7 +249,12 @@ pub struct VertexScratchPad {
     selected_point: (usize, usize),
 }
 
-pub struct TransformScratchPad {}
+pub struct EllipseScratchPad {
+    id: Uuid,
+    shape_prototype: Shape,
+    start_position: Vector2F,
+    end_position: Vector2F,
+}
 
 impl ShapeScratchPad {
     fn init(options: &Vec<ToolOption>) -> Self {
@@ -329,6 +394,62 @@ impl VertexScratchPad {
             self.id,
             &self.shape_prototype,
             mem::take(&mut self.edges),
+        );
+    }
+}
+
+impl EllipseScratchPad {
+    fn init(start_position: Vector2F, options: &Vec<ToolOption>) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            shape_prototype: create_shape_prototype(options),
+            start_position,
+            end_position: start_position,
+        }
+    }
+
+    fn start_ellipse(
+        &mut self,
+        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+        display_list: &mut HashMap<Uuid, Entity>,
+        root_entity_id: &Uuid,
+    ) {
+        let part = Part::new_vector(self.id, Transform2F::default(), None);
+        display_list
+            .entry(*root_entity_id)
+            .and_modify(|root| root.add_part(part));
+        update_library(library, self.id, &self.shape_prototype, vec![]);
+    }
+
+    fn update_preview_ellipse(
+        &mut self,
+        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+        temp_position: Vector2F,
+    ) {
+        self.end_position = temp_position;
+        update_library(
+            library,
+            self.id,
+            &self.shape_prototype,
+            Edge::new_circle(
+                (self.end_position - self.start_position)
+                    .length()
+                    .max(0.00001),
+                Transform2F::from_translation(self.start_position),
+            ),
+        );
+    }
+
+    fn complete_ellipse(&mut self, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
+        // TODO: don't add circles of zero size
+        update_library(
+            library,
+            self.id,
+            &self.shape_prototype,
+            Edge::new_circle(
+                (self.end_position - self.start_position).length(),
+                Transform2F::from_translation(self.start_position),
+            ),
         );
     }
 }

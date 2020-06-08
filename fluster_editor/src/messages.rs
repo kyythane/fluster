@@ -26,6 +26,7 @@ pub enum EditMessage {
     Cancel,
 }
 
+// TODO: could we use just one End message?
 #[derive(Clone, Debug)]
 pub enum ToolMessage {
     PathStart {
@@ -46,6 +47,14 @@ pub enum ToolMessage {
         hover_position: Vector2F,
     },
     MovePointEnd,
+    EllipseStart {
+        start_position: Vector2F,
+        options: Vec<ToolOption>,
+    },
+    EllipsePlaceHover {
+        hover_position: Vector2F,
+    },
+    EllipseEnd,
 }
 
 // TODO: Enum, EntityHandle, PartHandle, UtilityHandle, etc?

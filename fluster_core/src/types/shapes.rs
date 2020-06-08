@@ -37,6 +37,65 @@ pub enum Edge {
 }
 
 impl Edge {
+    pub fn new_ellipse(size: Vector2F, transform: Transform2F) -> Vec<Self> {
+        todo!()
+    }
+
+    // TODO: Round rect
+    /*
+            fn create_rounded_rect_path(rect: RectF, radius: f32) -> Path2D {
+        let mut path = Path2D::new();
+        path.move_to(rect.origin() + vec2f(radius, 0.0));
+        path.arc_to(rect.upper_right(), rect.upper_right() + vec2f(0.0,  radius), radius);
+        path.arc_to(rect.lower_right(), rect.lower_right() + vec2f(-radius, 0.0), radius);
+        path.arc_to(rect.lower_left(),  rect.lower_left()  + vec2f(0.0, -radius), radius);
+        path.arc_to(rect.origin(),      rect.origin()      + vec2f(radius,  0.0), radius);
+        path.close_path();
+        path
+    }
+
+        */
+    pub fn new_circle(radius: f32, transform: Transform2F) -> Vec<Self> {
+        vec![
+            Self::Move(transform * Vector2F::new(-radius, 0.0)),
+            Self::Arc {
+                control: transform * Vector2F::new(0.0, radius * -16.0),
+                to: transform * Vector2F::new(radius, 0.0),
+                radius,
+            },
+            Self::Arc {
+                control: transform * Vector2F::new(0.0, radius * 16.0),
+                to: transform * Vector2F::new(-radius, 0.0),
+                radius,
+            },
+        ]
+    }
+
+    pub fn new_polygon(sides: u32, edge_length: f32, transform: Transform2F) -> Vec<Self> {
+        let range = 0..(sides - 1);
+        let mut edges = Vec::with_capacity(sides as usize);
+        let sides = sides as f32;
+        let angle = Transform2F::from_rotation((sides - 2.0) * std::f32::consts::PI / sides);
+        let mut edge = Vector2F::new(edge_length, 0.0);
+        let mut curr = transform * Vector2F::zero();
+        edges.push(Self::Move(curr));
+        for _ in range {
+            curr = curr + transform * edge;
+            edges.push(Self::Line(curr));
+            edge = angle * edge;
+        }
+        edges
+    }
+
+    pub fn new_rect(size: Vector2F, transform: Transform2F) -> Vec<Self> {
+        vec![
+            Self::Move(transform * Vector2F::zero()),
+            Self::Line(transform * Vector2F::new(size.x(), 0.0)),
+            Self::Line(transform * size),
+            Self::Line(transform * Vector2F::new(0.0, size.y())),
+        ]
+    }
+
     pub fn end_point(&self) -> Vector2F {
         match self {
             Self::Move(v) => *v,
@@ -60,6 +119,7 @@ impl Edge {
                 control,
                 to,
                 radius,
+                // TODO: handle ellipses more directly (path.arc)
             } => path.arc_to(control, to, radius),
         });
         if is_closed {
