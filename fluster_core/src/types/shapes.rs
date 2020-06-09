@@ -49,20 +49,6 @@ pub enum Edge {
 }
 
 impl Edge {
-    // TODO: Round rect
-    /*
-            fn create_rounded_rect_path(rect: RectF, radius: f32) -> Path2D {
-        let mut path = Path2D::new();
-        path.move_to(rect.origin() + vec2f(radius, 0.0));
-        path.arc_to(rect.upper_right(), rect.upper_right() + vec2f(0.0,  radius), radius);
-        path.arc_to(rect.lower_right(), rect.lower_right() + vec2f(-radius, 0.0), radius);
-        path.arc_to(rect.lower_left(),  rect.lower_left()  + vec2f(0.0, -radius), radius);
-        path.arc_to(rect.origin(),      rect.origin()      + vec2f(radius,  0.0), radius);
-        path.close_path();
-        path
-    }
-
-        */
     pub fn new_ellipse(axes: Vector2F, transform: Transform2F) -> Vec<Self> {
         vec![
             // TODO: wtf why this move???
@@ -81,7 +67,7 @@ impl Edge {
     }
 
     pub fn new_polygon(sides: u32, edge_length: f32, transform: Transform2F) -> Vec<Self> {
-        let range = 0..(sides - 1);
+        let range = 0..sides;
         let mut edges = Vec::with_capacity(sides as usize);
         let sides = sides as f32;
         let angle = Transform2F::from_rotation((sides - 2.0) * std::f32::consts::PI / sides);
@@ -102,7 +88,45 @@ impl Edge {
             Self::Line(transform * Vector2F::new(size.x(), 0.0)),
             Self::Line(transform * size),
             Self::Line(transform * Vector2F::new(0.0, size.y())),
+            Self::Line(transform * Vector2F::zero()), //Add the last line since we don't know if this will be closed
         ]
+    }
+
+    pub fn new_round_rect(size: Vector2F, corner_radius: f32, transform: Transform2F) -> Vec<Self> {
+        vec![
+            Self::Move(transform * (Vector2F::zero() + Vector2F::new(corner_radius, 0.0))),
+            Self::ArcTo {
+                control: transform * Vector2F::new(size.x(), 0.0),
+                to: transform * Vector2F::new(size.x(), corner_radius),
+                radius: corner_radius,
+            },
+            Self::ArcTo {
+                control: transform * size,
+                to: transform * (size + Vector2F::new(-corner_radius, 0.0)),
+                radius: corner_radius,
+            },
+            Self::ArcTo {
+                control: transform * Vector2F::new(0.0, size.y()),
+                to: transform * Vector2F::new(-corner_radius, size.y() - corner_radius),
+                radius: corner_radius,
+            },
+            Self::ArcTo {
+                control: transform * Vector2F::zero(),
+                to: transform * Vector2F::new(corner_radius, 0.0),
+                radius: corner_radius,
+            },
+        ]
+        /*
+               fn create_rounded_rect_path(rect: RectF, radius: f32) -> Path2D {
+           let mut path = Path2D::new();
+           path.move_to(rect.origin() + vec2f(radius, 0.0));
+           path.arc_to(rect.upper_right(), rect.upper_right() + vec2f(0.0,  radius), radius);
+           path.arc_to(rect.lower_right(), rect.lower_right() + vec2f(-radius, 0.0), radius);
+           path.arc_to(rect.lower_left(),  rect.lower_left()  + vec2f(0.0, -radius), radius);
+           path.arc_to(rect.origin(),      rect.origin()      + vec2f(radius,  0.0), radius);
+           path.close_path();
+           path
+        }*/
     }
 
     pub fn end_point(&self) -> Vector2F {
@@ -409,6 +433,7 @@ impl MorphEdge {
     }
 }
 
+//TODO: should close path be an instruction in edge???
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Shape {
     Path {
