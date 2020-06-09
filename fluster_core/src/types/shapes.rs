@@ -2,7 +2,10 @@ use super::basic::{transform_des, transform_ser, ColorUDef, Vector2FDef};
 use crate::util;
 use pathfinder_canvas::Path2D;
 use pathfinder_color::ColorU;
-use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
+use pathfinder_content::{
+    outline::ArcDirection,
+    stroke::{LineCap, LineJoin, StrokeStyle},
+};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use reduce::Reduce;
@@ -27,20 +30,25 @@ pub enum Edge {
         #[serde(with = "Vector2FDef")]
         to: Vector2F,
     },
-    Arc {
+    ArcTo {
         #[serde(with = "Vector2FDef")]
         control: Vector2F,
         #[serde(with = "Vector2FDef")]
         to: Vector2F,
         radius: f32,
     },
+    Arc {
+        #[serde(with = "Vector2FDef")]
+        center: Vector2F,
+        start_angle: f32,
+        end_angle: f32,
+        #[serde(with = "Vector2FDef")]
+        axes: Vector2F,
+        // TOOD: ArcDirection
+    },
 }
 
 impl Edge {
-    pub fn new_ellipse(size: Vector2F, transform: Transform2F) -> Vec<Self> {
-        todo!()
-    }
-
     // TODO: Round rect
     /*
             fn create_rounded_rect_path(rect: RectF, radius: f32) -> Path2D {
@@ -55,18 +63,19 @@ impl Edge {
     }
 
         */
-    pub fn new_circle(radius: f32, transform: Transform2F) -> Vec<Self> {
+    pub fn new_ellipse(axes: Vector2F, transform: Transform2F) -> Vec<Self> {
         vec![
-            Self::Move(transform * Vector2F::new(-radius, 0.0)),
+            // TODO: wtf why this move???
+            Self::Move(
+                transform
+                   // * Transform2F::from_rotation(-std::f32::consts::FRAC_PI_4)
+                    * Vector2F::new(axes.x(), 0.0),
+            ),
             Self::Arc {
-                control: transform * Vector2F::new(0.0, radius * -16.0),
-                to: transform * Vector2F::new(radius, 0.0),
-                radius,
-            },
-            Self::Arc {
-                control: transform * Vector2F::new(0.0, radius * 16.0),
-                to: transform * Vector2F::new(-radius, 0.0),
-                radius,
+                center: transform * Vector2F::zero(),
+                axes,
+                start_angle: 0.0,
+                end_angle: std::f32::consts::PI * 2.0,
             },
         ]
     }
@@ -100,27 +109,40 @@ impl Edge {
         match self {
             Self::Move(v) => *v,
             Self::Line(v) => *v,
-            Self::Quadratic { to, .. } | Self::Bezier { to, .. } | Self::Arc { to, .. } => *to,
+            Self::Quadratic { to, .. } | Self::Bezier { to, .. } | Self::ArcTo { to, .. } => *to,
+            Self::Arc { .. } => Vector2F::zero(), // TODO: compute
         }
     }
 
     pub fn edges_to_path(edges: impl Iterator<Item = Edge>, is_closed: bool) -> Path2D {
         let mut path = Path2D::new();
         edges.for_each(|edge| match edge {
-            Edge::Move(to) => path.move_to(to),
-            Edge::Line(to) => path.line_to(to),
-            Edge::Quadratic { control, to } => path.quadratic_curve_to(control, to),
-            Edge::Bezier {
+            Self::Move(to) => path.move_to(to),
+            Self::Line(to) => path.line_to(to),
+            Self::Quadratic { control, to } => path.quadratic_curve_to(control, to),
+            Self::Bezier {
                 control_1,
                 control_2,
                 to,
             } => path.bezier_curve_to(control_1, control_2, to),
-            Edge::Arc {
+            Self::ArcTo {
                 control,
                 to,
                 radius,
                 // TODO: handle ellipses more directly (path.arc)
             } => path.arc_to(control, to, radius),
+            Self::Arc {
+                center,
+                start_angle,
+                end_angle,
+                axes,
+            } => {
+                if (axes.x() - axes.y()).abs() <= std::f32::EPSILON {
+                    path.arc(center, axes.x(), start_angle, end_angle, ArcDirection::CW);
+                } else {
+                    path.ellipse(center, axes, 0.0, start_angle, end_angle);
+                }
+            }
         });
         if is_closed {
             path.close_path();
@@ -166,25 +188,26 @@ impl Edge {
                     to: position,
                 },
             },
-            Self::Arc {
+            Self::ArcTo {
                 control,
                 to,
                 radius,
             } => {
                 if index == 0 {
-                    Self::Arc {
+                    Self::ArcTo {
                         control: position,
                         to: *to,
                         radius: *radius,
                     }
                 } else {
-                    Self::Arc {
+                    Self::ArcTo {
                         control: *control,
                         to: position,
                         radius: *radius,
                     }
                 }
             }
+            Self::Arc { .. } => todo!(),
         };
         mem::replace(self, updated);
     }
@@ -227,12 +250,18 @@ impl Edge {
                 *transform,
             ),
             // TODO: oh no radius!!!!???
-            Self::Arc { control, to, .. } => Self::match_points_disk(
+            Self::ArcTo { control, to, .. } => Self::match_points_disk(
                 vec![*control, *to].into_iter(),
                 *point,
                 square_radius,
                 *transform,
             ),
+            Self::Arc { center, .. } => Self::match_points_disk(
+                vec![*center].into_iter(),
+                *point,
+                square_radius,
+                *transform,
+            ), // TODO, calc start and end of arc
         }
     }
 
@@ -280,9 +309,12 @@ impl Edge {
                 *transform,
             ),
             // TODO: oh no radius!!!!???
-            Self::Arc { control, to, .. } => {
+            Self::ArcTo { control, to, .. } => {
                 Self::match_points_rect(vec![*control, *to].into_iter(), *rect, *transform)
             }
+            Self::Arc { center, .. } => {
+                Self::match_points_rect(vec![*center].into_iter(), *rect, *transform)
+            } // TODO, start end
         }
     }
 }
@@ -321,7 +353,7 @@ pub enum MorphEdge {
         #[serde(with = "Vector2FDef")]
         to_end: Vector2F,
     },
-    Arc {
+    ArcTo {
         #[serde(with = "Vector2FDef")]
         control_start: Vector2F,
         #[serde(with = "Vector2FDef")]
@@ -361,14 +393,14 @@ impl MorphEdge {
                 control_2: control_2_start.lerp(*control_2_end, percent),
                 to: to_start.lerp(*to_end, percent),
             },
-            MorphEdge::Arc {
+            MorphEdge::ArcTo {
                 control_start,
                 to_start,
                 radius_start,
                 control_end,
                 to_end,
                 radius_end,
-            } => Edge::Arc {
+            } => Edge::ArcTo {
                 control: control_start.lerp(*control_end, percent),
                 to: to_start.lerp(*to_end, percent),
                 radius: util::lerp(*radius_start, *radius_end, percent),

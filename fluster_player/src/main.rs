@@ -156,7 +156,7 @@ fn build_action_list() -> ActionList {
                         to: Vector2F::new(330.0, 62.0),
                     },
                     Edge::Move(Vector2F::new(330.0, 130.0)),
-                    Edge::Arc {
+                    Edge::ArcTo {
                         control: Vector2F::new(300.0, 100.0),
                         to: Vector2F::new(360.0, 92.0),
                         radius: 21.0,
@@ -320,6 +320,7 @@ fn main() {
         DestFramebuffer::full_window(window_size),
         RendererOptions {
             background_color: Some(ColorF::white()),
+            no_compute: false,
         },
     );
 

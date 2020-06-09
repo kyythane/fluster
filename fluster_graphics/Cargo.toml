@@ -6,9 +6,9 @@ edition = "2018"
 
 [dependencies]
 fluster_core = { path = "../fluster_core" }
-pathfinder_canvas = "0.5.*"
-pathfinder_color = "0.5.*"
-pathfinder_content = "0.5.*"
-pathfinder_geometry = "0.5.*"
-pathfinder_gpu = "0.5.*"
-pathfinder_renderer = "0.5.*"
+pathfinder_canvas = { git = "https://github.com/servo/pathfinder.git" }
+pathfinder_color = { git = "https://github.com/servo/pathfinder.git" }
+pathfinder_content = { git = "https://github.com/servo/pathfinder.git" }
+pathfinder_geometry = { git = "https://github.com/servo/pathfinder.git" }
+pathfinder_gpu = { git = "https://github.com/servo/pathfinder.git" }
+pathfinder_renderer = { git = "https://github.com/servo/pathfinder.git" }

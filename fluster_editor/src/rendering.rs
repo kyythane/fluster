@@ -82,6 +82,7 @@ impl StageRenderer {
             DestFramebuffer::full_window(stage_size),
             RendererOptions {
                 background_color: Some(ColorF::white()),
+                no_compute: false,
             },
         );
 

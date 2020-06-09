@@ -81,6 +81,7 @@ where
     fn set_background(&mut self, color: ColorU) {
         self.renderer.set_options(RendererOptions {
             background_color: Some(color.to_f32()),
+            no_compute: false,
         });
     }
     fn draw_shape(

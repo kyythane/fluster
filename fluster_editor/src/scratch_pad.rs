@@ -431,10 +431,8 @@ impl EllipseScratchPad {
             library,
             self.id,
             &self.shape_prototype,
-            Edge::new_circle(
-                (self.end_position - self.start_position)
-                    .length()
-                    .max(0.00001),
+            Edge::new_ellipse(
+                self.end_position - self.start_position,
                 Transform2F::from_translation(self.start_position),
             ),
         );
@@ -446,8 +444,8 @@ impl EllipseScratchPad {
             library,
             self.id,
             &self.shape_prototype,
-            Edge::new_circle(
-                (self.end_position - self.start_position).length(),
+            Edge::new_ellipse(
+                self.end_position - self.start_position,
                 Transform2F::from_translation(self.start_position),
             ),
         );
