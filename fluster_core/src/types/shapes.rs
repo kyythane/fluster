@@ -84,6 +84,42 @@ impl Edge {
         edges
     }
 
+    pub fn new_round_polygon(
+        sides: u8,
+        edge_length: f32,
+        corner_radius: f32,
+        transform: Transform2F,
+    ) -> Vec<Self> {
+        let range = 0..sides;
+        let mut edges = Vec::with_capacity(sides as usize);
+        let sides = sides as f32;
+        let angle = Transform2F::from_rotation(
+            std::f32::consts::PI - (sides - 2.0) * std::f32::consts::PI / sides,
+        );
+        let corner_angle = Transform2F::from_rotation((sides - 2.0) * std::f32::consts::PI / sides);
+        let mut edge = Vector2F::new(edge_length, 0.0);
+        let mut corner_radius_vector = Vector2F::new(0.0, corner_radius);
+        let mut curr = Vector2F::zero();
+        edges.push(Self::Move(transform * Vector2F::zero()));
+        for _ in range {
+            curr = curr + edge;
+            /* println!(
+                ">>\t{:?} {:?} {:?}",
+                transform * curr,
+                transform * (curr + corner_radius_vector),
+                corner_radius
+            );*/
+            edges.push(Self::ArcTo {
+                control: transform * curr,
+                to: transform * (curr + corner_radius_vector),
+                radius: corner_radius,
+            }); //Self::Line(transform * curr));
+            edge = angle * edge;
+            corner_radius_vector = corner_angle * corner_radius_vector;
+        }
+        edges
+    }
+
     pub fn new_rect(size: Vector2F, transform: Transform2F) -> Vec<Self> {
         vec![
             Self::Move(transform * Vector2F::zero()),

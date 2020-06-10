@@ -480,13 +480,24 @@ impl TemplateShapeScratchpad {
                 } else {
                     0.0
                 };
-                Ok(Edge::new_polygon(
-                    edges,
-                    2.0 * (self.end_position - self.start_position).length()
-                        * (std::f32::consts::PI / (edges as f32)).sin(),
-                    Transform2F::from_translation(self.start_position)
-                        * Transform2F::from_rotation(angle),
-                ))
+                if corner_radius.abs() < std::f32::EPSILON {
+                    Ok(Edge::new_polygon(
+                        edges,
+                        2.0 * (self.end_position - self.start_position).length()
+                            * (std::f32::consts::PI / (edges as f32)).sin(),
+                        Transform2F::from_translation(self.start_position)
+                            * Transform2F::from_rotation(angle),
+                    ))
+                } else {
+                    Ok(Edge::new_round_polygon(
+                        edges,
+                        2.0 * (self.end_position - self.start_position).length()
+                            * (std::f32::consts::PI / (edges as f32)).sin(),
+                        corner_radius,
+                        Transform2F::from_translation(self.start_position)
+                            * Transform2F::from_rotation(angle),
+                    ))
+                }
             }
         }
     }
