@@ -66,17 +66,19 @@ impl Edge {
         ]
     }
 
-    pub fn new_polygon(sides: u32, edge_length: f32, transform: Transform2F) -> Vec<Self> {
+    pub fn new_polygon(sides: u8, edge_length: f32, transform: Transform2F) -> Vec<Self> {
         let range = 0..sides;
         let mut edges = Vec::with_capacity(sides as usize);
         let sides = sides as f32;
-        let angle = Transform2F::from_rotation((sides - 2.0) * std::f32::consts::PI / sides);
+        let angle = Transform2F::from_rotation(
+            std::f32::consts::PI - (sides - 2.0) * std::f32::consts::PI / sides,
+        );
         let mut edge = Vector2F::new(edge_length, 0.0);
-        let mut curr = transform * Vector2F::zero();
-        edges.push(Self::Move(curr));
+        let mut curr = Vector2F::zero();
+        edges.push(Self::Move(transform * Vector2F::zero()));
         for _ in range {
-            curr = curr + transform * edge;
-            edges.push(Self::Line(curr));
+            curr = curr + edge;
+            edges.push(Self::Line(transform * curr));
             edge = angle * edge;
         }
         edges
@@ -107,7 +109,7 @@ impl Edge {
             },
             Self::ArcTo {
                 control: transform * Vector2F::new(0.0, size.y()),
-                to: transform * Vector2F::new(-corner_radius, size.y() - corner_radius),
+                to: transform * Vector2F::new(0.0, size.y() - corner_radius),
                 radius: corner_radius,
             },
             Self::ArcTo {

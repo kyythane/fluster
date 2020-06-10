@@ -47,14 +47,22 @@ pub enum ToolMessage {
         hover_position: Vector2F,
     },
     MovePointEnd,
-    EllipseStart {
+    TemplateStart {
         start_position: Vector2F,
         options: Vec<ToolOption>,
+        template: Template,
     },
-    EllipsePlaceHover {
+    TemplatePlaceHover {
         hover_position: Vector2F,
     },
-    EllipseEnd,
+    TemplateEnd,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum Template {
+    Ellipse,
+    Polygon,
+    Rectangle,
 }
 
 // TODO: Enum, EntityHandle, PartHandle, UtilityHandle, etc?

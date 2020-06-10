@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
-use crate::messages::{EditMessage, SelectionHandle, ToolMessage};
-use crate::tools::ToolOption;
+use crate::messages::{EditMessage, SelectionHandle, Template, ToolMessage};
+use crate::tools::{ToolOption, ToolOptionHandle};
 use fluster_core::types::{
     model::{DisplayLibraryItem, Entity, Part},
     shapes::{Edge, Shape},
@@ -97,7 +97,7 @@ impl ScratchPad {
 
 enum ScratchPadState {
     NewPath(ShapeScratchPad),
-    NewEllipse(EllipseScratchPad),
+    NewTemplateShape(TemplateShapeScratchpad),
     EditVertexes(VertexScratchPad),
     None,
 }
@@ -193,15 +193,16 @@ impl ScratchPadState {
                         Err("Unexpected Message \"PathEnd\"".to_owned())
                     }
                 }
-                ToolMessage::EllipseStart {
+                ToolMessage::TemplateStart {
                     start_position,
                     options,
+                    template,
                 } => {
                     if let Self::None = self {
-                        let mut ellipse_scratch_pad =
-                            EllipseScratchPad::init(*start_position, options);
-                        ellipse_scratch_pad.start_ellipse(library, display_list, root_entity_id);
-                        mem::replace(self, Self::NewEllipse(ellipse_scratch_pad));
+                        let mut template_scratch_pad =
+                            TemplateShapeScratchpad::init(*start_position, options, *template);
+                        template_scratch_pad.start(library, display_list, root_entity_id);
+                        mem::replace(self, Self::NewTemplateShape(template_scratch_pad));
                         Ok(false)
                     } else {
                         Err(
@@ -210,21 +211,21 @@ impl ScratchPadState {
                         )
                     }
                 }
-                ToolMessage::EllipsePlaceHover { hover_position } => {
-                    if let Self::NewEllipse(ellipse_scratch_pad) = self {
-                        ellipse_scratch_pad.update_preview_ellipse(library, *hover_position);
+                ToolMessage::TemplatePlaceHover { hover_position } => {
+                    if let Self::NewTemplateShape(template_scratch_pad) = self {
+                        template_scratch_pad.update_preview(library, *hover_position)?;
                         Ok(true)
                     } else {
-                        Err("Unexpected Message \"EllipsePlaceHover\"".to_owned())
+                        Err("Unexpected Message \"TemplatePlaceHover\"".to_owned())
                     }
                 }
-                ToolMessage::EllipseEnd => {
-                    if let Self::NewEllipse(ellipse_scratch_pad) = self {
-                        ellipse_scratch_pad.complete_ellipse(library);
+                ToolMessage::TemplateEnd => {
+                    if let Self::NewTemplateShape(template_scratch_pad) = self {
+                        template_scratch_pad.complete(library, display_list, root_entity_id)?;
                         mem::replace(self, Self::None);
                         Ok(true) //TODO: update scene message
                     } else {
-                        Err("Unexpected Message \"EllipseEnd\"".to_owned())
+                        Err("Unexpected Message \"TemplateEnd\"".to_owned())
                     }
                 }
             },
@@ -233,8 +234,7 @@ impl ScratchPadState {
         }
     }
 }
-
-pub struct ShapeScratchPad {
+struct ShapeScratchPad {
     id: Uuid,
     edges: Vec<Edge>,
     committed_edges: usize,
@@ -242,18 +242,20 @@ pub struct ShapeScratchPad {
     selected_point: (usize, usize),
 }
 
-pub struct VertexScratchPad {
+struct VertexScratchPad {
     id: Uuid,
     edges: Vec<Edge>,
     shape_prototype: Shape,
     selected_point: (usize, usize),
 }
 
-pub struct EllipseScratchPad {
+struct TemplateShapeScratchpad {
     id: Uuid,
     shape_prototype: Shape,
     start_position: Vector2F,
     end_position: Vector2F,
+    template: Template,
+    template_options: HashMap<ToolOptionHandle, ToolOption>,
 }
 
 impl ShapeScratchPad {
@@ -398,17 +400,89 @@ impl VertexScratchPad {
     }
 }
 
-impl EllipseScratchPad {
-    fn init(start_position: Vector2F, options: &Vec<ToolOption>) -> Self {
+impl TemplateShapeScratchpad {
+    fn init(start_position: Vector2F, options: &Vec<ToolOption>, template: Template) -> Self {
+        let mut edges = 5;
+        let mut corner_radius: f32 = 0.0;
+        options.iter().for_each(|option| match option {
+            ToolOption::NumEdges(option_edges) => edges = *option_edges,
+            ToolOption::CornerRadius(option_radius) => corner_radius = *option_radius,
+            _ => (),
+        });
+        let mut template_options = HashMap::new();
+        template_options.insert(ToolOptionHandle::NumEdges, ToolOption::NumEdges(edges));
+        template_options.insert(
+            ToolOptionHandle::CornerRadius,
+            ToolOption::CornerRadius(corner_radius),
+        );
         Self {
             id: Uuid::new_v4(),
             shape_prototype: create_shape_prototype(options),
             start_position,
             end_position: start_position,
+            template,
+            template_options,
         }
     }
 
-    fn start_ellipse(
+    fn compute_edge(&self) -> Result<Vec<Edge>, String> {
+        let corner_radius = if let Some(ToolOption::CornerRadius(corner_radius)) =
+            self.template_options.get(&ToolOptionHandle::CornerRadius)
+        {
+            *corner_radius
+        } else {
+            return Err(
+                "Attempting to draw a polygon without specifying the corner radius".to_owned(),
+            );
+        };
+        match self.template {
+            Template::Ellipse => Ok(Edge::new_ellipse(
+                self.end_position - self.start_position,
+                Transform2F::from_translation(self.start_position),
+            )),
+            Template::Rectangle => {
+                let size = Vector2F::new(
+                    (self.end_position.x() - self.start_position.x()).abs(),
+                    (self.end_position.y() - self.start_position.y()).abs(),
+                );
+                if corner_radius.abs() < std::f32::EPSILON {
+                    Ok(Edge::new_rect(
+                        size,
+                        Transform2F::from_translation(self.start_position.min(self.end_position)),
+                    ))
+                } else {
+                    Ok(Edge::new_round_rect(
+                        size,
+                        corner_radius
+                            .min(size.x() / 2.0)
+                            .min(size.y() / 2.0)
+                            .max(0.001), // We need to provides some minimum size so Pathfinder doesn't generate points with NaN coordinates
+                        Transform2F::from_translation(self.start_position.min(self.end_position)),
+                    ))
+                }
+            }
+            Template::Polygon => {
+                let edges = if let Some(ToolOption::NumEdges(edges)) =
+                    self.template_options.get(&ToolOptionHandle::NumEdges)
+                {
+                    *edges
+                } else {
+                    return Err(
+                        "Attempting to draw a polygon without specifying number of sides"
+                            .to_owned(),
+                    );
+                };
+                Ok(Edge::new_polygon(
+                    edges,
+                    2.0 * (self.end_position - self.start_position).length()
+                        * (std::f32::consts::PI / (edges as f32)).sin(),
+                    Transform2F::from_translation(self.start_position),
+                ))
+            }
+        }
+    }
+
+    fn start(
         &mut self,
         library: &mut HashMap<Uuid, DisplayLibraryItem>,
         display_list: &mut HashMap<Uuid, Entity>,
@@ -421,33 +495,40 @@ impl EllipseScratchPad {
         update_library(library, self.id, &self.shape_prototype, vec![]);
     }
 
-    fn update_preview_ellipse(
+    fn update_preview(
         &mut self,
         library: &mut HashMap<Uuid, DisplayLibraryItem>,
         temp_position: Vector2F,
-    ) {
+    ) -> Result<(), String> {
         self.end_position = temp_position;
         update_library(
             library,
             self.id,
             &self.shape_prototype,
-            Edge::new_ellipse(
-                self.end_position - self.start_position,
-                Transform2F::from_translation(self.start_position),
-            ),
+            self.compute_edge()?,
         );
+        Ok(())
     }
 
-    fn complete_ellipse(&mut self, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
-        // TODO: don't add circles of zero size
-        update_library(
-            library,
-            self.id,
-            &self.shape_prototype,
-            Edge::new_ellipse(
-                self.end_position - self.start_position,
-                Transform2F::from_translation(self.start_position),
-            ),
-        );
+    fn complete(
+        &mut self,
+        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+        display_list: &mut HashMap<Uuid, Entity>,
+        root_entity_id: &Uuid,
+    ) -> Result<(), String> {
+        if (self.end_position - self.start_position).length() < std::f32::EPSILON {
+            library.remove(&self.id);
+            display_list
+                .entry(*root_entity_id)
+                .and_modify(|root| root.remove_part(&self.id));
+        } else {
+            update_library(
+                library,
+                self.id,
+                &self.shape_prototype,
+                self.compute_edge()?,
+            );
+        }
+        Ok(())
     }
 }

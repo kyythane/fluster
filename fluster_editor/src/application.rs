@@ -133,6 +133,7 @@ where
 pub struct ToolPaneState {
     pointer_state: ButtonState,
     path_state: ButtonState,
+    rect_state: ButtonState,
     polygon_state: ButtonState,
     ellipse_state: ButtonState,
     fill_state: ButtonState,
@@ -204,20 +205,26 @@ impl App {
                 Row::new()
                     .spacing(3)
                     .align_items(Align::Center)
+                    .push(button_factory(&mut tool_pane_state.rect_state, Tool::Rect))
                     .push(button_factory(
                         &mut tool_pane_state.polygon_state,
                         Tool::Polygon,
-                    ))
-                    .push(button_factory(
-                        &mut tool_pane_state.ellipse_state,
-                        Tool::Ellipse,
                     )),
             )
             .push(
                 Row::new()
                     .spacing(3)
                     .align_items(Align::Center)
-                    .push(button_factory(&mut tool_pane_state.fill_state, Tool::Fill))
+                    .push(button_factory(
+                        &mut tool_pane_state.ellipse_state,
+                        Tool::Ellipse,
+                    ))
+                    .push(button_factory(&mut tool_pane_state.fill_state, Tool::Fill)),
+            )
+            .push(
+                Row::new()
+                    .spacing(3)
+                    .align_items(Align::Center)
                     .push(button_factory(
                         &mut tool_pane_state.eyedropper_state,
                         Tool::Eyedropper,
