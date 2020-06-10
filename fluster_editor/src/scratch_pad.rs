@@ -472,11 +472,20 @@ impl TemplateShapeScratchpad {
                             .to_owned(),
                     );
                 };
+                let angle = if (self.end_position.x() - self.start_position.x()).abs()
+                    > std::f32::EPSILON
+                {
+                    (self.end_position.y() - self.start_position.y())
+                        .atan2(self.end_position.x() - self.start_position.x())
+                } else {
+                    0.0
+                };
                 Ok(Edge::new_polygon(
                     edges,
                     2.0 * (self.end_position - self.start_position).length()
                         * (std::f32::consts::PI / (edges as f32)).sin(),
-                    Transform2F::from_translation(self.start_position),
+                    Transform2F::from_translation(self.start_position)
+                        * Transform2F::from_rotation(angle),
                 ))
             }
         }
