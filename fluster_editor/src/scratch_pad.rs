@@ -453,10 +453,7 @@ impl TemplateShapeScratchpad {
                 } else {
                     Ok(Edge::new_round_rect(
                         size,
-                        corner_radius
-                            .min(size.x() / 2.0)
-                            .min(size.y() / 2.0)
-                            .max(0.001), // We need to provides some minimum size so Pathfinder doesn't generate points with NaN coordinates
+                        corner_radius, // We need to provides some minimum size so Pathfinder doesn't generate points with NaN coordinates
                         Transform2F::from_translation(self.start_position.min(self.end_position)),
                     ))
                 }

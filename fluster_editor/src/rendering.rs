@@ -97,13 +97,6 @@ impl StageRenderer {
         })
     }
 
-    /*TODO:
-        Next steps:
-        - prototype edit handles
-        - bounds and debug drawing?
-        - ???
-    */
-
     pub fn draw_frame(&mut self, render_data: RenderData) -> Result<ImageHandle, Box<dyn Error>> {
         self.renderer.start_frame(self.stage_size.to_f32());
         self.renderer.set_background(render_data.background_color);
@@ -118,6 +111,7 @@ impl StageRenderer {
             let buffer_size = self.stage_size.x() * self.stage_size.y() * 4;
             let mut target: Vec<u8> = vec![0; buffer_size as usize];
             let ptr = (&mut target).as_mut_ptr();
+            // TODO: I *think* this is copying the y-axis inverted!!
             ReadPixels(
                 0,
                 0,
