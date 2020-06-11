@@ -10,6 +10,7 @@ use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use reduce::Reduce;
 use serde::{Deserialize, Serialize};
+use std::f32::consts::PI;
 use std::mem;
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
@@ -51,32 +52,23 @@ pub enum Edge {
 impl Edge {
     pub fn new_ellipse(axes: Vector2F, transform: Transform2F) -> Vec<Self> {
         vec![
-            // TODO: wtf why this move???
-            Self::Move(
-                transform
-                   // * Transform2F::from_rotation(-std::f32::consts::FRAC_PI_4)
-                    * Vector2F::new(axes.x(), 0.0),
-            ),
+            Self::Move(transform * Vector2F::new(axes.x(), 0.0)),
             Self::Arc {
                 center: transform * Vector2F::zero(),
                 axes,
                 start_angle: 0.0,
-                end_angle: std::f32::consts::PI * 2.0,
+                end_angle: PI * 2.0,
             },
         ]
     }
 
     pub fn new_polygon(sides: u8, edge_length: f32, transform: Transform2F) -> Vec<Self> {
-        let range = 0..sides;
         let mut edges = Vec::with_capacity(sides as usize);
-        let sides = sides as f32;
-        let angle = Transform2F::from_rotation(
-            std::f32::consts::PI - (sides - 2.0) * std::f32::consts::PI / sides,
-        );
+        let angle = Transform2F::from_rotation(PI - (sides as f32 - 2.0) * PI / sides as f32);
         let mut edge = Vector2F::new(edge_length, 0.0);
         let mut curr = Vector2F::zero();
         edges.push(Self::Move(transform * Vector2F::zero()));
-        for _ in range {
+        for _ in 0..sides {
             curr = curr + edge;
             edges.push(Self::Line(transform * curr));
             edge = angle * edge;
@@ -90,33 +82,33 @@ impl Edge {
         corner_radius: f32,
         transform: Transform2F,
     ) -> Vec<Self> {
-        let range = 0..sides;
+        // edge_length and corner_radius must always be non-zero or we'll get NaNs
+        let edge_length = edge_length.max(0.001);
+        let f_sides = sides as f32;
+        // corner_radius should never be larger than edge_length / 2.0, otherwise things look Weird
+        let corner_radius = if sides == 3 {
+            corner_radius.min(edge_length / 4.0)
+        } else {
+            corner_radius.min(edge_length / 2.0)
+        };
+        let corner_chord =
+            (2.0 * corner_radius * corner_radius * (1.0 - (2.0 * PI / f_sides).cos())).sqrt();
+        let corner_offset = (PI / f_sides).sin() / (2.0 * PI / f_sides).sin() * corner_chord;
         let mut edges = Vec::with_capacity(sides as usize);
-        let sides = sides as f32;
-        let angle = Transform2F::from_rotation(
-            std::f32::consts::PI - (sides - 2.0) * std::f32::consts::PI / sides,
-        );
-        let corner_angle = Transform2F::from_rotation((sides - 2.0) * std::f32::consts::PI / sides);
+        let angle = Transform2F::from_rotation(PI - (f_sides - 2.0) * PI / f_sides);
         let mut edge = Vector2F::new(edge_length, 0.0);
-        let mut corner_radius_vector = Vector2F::new(0.0, corner_radius);
         let mut curr = Vector2F::zero();
-        edges.push(Self::Move(transform * Vector2F::zero()));
-        for _ in range {
+        edges.push(Self::Move(transform * Vector2F::new(corner_offset, 0.0)));
+        for _ in 0..sides {
             curr = curr + edge;
-            /* println!(
-                ">>\t{:?} {:?} {:?}",
-                transform * curr,
-                transform * (curr + corner_radius_vector),
-                corner_radius
-            );*/
             edges.push(Self::ArcTo {
                 control: transform * curr,
-                to: transform * (curr + corner_radius_vector),
+                to: transform * (curr + (angle * edge).normalize() * corner_radius),
                 radius: corner_radius,
-            }); //Self::Line(transform * curr));
+            });
             edge = angle * edge;
-            corner_radius_vector = corner_angle * corner_radius_vector;
         }
+        // println!("{:?} {:?}", edge_length, edges);
         edges
     }
 
@@ -131,6 +123,10 @@ impl Edge {
     }
 
     pub fn new_round_rect(size: Vector2F, corner_radius: f32, transform: Transform2F) -> Vec<Self> {
+        let corner_radius = corner_radius
+            .min(size.x() / 2.0)
+            .min(size.y() / 2.0)
+            .max(0.001); // We need to provides some minimum size so Pathfinder doesn't generate points with NaN coordinates
         vec![
             Self::Move(transform * (Vector2F::zero() + Vector2F::new(corner_radius, 0.0))),
             Self::ArcTo {
@@ -154,17 +150,6 @@ impl Edge {
                 radius: corner_radius,
             },
         ]
-        /*
-               fn create_rounded_rect_path(rect: RectF, radius: f32) -> Path2D {
-           let mut path = Path2D::new();
-           path.move_to(rect.origin() + vec2f(radius, 0.0));
-           path.arc_to(rect.upper_right(), rect.upper_right() + vec2f(0.0,  radius), radius);
-           path.arc_to(rect.lower_right(), rect.lower_right() + vec2f(-radius, 0.0), radius);
-           path.arc_to(rect.lower_left(),  rect.lower_left()  + vec2f(0.0, -radius), radius);
-           path.arc_to(rect.origin(),      rect.origin()      + vec2f(radius,  0.0), radius);
-           path.close_path();
-           path
-        }*/
     }
 
     pub fn end_point(&self) -> Vector2F {
@@ -191,7 +176,6 @@ impl Edge {
                 control,
                 to,
                 radius,
-                // TODO: handle ellipses more directly (path.arc)
             } => path.arc_to(control, to, radius),
             Self::Arc {
                 center,
