@@ -404,9 +404,13 @@ impl TemplateShapeScratchpad {
     fn init(start_position: Vector2F, options: &Vec<ToolOption>, template: Template) -> Self {
         let mut edges = 5;
         let mut corner_radius: f32 = 0.0;
+        let mut use_super_ellipse_approximation = false;
         options.iter().for_each(|option| match option {
             ToolOption::NumEdges(option_edges) => edges = *option_edges,
             ToolOption::CornerRadius(option_radius) => corner_radius = *option_radius,
+            ToolOption::UseSuperEllipseApproximation(use_approximation) => {
+                use_super_ellipse_approximation = *use_approximation
+            }
             _ => (),
         });
         let mut template_options = HashMap::new();
@@ -414,6 +418,10 @@ impl TemplateShapeScratchpad {
         template_options.insert(
             ToolOptionHandle::CornerRadius,
             ToolOption::CornerRadius(corner_radius),
+        );
+        template_options.insert(
+            ToolOptionHandle::UseSuperEllipseApproximation,
+            ToolOption::UseSuperEllipseApproximation(use_super_ellipse_approximation),
         );
         Self {
             id: Uuid::new_v4(),
@@ -451,16 +459,26 @@ impl TemplateShapeScratchpad {
                         Transform2F::from_translation(self.start_position.min(self.end_position)),
                     ))
                 } else {
-                    /*Ok(Edge::new_round_rect(
-                        size,
-                        corner_radius,
-                        Transform2F::from_translation(self.start_position.min(self.end_position)),
-                    ))*/
-                    Ok(Edge::new_superellipse(
-                        size,
-                        corner_radius,
-                        Transform2F::from_translation(self.start_position.min(self.end_position)),
-                    ))
+                    if let Some(ToolOption::UseSuperEllipseApproximation(true)) = self
+                        .template_options
+                        .get(&ToolOptionHandle::UseSuperEllipseApproximation)
+                    {
+                        Ok(Edge::new_superellipse(
+                            size,
+                            corner_radius,
+                            Transform2F::from_translation(
+                                self.start_position.min(self.end_position),
+                            ),
+                        ))
+                    } else {
+                        Ok(Edge::new_round_rect(
+                            size,
+                            corner_radius,
+                            Transform2F::from_translation(
+                                self.start_position.min(self.end_position),
+                            ),
+                        ))
+                    }
                 }
             }
             Template::Polygon => {

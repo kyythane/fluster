@@ -142,9 +142,9 @@ impl Tool {
                             start_position: stage_position,
                             options: tool_options,
                             template: match self {
-                                Self::Ellipse { .. } => Template::Ellipse,
-                                Self::Rect { .. } => Template::Rectangle,
-                                Self::Polygon { .. } => Template::Polygon,
+                                Self::Ellipse => Template::Ellipse,
+                                Self::Rect => Template::Rectangle,
+                                Self::Polygon => Template::Polygon,
                                 _ => unreachable!(),
                             },
                         })
@@ -170,44 +170,39 @@ impl Tool {
             .drain(..)
             .filter(|option| match option {
                 ToolOption::LineColor(..) => match self {
-                    Self::Path { .. }
-                    | Self::Ellipse { .. }
-                    | Self::Rect { .. }
-                    | Self::Polygon { .. } => true,
+                    Self::Path | Self::Ellipse | Self::Rect | Self::Polygon => true,
                     _ => false,
                 },
                 ToolOption::StrokeWidth(..) => match self {
-                    Self::Path { .. }
-                    | Self::Ellipse { .. }
-                    | Self::Rect { .. }
-                    | Self::Polygon { .. } => true,
+                    Self::Path | Self::Ellipse | Self::Rect | Self::Polygon => true,
                     _ => false,
                 },
                 ToolOption::LineCap(..) => match self {
-                    Self::Path { .. } => true,
+                    Self::Path => true,
                     _ => false,
                 },
                 ToolOption::LineJoin(..) => match self {
-                    Self::Path { .. } | Self::Rect { .. } | Self::Polygon { .. } => true,
+                    Self::Path | Self::Rect | Self::Polygon => true,
                     _ => false,
                 },
                 ToolOption::FillColor(..) => match self {
-                    Self::Path { .. }
-                    | Self::Ellipse { .. }
-                    | Self::Rect { .. }
-                    | Self::Polygon { .. } => true,
+                    Self::Path | Self::Ellipse | Self::Rect | Self::Polygon => true,
                     _ => false,
                 },
                 ToolOption::NumEdges(..) => match self {
-                    Self::Polygon { .. } => true,
+                    Self::Polygon => true,
                     _ => false,
                 },
                 ToolOption::ClosedPath(..) => match self {
-                    Self::Path { .. } => true,
+                    Self::Path => true,
                     _ => false,
                 },
                 ToolOption::CornerRadius(..) => match self {
-                    Self::Rect { .. } | Self::Polygon { .. } => true,
+                    Self::Rect | Self::Polygon => true,
+                    _ => false,
+                },
+                ToolOption::UseSuperEllipseApproximation(..) => match self {
+                    Self::Rect => true,
                     _ => false,
                 },
             })
@@ -238,6 +233,7 @@ pub enum ToolOptionHandle {
     NumEdges,
     ClosedPath,
     CornerRadius,
+    UseSuperEllipseApproximation,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -250,6 +246,7 @@ pub enum ToolOption {
     NumEdges(u8),
     ClosedPath(bool),
     CornerRadius(f32),
+    UseSuperEllipseApproximation(bool),
 }
 
 impl ToolOption {
@@ -263,6 +260,9 @@ impl ToolOption {
             Self::NumEdges(..) => ToolOptionHandle::NumEdges,
             Self::ClosedPath(..) => ToolOptionHandle::ClosedPath,
             Self::CornerRadius(..) => ToolOptionHandle::CornerRadius,
+            Self::UseSuperEllipseApproximation(..) => {
+                ToolOptionHandle::UseSuperEllipseApproximation
+            }
         }
     }
 }
@@ -277,6 +277,7 @@ struct Options {
     num_edges: u8,
     closed_path: bool,
     corner_radius: f32,
+    use_super_ellipse_approximation: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -301,6 +302,7 @@ impl Default for EditState {
                 num_edges: 5,
                 closed_path: false,
                 corner_radius: 0.0,
+                use_super_ellipse_approximation: false,
             },
         }
     }
@@ -356,6 +358,7 @@ impl EditState {
             ToolOption::NumEdges(self.options.num_edges),
             ToolOption::ClosedPath(self.options.closed_path),
             ToolOption::CornerRadius(self.options.corner_radius),
+            ToolOption::UseSuperEllipseApproximation(self.options.use_super_ellipse_approximation),
         ]
     }
 
@@ -398,6 +401,9 @@ impl EditState {
                 ToolOption::ClosedPath(closed_path) => self.options.closed_path = *closed_path,
                 ToolOption::CornerRadius(corner_radius) => {
                     self.options.corner_radius = *corner_radius
+                }
+                ToolOption::UseSuperEllipseApproximation(use_approximation) => {
+                    self.options.use_super_ellipse_approximation = *use_approximation;
                 }
             },
         }
@@ -461,6 +467,13 @@ impl EditDisplayState {
                     .width(Length::Fill),
                 ),
             )
+        }
+        if let Some(ToolOption::UseSuperEllipseApproximation(use_approximation)) =
+            enabled_options.get(&ToolOptionHandle::UseSuperEllipseApproximation)
+        {
+            column = column.push(Checkbox::new(*use_approximation, "Use Squircle", |value| {
+                AppMessage::from_tool_option(ToolOption::UseSuperEllipseApproximation(value))
+            }))
         }
         if let Some(ToolOption::CornerRadius(corner_radius)) =
             enabled_options.get(&ToolOptionHandle::CornerRadius)

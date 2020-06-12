@@ -153,6 +153,48 @@ impl Edge {
         ]
     }
 
+    pub fn new_superellipse(size: Vector2F, exponent: f32, transform: Transform2F) -> Vec<Self> {
+        let size = size / 2.0;
+        let transform = Transform2F::from_translation(size) * transform;
+        const MAX_STEP: usize = 120;
+        const STEP_SIZE: f32 = 2.0 * PI / MAX_STEP as f32;
+        let key_points = (0..MAX_STEP)
+            .map(move |step| {
+                let arc_step = (step as f32) * STEP_SIZE;
+                let x =
+                    size.x() * arc_step.cos().signum() * arc_step.cos().abs().powf(2.0 / exponent);
+                let y =
+                    size.y() * arc_step.sin().signum() * arc_step.sin().abs().powf(2.0 / exponent);
+                Vector2F::new(x, y)
+            })
+            .collect::<Vec<Vector2F>>();
+        let mut edges = vec![Self::Move(transform * key_points[0])];
+        fn compute_control_point(p_0: Vector2F, p_mid: Vector2F, p_1: Vector2F) -> Vector2F {
+            p_mid * 2.0 - p_0 * 0.5 - p_1 * 0.5
+        }
+        for index in (2..MAX_STEP).step_by(3) {
+            edges.push(Self::Quadratic {
+                control: transform
+                    * compute_control_point(
+                        key_points[index - 2],
+                        key_points[index - 1],
+                        key_points[index],
+                    ),
+                to: transform * key_points[index],
+            });
+        }
+        edges.push(Self::Quadratic {
+            control: transform
+                * compute_control_point(
+                    key_points[MAX_STEP - 2],
+                    key_points[MAX_STEP - 1],
+                    key_points[0],
+                ),
+            to: transform * key_points[0],
+        });
+        edges
+    }
+
     pub fn end_point(&self) -> Vector2F {
         match self {
             Self::Move(v) => *v,
