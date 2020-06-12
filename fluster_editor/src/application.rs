@@ -13,34 +13,27 @@ use iced_wgpu::{Defaults, Primitive, Renderer};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::{convert::TryInto, hash::Hash, mem};
-pub struct Stage<'a, Message> {
+pub struct Stage<'a> {
     width: u16,
     height: u16,
     frame: ImageHandle,
     edit_state: &'a EditState,
     stage_state: &'a StageState,
-    on_edit: Box<dyn Fn(EditMessage) -> Message>,
 }
 
-impl<'a, Message> Stage<'a, Message> {
-    pub fn new(
-        frame: ImageHandle,
-        stage_state: &'a StageState,
-        edit_state: &'a EditState,
-        on_edit: Box<dyn Fn(EditMessage) -> Message>,
-    ) -> Self {
+impl<'a> Stage<'a> {
+    pub fn new(frame: ImageHandle, stage_state: &'a StageState, edit_state: &'a EditState) -> Self {
         Self {
             width: stage_state.width().try_into().unwrap(),
             height: stage_state.height().try_into().unwrap(),
             frame,
             stage_state,
             edit_state,
-            on_edit,
         }
     }
 }
 
-impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
+impl<'a> Widget<AppMessage, Renderer> for Stage<'a> {
     fn width(&self) -> Length {
         Length::Units(self.width)
     }
@@ -85,7 +78,7 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
         event: Event,
         layout: Layout<'_>,
         cursor_position: Point,
-        messages: &mut Vec<Message>,
+        messages: &mut Vec<AppMessage>,
         _renderer: &Renderer,
         _clipboard: Option<&dyn Clipboard>,
     ) {
@@ -100,13 +93,14 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
             Event::Mouse(mouse_event) => {
                 let selection_shape = self.edit_state.selection_shape(stage_position);
                 let selection = self.stage_state.query_selection(&selection_shape);
+                messages.push(AppMessage::EditHandleMessage(selection.clone()));
                 if let Some(edit_message) = self.edit_state.on_mouse_event(
                     mouse_event,
                     selection,
                     stage_position,
                     in_bounds,
                 ) {
-                    messages.push((self.on_edit)(edit_message))
+                    messages.push(AppMessage::EditMessage(edit_message))
                 }
             }
             Event::Keyboard(keyboard_event) => {
@@ -120,11 +114,8 @@ impl<'a, Message> Widget<Message, Renderer> for Stage<'a, Message> {
     }
 }
 
-impl<'a, Message> Into<Element<'a, Message>> for Stage<'a, Message>
-where
-    Message: 'static,
-{
-    fn into(self) -> Element<'a, Message> {
+impl<'a> Into<Element<'a, AppMessage>> for Stage<'a> {
+    fn into(self) -> Element<'a, AppMessage> {
         Element::new(self)
     }
 }
@@ -171,10 +162,6 @@ pub struct App {
 }
 
 impl App {
-    fn convert_edit_message(edit_message: EditMessage) -> AppMessage {
-        AppMessage::EditMessage(edit_message)
-    }
-
     fn refresh_stage(&mut self) {
         let render_data = self.stage_state.compute_render_data(&self.timeline_state);
         let frame_handle = self.stage_renderer.draw_frame(render_data).unwrap();
@@ -273,6 +260,7 @@ impl Application for App {
                     self.refresh_stage();
                 }
             }
+            Self::Message::EditHandleMessage(handles) => self.stage_state.draw_handles(handles),
             Self::Message::StageUpdateMessage => {
                 self.refresh_stage();
             }
@@ -285,7 +273,6 @@ impl Application for App {
             self.frame_handle.clone(),
             &self.stage_state,
             &self.edit_state,
-            Box::new(Self::convert_edit_message),
         );
         let tools = Self::tool_pane(&mut self.tool_pane_state);
         let options_pane = self.edit_display_state.options_pane(&self.edit_state);

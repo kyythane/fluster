@@ -5,6 +5,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub enum AppMessage {
     EditMessage(EditMessage),
+    EditHandleMessage(Vec<SelectionHandle>),
     StageUpdateMessage,
 }
 
@@ -94,6 +95,10 @@ impl SelectionHandle {
         self.handles
             .iter()
             .min_by(|a, b| a.separation.partial_cmp(&b.separation).unwrap())
+    }
+
+    pub fn vertex_handles(&self) -> &Vec<VertexHandle> {
+        &self.handles
     }
 }
 

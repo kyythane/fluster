@@ -9,7 +9,7 @@ use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::mem;
 use uuid::Uuid;
 
@@ -69,7 +69,6 @@ fn update_library(
 }
 
 pub struct ScratchPad {
-    ui_shapes: VecDeque<Uuid>,
     state: ScratchPadState,
 }
 
@@ -77,7 +76,6 @@ impl Default for ScratchPad {
     fn default() -> Self {
         Self {
             state: ScratchPadState::default(),
-            ui_shapes: VecDeque::new(),
         }
     }
 }

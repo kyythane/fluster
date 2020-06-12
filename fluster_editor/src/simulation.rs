@@ -4,11 +4,15 @@ use crate::{rendering::RenderData, scratch_pad::ScratchPad, tools::SelectionShap
 use fluster_core::rendering::{adjust_depth, PaintData};
 use fluster_core::{
     runner::SceneData,
-    types::model::{DisplayLibraryItem, Entity, Part},
+    types::{
+        model::{DisplayLibraryItem, Entity, Part},
+        shapes::{Edge, Shape},
+    },
 };
 use pathfinder_color::ColorU;
+use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem;
 use uuid::Uuid;
@@ -16,6 +20,7 @@ use uuid::Uuid;
 pub struct StageState {
     background_color: ColorU,
     root_entity_id: Uuid,
+    handle_container_id: Uuid,
     library: HashMap<Uuid, DisplayLibraryItem>,
     display_list: HashMap<Uuid, Entity>,
     size: Vector2I,
@@ -29,9 +34,11 @@ impl StageState {
         let root_entity_id = Uuid::new_v4();
         let mut display_list = HashMap::new();
         display_list.insert(root_entity_id, Entity::create_root(root_entity_id));
+        let handle_container_id = Uuid::new_v4();
         let mut new_self = Self {
             background_color,
             root_entity_id,
+            handle_container_id,
             library: HashMap::new(),
             display_list,
             size: stage_size,
@@ -46,6 +53,34 @@ impl StageState {
 
     pub fn root(&self) -> &Uuid {
         &self.root_entity_id
+    }
+
+    pub fn draw_handles(&mut self, handles: Vec<SelectionHandle>) {
+        let mut edges = vec![];
+        for handle in handles {
+            for vertex_handle in handle.vertex_handles() {
+                edges.extend(
+                    Edge::new_ellipse(
+                        Vector2F::splat(5.0),
+                        Transform2F::from_translation(*vertex_handle.position()),
+                    )
+                    .into_iter(),
+                );
+            }
+        }
+        self.library.insert(
+            self.handle_container_id,
+            DisplayLibraryItem::Vector(Shape::Path {
+                color: ColorU::new(192, 255, 0, 255),
+                is_closed: false,
+                edges,
+                stroke_style: StrokeStyle {
+                    line_width: 1.0,
+                    line_cap: LineCap::default(),
+                    line_join: LineJoin::default(),
+                },
+            }),
+        );
     }
 
     pub fn apply_edit(&mut self, edit_message: &EditMessage) -> bool {
