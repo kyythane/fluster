@@ -451,9 +451,14 @@ impl TemplateShapeScratchpad {
                         Transform2F::from_translation(self.start_position.min(self.end_position)),
                     ))
                 } else {
-                    Ok(Edge::new_round_rect(
+                    /*Ok(Edge::new_round_rect(
                         size,
-                        corner_radius, // We need to provides some minimum size so Pathfinder doesn't generate points with NaN coordinates
+                        corner_radius,
+                        Transform2F::from_translation(self.start_position.min(self.end_position)),
+                    ))*/
+                    Ok(Edge::new_superellipse(
+                        size,
+                        corner_radius,
                         Transform2F::from_translation(self.start_position.min(self.end_position)),
                     ))
                 }
