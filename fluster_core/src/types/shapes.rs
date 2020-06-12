@@ -85,10 +85,12 @@ impl Edge {
         // edge_length and corner_radius must always be non-zero or we'll get NaNs
         let edge_length = edge_length.max(0.001);
         let f_sides = sides as f32;
-        // corner_radius should never be larger than edge_length / 2.0, otherwise things look Weird
+        // corner_radius needs to be capped as a fraction of edge_length otherwise things look Weird
         let corner_radius = if sides == 3 {
+            // Triangles are a special case because their corner_offset is larger than the radius!
             corner_radius.min(edge_length / 4.0)
         } else {
+            // All other polygons are happy with capping radius at half
             corner_radius.min(edge_length / 2.0)
         };
         let corner_chord =
@@ -103,12 +105,11 @@ impl Edge {
             curr = curr + edge;
             edges.push(Self::ArcTo {
                 control: transform * curr,
-                to: transform * (curr + (angle * edge).normalize() * corner_radius),
+                to: transform * (curr + (angle * edge).normalize() * corner_offset),
                 radius: corner_radius,
             });
             edge = angle * edge;
         }
-        // println!("{:?} {:?}", edge_length, edges);
         edges
     }
 
