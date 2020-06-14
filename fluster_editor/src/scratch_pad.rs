@@ -1,9 +1,12 @@
 #![deny(clippy::all)]
 use crate::messages::{EditMessage, SelectionHandle, Template, ToolMessage};
 use crate::tools::{ToolOption, ToolOptionHandle};
-use fluster_core::types::{
-    model::{DisplayLibraryItem, Entity, Part},
-    shapes::{Edge, Shape},
+use fluster_core::{
+    runner::SceneData,
+    types::{
+        model::{DisplayLibraryItem, Entity, Part},
+        shapes::{Edge, Shape},
+    },
 };
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
@@ -86,10 +89,17 @@ impl ScratchPad {
         edit_message: &EditMessage,
         library: &mut HashMap<Uuid, DisplayLibraryItem>,
         display_list: &mut HashMap<Uuid, Entity>,
+        scene_data: &mut SceneData,
         root_entity_id: &Uuid,
     ) -> Result<bool, String> {
-        self.state
-            .apply_edit(edit_message, library, display_list, root_entity_id)
+        // TODO: CLEANUP: Move bulk of ScratchPadState.apply_edit here
+        self.state.apply_edit(
+            edit_message,
+            library,
+            display_list,
+            scene_data,
+            root_entity_id,
+        )
     }
 }
 
@@ -112,6 +122,7 @@ impl ScratchPadState {
         edit_message: &EditMessage,
         library: &mut HashMap<Uuid, DisplayLibraryItem>,
         display_list: &mut HashMap<Uuid, Entity>,
+        scene_data: &mut SceneData,
         root_entity_id: &Uuid,
     ) -> Result<bool, String> {
         match edit_message {
@@ -156,7 +167,12 @@ impl ScratchPadState {
                 }
                 ToolMessage::PathEnd => {
                     if let Self::NewPath(shape_scratch_pad) = self {
-                        shape_scratch_pad.complete_path(library, display_list, root_entity_id);
+                        shape_scratch_pad.complete_path(
+                            library,
+                            display_list,
+                            scene_data,
+                            root_entity_id,
+                        );
                         mem::replace(self, Self::None);
                         Ok(true) //TODO: update scene message
                     } else {
@@ -219,7 +235,12 @@ impl ScratchPadState {
                 }
                 ToolMessage::TemplateEnd => {
                     if let Self::NewTemplateShape(template_scratch_pad) = self {
-                        template_scratch_pad.complete(library, display_list, root_entity_id)?;
+                        template_scratch_pad.complete(
+                            library,
+                            display_list,
+                            scene_data,
+                            root_entity_id,
+                        )?;
                         mem::replace(self, Self::None);
                         Ok(true) //TODO: update scene message
                     } else {
@@ -331,6 +352,7 @@ impl ShapeScratchPad {
         &mut self,
         library: &mut HashMap<Uuid, DisplayLibraryItem>,
         display_list: &mut HashMap<Uuid, Entity>,
+        scene_data: &mut SceneData,
         root_entity_id: &Uuid,
     ) {
         if self.committed_edges < self.edges.len() {
@@ -341,6 +363,9 @@ impl ShapeScratchPad {
             display_list.entry(*root_entity_id).and_modify(|root| {
                 root.remove_part(&self.part_id);
             });
+            scene_data
+                .quad_tree_mut()
+                .remove(&(*root_entity_id, self.part_id));
         } else {
             update_library(
                 library,
@@ -576,6 +601,7 @@ impl TemplateShapeScratchpad {
         &mut self,
         library: &mut HashMap<Uuid, DisplayLibraryItem>,
         display_list: &mut HashMap<Uuid, Entity>,
+        scene_data: &mut SceneData,
         root_entity_id: &Uuid,
     ) -> Result<(), String> {
         if (self.end_position - self.start_position).length() < std::f32::EPSILON {
@@ -583,6 +609,9 @@ impl TemplateShapeScratchpad {
             display_list.entry(*root_entity_id).and_modify(|root| {
                 root.remove_part(&self.part_id);
             });
+            scene_data
+                .quad_tree_mut()
+                .remove(&(*root_entity_id, self.part_id));
         } else {
             update_library(
                 library,

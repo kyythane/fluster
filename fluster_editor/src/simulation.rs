@@ -90,6 +90,7 @@ impl StageState {
             edit_message,
             &mut self.library,
             &mut self.display_list,
+            &mut self.scene_data,
             &self.root_entity_id,
         ) {
             Ok(res) => {

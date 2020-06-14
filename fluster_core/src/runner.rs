@@ -80,12 +80,25 @@ impl SceneData {
         }
     }
 
+    pub fn remove(&mut self, entity_id: Uuid, part_id: Uuid) {
+        self.quad_tree.remove(&(entity_id, part_id));
+        self.world_space_transforms.remove(&entity_id);
+    }
+
     pub fn world_space_transforms(&self) -> &HashMap<Uuid, Transform2F> {
         &self.world_space_transforms
     }
 
     pub fn quad_tree(&self) -> &QuadTree<(Uuid, Uuid), RandomState> {
         &self.quad_tree
+    }
+
+    pub fn world_space_transforms_mut(&mut self) -> &mut HashMap<Uuid, Transform2F> {
+        &mut self.world_space_transforms
+    }
+
+    pub fn quad_tree_mut(&mut self) -> &mut QuadTree<(Uuid, Uuid), RandomState> {
+        &mut self.quad_tree
     }
 
     pub fn recompute(
@@ -325,7 +338,7 @@ fn remove_entity(id: &Uuid, display_list: &mut HashMap<Uuid, Entity>, scene_data
         }
         // Remove all parts from the quad_tree
         for (part_id, _) in old.parts_with_id() {
-            scene_data.quad_tree.remove(&(*id, *part_id));
+            scene_data.remove(*id, *part_id);
         }
         while let Some(next_to_remove) = to_remove.pop_front() {
             if let Some(old) = display_list.remove(&next_to_remove) {
@@ -334,7 +347,7 @@ fn remove_entity(id: &Uuid, display_list: &mut HashMap<Uuid, Entity>, scene_data
                 }
                 // Remove all parts from the quad_tree
                 for (part_id, _) in old.parts_with_id() {
-                    scene_data.quad_tree.remove(&(next_to_remove, *part_id));
+                    scene_data.remove(next_to_remove, *part_id);
                 }
             }
         }
