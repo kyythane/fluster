@@ -145,8 +145,8 @@ impl SceneData {
                         let next_world_space_transform =
                             self.world_space_transforms.get(next_entity.id()).unwrap();
                         next_entity.recompute_bounds(next_world_space_transform, library);
-                        next_entity.parts().for_each(|part| {
-                            let key = (next_node, *part.item_id());
+                        next_entity.parts_with_id().for_each(|(part_id, part)| {
+                            let key = (next_node, *part_id);
                             self.quad_tree.remove(&key);
                             self.quad_tree.insert(key, *part.bounds());
                         });
