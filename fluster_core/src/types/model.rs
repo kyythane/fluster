@@ -425,6 +425,11 @@ impl Entity {
         self.parts.iter().map(|(_, part)| part)
     }
 
+    #[inline]
+    pub fn parts_with_id(&self) -> impl Iterator<Item = (&Uuid, &Part)> {
+        self.parts.iter()
+    }
+
     pub fn get_part(&self, part_id: &Uuid) -> Option<&Part> {
         self.parts.get(part_id)
     }

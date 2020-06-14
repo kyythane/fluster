@@ -93,6 +93,10 @@ impl SceneData {
         display_list: &mut HashMap<Uuid, Entity>,
         library: &HashMap<Uuid, DisplayLibraryItem>,
     ) {
+        /* TODO: right now this will recommpute entities and parts that haven't changed.
+        Infrastructure entities and parts have a conception of if they need an update locally.
+        Need to properly merge that with the global knowlege of a needed update.
+        Diff world_space_transform before forced update. Careful of connasence.*/
         // First pass algorithm. O(m log n), where m is # dirty nodes and n is # total nodes.
         let dirty_roots = display_list
             .iter()
@@ -309,6 +313,33 @@ fn initialize(
     }
 }
 
+fn remove_entity(id: &Uuid, display_list: &mut HashMap<Uuid, Entity>, scene_data: &mut SceneData) {
+    //Removing an entity also removes it's children
+    if let Some(old) = display_list.remove(id) {
+        let parent = display_list.get_mut(old.parent()).unwrap();
+        parent.remove_child(id);
+        let mut to_remove = VecDeque::new();
+        for c_id in old.children() {
+            to_remove.push_back(*c_id);
+        }
+        // Remove all parts from the quad_tree
+        for (part_id, _) in old.parts_with_id() {
+            scene_data.quad_tree.remove(&(*id, *part_id));
+        }
+        while let Some(next_to_remove) = to_remove.pop_front() {
+            if let Some(old) = display_list.remove(&next_to_remove) {
+                for c_id in old.children() {
+                    to_remove.push_back(*c_id)
+                }
+                // Remove all parts from the quad_tree
+                for (part_id, _) in old.parts_with_id() {
+                    scene_data.quad_tree.remove(&(next_to_remove, *part_id));
+                }
+            }
+        }
+    }
+}
+
 fn execute_actions(
     state: State,
     actions: &mut ActionList,
@@ -331,16 +362,7 @@ fn execute_actions(
             Action::UpdateEntity(entity_update_definition) => {
                 add_tweens(&state, entity_update_definition, display_list, library)?;
             }
-            Action::RemoveEntity(id) => {
-                //Removing an entity also removes it's children
-                if let Some(old) = display_list.remove(id) {
-                    for c in old.children() {
-                        display_list.remove(&c);
-                    }
-                    let parent = display_list.get_mut(old.parent()).unwrap();
-                    parent.remove_child(id);
-                }
-            }
+            Action::RemoveEntity(id) => remove_entity(id, display_list, scene_date),
             Action::SetBackground { color } => state.background_color = *color,
             Action::PresentFrame(_, _) => break,
             Action::CreateRoot { .. } => {
