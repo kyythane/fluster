@@ -825,7 +825,7 @@ mod tests {
                 "entity",
                 root_id,
                 parts,
-                Transform2F::default(),
+                Transform2F::from_translation(Vector2F::splat(200.0)),
                 0.0,
             ),
         );
@@ -866,7 +866,7 @@ mod tests {
                     color: ColorU::new(0, 255, 0, 255),
                 };
                 drawn_shape == &model_shape
-                    && *transform == Transform2F::default()
+                    && *transform == Transform2F::from_translation(Vector2F::splat(200.0))
                     && *color_override == None
                     && morph_index.abs() < std::f32::EPSILON
             })
