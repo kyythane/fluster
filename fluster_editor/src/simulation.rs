@@ -68,6 +68,7 @@ impl StageState {
                 );
             }
         }
+        println!("{:?}", edges);
         self.library.insert(
             self.handle_container_id,
             DisplayLibraryItem::Vector(Shape::Path {
@@ -150,7 +151,6 @@ impl StageState {
                 .unwrap();
             entity
                 .parts()
-                .iter()
                 .filter(move |part| p_ids.contains(part.item_id()))
                 .map(move |part| {
                     let vertex_handles = self.collect_vertex_handles(

@@ -1,6 +1,9 @@
 use super::basic::ScaleRotationTranslation;
 use super::shapes::{Coloring, Shape};
-use crate::actions::{EntityUpdateDefinition, PartUpdateDefinition, RectPoints};
+use crate::actions::{
+    EntityUpdateDefinition, EntityUpdatePayload, PartUpdateDefinition, PartUpdatePayload,
+    RectPoints,
+};
 use crate::tween::{PropertyTween, PropertyTweenUpdate, Tween};
 use pathfinder_color::ColorU;
 use pathfinder_content::pattern::Pattern;
@@ -8,7 +11,6 @@ use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::{transform2d::Transform2F, vector::Vector2F};
 use reduce::Reduce;
 use std::collections::HashMap;
-use std::mem;
 use uuid::Uuid;
 #[derive(Clone, PartialEq, Debug)]
 pub enum DisplayLibraryItem {
@@ -29,31 +31,40 @@ impl DisplayLibraryItem {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct Part {
+    item_id: Uuid,
+    transform: Transform2F,
+    bounding_box: RectF,
+    dirty: bool,
+    active: bool,
+    tweens: Vec<PropertyTween>,
+    meta_data: PartMetaData,
+}
+
 //TODO: revist parts. Convert to struct (item_id, transfom, bounding_box, dirty, active) w/ metadata enum
 #[derive(Clone, PartialEq, Debug)]
-pub enum Part {
+pub enum PartMetaData {
     Vector {
-        item_id: Uuid,
-        transform: Transform2F,
-        bounding_box: RectF,
         color: Option<Coloring>,
     },
     Raster {
-        item_id: Uuid,
         view_rect: RectF,
-        transform: Transform2F,
-        bounding_box: RectF,
         tint: Option<ColorU>,
     },
 }
 
 impl Part {
-    pub fn new_vector(item_id: Uuid, transform: Transform2F, color: Option<Coloring>) -> Part {
-        Self::Vector {
+    pub fn new_vector(item_id: Uuid, transform: Transform2F, color: Option<Coloring>) -> Self {
+        Self {
             item_id,
             transform,
             bounding_box: RectF::default(),
-            color,
+            dirty: true,
+            active: true,
+            tweens: vec![],
+            meta_data: PartMetaData::Vector { color },
         }
     }
 
@@ -63,12 +74,14 @@ impl Part {
         transform: Transform2F,
         tint: Option<ColorU>,
     ) -> Part {
-        Self::Raster {
+        Self {
             item_id,
-            view_rect,
-            bounding_box: RectF::default(),
             transform,
-            tint,
+            bounding_box: RectF::default(),
+            dirty: true,
+            active: true,
+            tweens: vec![],
+            meta_data: PartMetaData::Raster { view_rect, tint },
         }
     }
 
@@ -78,177 +91,214 @@ impl Part {
         morph_percent: f32,
         library: &HashMap<Uuid, DisplayLibraryItem>,
     ) -> RectF {
-        let new_self = match self {
-            Self::Vector {
-                item_id,
-                transform,
-                color,
-                ..
-            } => {
-                let bounding_box = library
-                    .get(item_id)
-                    .unwrap()
-                    .compute_bounding(&(*world_transform * *transform), morph_percent);
-                Self::Vector {
-                    item_id: *item_id,
-                    transform: *transform,
-                    color: color.clone(),
-                    bounding_box,
-                }
-            }
-            Self::Raster {
-                item_id,
-                view_rect,
-                transform,
-                tint,
-                ..
-            } => {
-                let transform = *world_transform * *transform;
+        self.bounding_box = match self.meta_data {
+            PartMetaData::Vector { .. } => library
+                .get(&self.item_id)
+                .unwrap()
+                .compute_bounding(&(*world_transform * self.transform), morph_percent),
+            PartMetaData::Raster { view_rect, .. } => {
+                let transform = *world_transform * self.transform;
                 let o = transform * Vector2F::default();
                 let lr = transform * view_rect.size();
-                let bounding_box = RectF::from_points(o.min(lr), o.max(lr));
-                Self::Raster {
-                    item_id: *item_id,
-                    view_rect: *view_rect,
-                    transform,
-                    tint: *tint,
-                    bounding_box,
-                }
+                RectF::from_points(o.min(lr), o.max(lr))
             }
         };
-        mem::replace(self, new_self);
-        *self.bounds()
+        self.mark_clean();
+        self.bounding_box
     }
 
     pub fn bounds(&self) -> &RectF {
-        match self {
-            Self::Vector { bounding_box, .. } | Self::Raster { bounding_box, .. } => bounding_box,
-        }
+        &self.bounding_box
     }
 
     pub fn item_id(&self) -> &Uuid {
-        match self {
-            Self::Vector { item_id, .. } | Self::Raster { item_id, .. } => item_id,
-        }
+        &self.item_id
     }
 
-    pub fn create_tween(
-        &self,
+    pub fn dirty(&self) -> bool {
+        self.dirty
+    }
+
+    pub fn mark_clean(&mut self) {
+        self.dirty = false;
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
+    pub fn active(&self) -> bool {
+        self.active
+    }
+
+    pub fn activate(&mut self) {
+        self.active = true;
+    }
+
+    pub fn deactivate(&mut self) {
+        self.active = false;
+    }
+
+    pub fn meta_data(&self) -> &PartMetaData {
+        &self.meta_data
+    }
+
+    pub fn transform(&self) -> &Transform2F {
+        &self.transform
+    }
+
+    pub fn add_tween(
+        &mut self,
         library_item: &DisplayLibraryItem,
         part_update: &PartUpdateDefinition,
         duration_seconds: f32,
-    ) -> Result<Vec<PropertyTween>, String> {
-        let mut tweens: Vec<PropertyTween> = vec![];
-        match part_update {
-            PartUpdateDefinition::Raster {
-                tint: end_tint,
-                easing,
-                transform: end_transform,
-                view_rect: end_view_rect,
-                ..
-            } => {
-                if let Part::Raster {
-                    transform: start_transform,
-                    tint: start_tint,
-                    view_rect: start_view_rect,
-                    ..
-                } = self
-                {
-                    if let Some(end_tint) = end_tint {
-                        if let Some(start_tint) = start_tint {
-                            tweens.push(PropertyTween::new_color(
-                                *start_tint,
-                                *end_tint,
-                                duration_seconds,
-                                *easing,
-                            ));
-                        } else {
-                            tweens.push(PropertyTween::new_color(
-                                ColorU::white(),
-                                *end_tint,
-                                duration_seconds,
-                                *easing,
-                            ));
-                        }
-                    }
-                    if let Some(end_transform) = end_transform {
-                        tweens.push(PropertyTween::new_transform(
-                            ScaleRotationTranslation::from_transform(start_transform),
-                            *end_transform,
+    ) -> Result<(), String> {
+        let tween = match part_update.payload() {
+            PartUpdatePayload::Transform(end_transform) => PropertyTween::new_transform(
+                ScaleRotationTranslation::from_transform(&self.transform),
+                *end_transform,
+                duration_seconds,
+                part_update.easing(),
+            ),
+            PartUpdatePayload::Coloring(end_color) => {
+                if let PartMetaData::Vector { color } = &self.meta_data {
+                    if let Some(start_color) = color {
+                        PropertyTween::new_coloring(
+                            start_color.clone(),
+                            end_color.clone(),
                             duration_seconds,
-                            *easing,
-                        ));
-                    }
-                    if let Some(end_view_rect) = end_view_rect {
-                        tweens.push(PropertyTween::new_view_rect(
-                            RectPoints::from_rect(start_view_rect),
-                            *end_view_rect,
+                            part_update.easing(),
+                        )
+                    } else if let DisplayLibraryItem::Vector(shape) = library_item {
+                        PropertyTween::new_coloring(
+                            shape.color(),
+                            end_color.clone(),
                             duration_seconds,
-                            *easing,
+                            part_update.easing(),
+                        )
+                    } else {
+                        return Err(format!(
+                            "Vector part {} references a Bitmap object",
+                            self.item_id()
                         ));
                     }
                 } else {
-                    return Err(format!(
-                        "Tried to apply Bitmap update to a Vector part {}",
-                        self.item_id()
-                    ));
+                    return Err("Tried to apply Vector update to a Bitmap part".to_owned());
                 }
             }
-            PartUpdateDefinition::Vector {
-                color: end_color,
-                easing,
-                transform: end_transform,
-                ..
-            } => {
-                if let Part::Vector {
-                    transform: start_transform,
-                    color: start_color,
-                    ..
-                } = self
-                {
-                    if let Some(end_color) = end_color {
-                        if let Some(start_color) = start_color {
-                            tweens.push(PropertyTween::new_coloring(
-                                start_color.clone(),
-                                end_color.clone(),
-                                duration_seconds,
-                                *easing,
-                            ));
-                        } else if let DisplayLibraryItem::Vector(shape) = library_item {
-                            tweens.push(PropertyTween::new_coloring(
-                                shape.color(),
-                                end_color.clone(),
-                                duration_seconds,
-                                *easing,
-                            ));
-                        } else {
-                            return Err(format!(
-                                "Vector part {} references a Bitmap object",
-                                self.item_id()
-                            ));
-                        }
-                    }
-                    if let Some(end_transform) = end_transform {
-                        tweens.push(PropertyTween::new_transform(
-                            ScaleRotationTranslation::from_transform(start_transform),
-                            *end_transform,
+            PartUpdatePayload::ViewRect(end_view_rect) => {
+                if let PartMetaData::Raster { view_rect, .. } = &self.meta_data {
+                    PropertyTween::new_view_rect(
+                        RectPoints::from_rect(view_rect),
+                        *end_view_rect,
+                        duration_seconds,
+                        part_update.easing(),
+                    )
+                } else {
+                    return Err("Tried to apply Bitmap update to a Vector part".to_owned());
+                }
+            }
+            PartUpdatePayload::Tint(end_tint) => {
+                if let PartMetaData::Raster { tint, .. } = self.meta_data {
+                    if let Some(start_tint) = tint {
+                        PropertyTween::new_color(
+                            start_tint,
+                            *end_tint,
                             duration_seconds,
-                            *easing,
-                        ));
+                            part_update.easing(),
+                        )
+                    } else {
+                        PropertyTween::new_color(
+                            ColorU::white(),
+                            *end_tint,
+                            duration_seconds,
+                            part_update.easing(),
+                        )
                     }
                 } else {
-                    return Err(format!(
-                        "Tried to apply Vector update to a Bitmap part {}",
-                        self.item_id()
-                    ));
+                    return Err("Tried to apply Bitmap update to a Vector part".to_owned());
                 }
             }
-        }
-        Ok(tweens)
+        };
+        self.tweens.push(tween);
+        Ok(())
+    }
+
+    pub fn update_tweens(&mut self, elapsed: f32) -> Result<bool, String> {
+        let mut update_bounds = false;
+        if let Some((new_transform, new_color, new_coloring, new_view_rect)) = self
+            .tweens
+            .iter_mut()
+            .map(|tween| {
+                let update = tween.update(elapsed);
+                match update {
+                    PropertyTweenUpdate::Transform(transform) => {
+                        (Some(transform), None, None, None)
+                    }
+                    PropertyTweenUpdate::Color(color) => (None, Some(color), None, None),
+                    PropertyTweenUpdate::Coloring(coloring) => (None, None, Some(coloring), None),
+                    PropertyTweenUpdate::ViewRect(view_rect) => (None, None, None, Some(view_rect)),
+                    // Morph updates are not valid for parts
+                    PropertyTweenUpdate::Morph(_) => (None, None, None, None),
+                }
+            })
+            .reduce(|acc, x| {
+                let t = if let Some(transform) = x.0 {
+                    if let Some(transform_acc) = acc.0 {
+                        Some(transform * transform_acc)
+                    } else {
+                        x.0
+                    }
+                } else {
+                    acc.0
+                };
+                let c = if x.1.is_some() { x.1 } else { acc.1 };
+                let cs = if x.2.is_some() { x.2 } else { acc.2 };
+                let v = if x.3.is_some() { x.3 } else { acc.3 };
+                (t, c, cs, v)
+            })
+        {
+            if let Some(transform) = new_transform {
+                self.transform = transform;
+                self.mark_dirty();
+                update_bounds = true;
+            };
+            if let Some(tint) = new_color {
+                self.meta_data = if let PartMetaData::Raster { view_rect, .. } = &self.meta_data {
+                    PartMetaData::Raster {
+                        view_rect: *view_rect,
+                        tint: Some(tint),
+                    }
+                } else {
+                    return Err("Applied Raster update to Vector part".to_owned());
+                };
+            };
+            if let Some(view_rect) = new_view_rect {
+                self.meta_data = if let PartMetaData::Raster { tint, .. } = &self.meta_data {
+                    PartMetaData::Raster {
+                        view_rect,
+                        tint: *tint,
+                    }
+                } else {
+                    return Err("Applied Raster update to Vector part".to_owned());
+                };
+                self.mark_dirty();
+                update_bounds = true;
+            };
+            if let Some(coloring) = new_coloring {
+                self.meta_data = if let PartMetaData::Vector { .. } = &self.meta_data {
+                    PartMetaData::Vector {
+                        color: Some(coloring),
+                    }
+                } else {
+                    return Err("Applied Vector update to Raster part".to_owned());
+                };
+            };
+        };
+        Ok(update_bounds)
     }
 }
 
-//TODO: hit tests for mouse interactions
 #[derive(Clone, Debug)]
 pub struct Entity {
     active: bool,
@@ -259,24 +309,10 @@ pub struct Entity {
     morph_index: f32,
     name: String,
     parent: Uuid,
-    parts: Vec<Part>,
+    parts: HashMap<Uuid, Part>,
     transform: Transform2F,
-    tweens: HashMap<Uuid, Vec<PropertyTween>>,
+    tweens: Vec<PropertyTween>,
     bounding_box: RectF,
-}
-
-// TODO: why did I do this?
-impl PartialEq for Entity {
-    //Tweens are ignored for the purpose of equality
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-            && self.children == other.children
-            && self.depth == other.depth
-            && self.name == other.name
-            && self.parent == other.parent
-            && self.parts == other.parts
-            && self.transform == other.transform
-    }
 }
 
 impl Entity {
@@ -285,7 +321,7 @@ impl Entity {
         depth: u32,
         name: &str,
         parent: Uuid,
-        parts: Vec<Part>,
+        parts: HashMap<Uuid, Part>,
         transform: Transform2F,
         morph_index: f32,
     ) -> Self {
@@ -299,14 +335,22 @@ impl Entity {
             parent,
             parts,
             transform,
-            tweens: HashMap::new(),
+            tweens: vec![],
             morph_index,
             bounding_box: RectF::default(),
         }
     }
 
     pub fn create_root(id: Uuid) -> Self {
-        Self::new(id, 0, "Root", id, vec![], Transform2F::default(), 0.0)
+        Self::new(
+            id,
+            0,
+            "Root",
+            id,
+            HashMap::new(),
+            Transform2F::default(),
+            0.0,
+        )
     }
 
     pub fn dirty(&self) -> bool {
@@ -334,7 +378,8 @@ impl Entity {
         self.bounding_box = self
             .parts
             .iter_mut()
-            .map(|part| part.recompute_bounds(transform, morph_index, library))
+            .filter(|(_, part)| part.active())
+            .map(|(_, part)| part.recompute_bounds(transform, morph_index, library))
             .reduce(|a, b| a.union_rect(b))
             .unwrap_or(RectF::default());
         self.bounding_box
@@ -376,20 +421,31 @@ impl Entity {
     }
 
     #[inline]
-    pub fn parts(&self) -> &Vec<Part> {
-        &self.parts
+    pub fn parts(&self) -> impl Iterator<Item = &Part> {
+        self.parts.iter().map(|(_, part)| part)
+    }
+
+    pub fn get_part(&self, part_id: &Uuid) -> Option<&Part> {
+        self.parts.get(part_id)
+    }
+
+    pub fn get_part_mut(&mut self, part_id: &Uuid) -> Option<&mut Part> {
+        self.parts.get_mut(part_id)
     }
 
     #[inline]
-    pub fn add_part(&mut self, part: Part) {
-        self.parts.push(part);
+    pub fn add_part(&mut self, part_id: &Uuid, mut part: Part) {
+        part.mark_dirty();
+        self.parts.insert(*part_id, part);
         self.mark_dirty();
     }
 
     #[inline]
-    pub fn remove_part(&mut self, item_id: &Uuid) {
-        self.parts.retain(|part| part.item_id() != item_id);
+    pub fn remove_part(&mut self, part_id: &Uuid) -> Option<Part> {
+        let removed = self.parts.remove(part_id);
+        // State wise, it's more technically accurate to mark dirty after removing the part.
         self.mark_dirty();
+        removed
     }
 
     #[inline]
@@ -413,148 +469,79 @@ impl Entity {
         duration_seconds: f32,
         library: &HashMap<Uuid, DisplayLibraryItem>,
     ) -> Result<(), String> {
-        if let Some(easing) = entity_update_definition.easing {
-            if let Some(end_transform) = &entity_update_definition.transform {
-                let tween = PropertyTween::new_transform(
-                    ScaleRotationTranslation::from_transform(&self.transform),
-                    *end_transform,
-                    duration_seconds,
+        for entity_update in entity_update_definition.entity_updates() {
+            match entity_update {
+                EntityUpdatePayload::Transform { easing, transform } => {
+                    let tween = PropertyTween::new_transform(
+                        ScaleRotationTranslation::from_transform(&self.transform),
+                        *transform,
+                        duration_seconds,
+                        *easing,
+                    );
+                    self.tweens.push(tween);
+                }
+                EntityUpdatePayload::MorphIndex {
                     easing,
-                );
-                match self.tweens.get_mut(&self.id) {
-                    Some(tweens) => tweens.push(tween),
-                    None => {
-                        self.tweens.insert(self.id, vec![tween]);
-                    }
-                };
-            }
-            if let Some(end_morph) = &entity_update_definition.morph_index {
-                let tween = PropertyTween::new_morph_index(
-                    self.morph_index,
-                    *end_morph,
-                    duration_seconds,
-                    easing,
-                );
-                match self.tweens.get_mut(&self.id) {
-                    Some(tweens) => tweens.push(tween),
-                    None => {
-                        self.tweens.insert(self.id, vec![tween]);
-                    }
-                };
-            }
-        }
-        for part_update in &entity_update_definition.part_updates {
-            let update_item_id = part_update.item_id();
-            if let Some(part) = self.parts.iter().find(|p| p.item_id() == update_item_id) {
-                if let Some(library_item) = library.get(update_item_id) {
-                    let tweens = part.create_tween(library_item, part_update, duration_seconds)?;
-                    match self.tweens.get_mut(update_item_id) {
-                        Some(existing_tweens) => existing_tweens.extend(tweens),
-                        None => {
-                            self.tweens.insert(*update_item_id, tweens);
-                        }
-                    };
+                    morph_index,
+                } => {
+                    let tween = PropertyTween::new_morph_index(
+                        self.morph_index,
+                        *morph_index,
+                        duration_seconds,
+                        *easing,
+                    );
+                    self.tweens.push(tween);
                 }
             }
         }
-        self.mark_dirty();
+        for part_update in entity_update_definition.part_updates() {
+            if let Some(part) = self.parts.get_mut(part_update.part_id()) {
+                if let Some(library_item) = library.get(part.item_id()) {
+                    part.add_tween(library_item, part_update, duration_seconds)?;
+                }
+            }
+        }
         Ok(())
     }
 
-    pub fn update_tweens(&mut self, elapsed: f32) {
-        if self.tweens.is_empty() {
-            return;
-        }
-        self.mark_dirty();
-        for (key, tweens) in self.tweens.iter_mut() {
-            if key == &self.id {
-                for update in tweens.iter_mut().map(|tween| tween.update(elapsed)) {
-                    match update {
-                        PropertyTweenUpdate::Transform(transform) => {
-                            self.transform = transform;
-                        }
-                        PropertyTweenUpdate::Morph(morph_index) => {
-                            self.morph_index = morph_index;
-                        }
-                        _ => (),
+    // TODO: Research frames per elapsed time for tweens
+    pub fn update_tweens(&mut self, elapsed: f32) -> Result<(), String> {
+        if !self.tweens.is_empty() {
+            let mut transform_update = Transform2F::default();
+            let mut morph_update = 0.0;
+            let mut morph_updates_accumulated = 0.0;
+            for tween in self.tweens.iter_mut() {
+                match tween.update(elapsed) {
+                    PropertyTweenUpdate::Transform(transform) => {
+                        // update accumulator
+                        transform_update = transform * transform_update;
+                        // apply accumulator
+                        self.transform = transform_update;
                     }
+                    PropertyTweenUpdate::Morph(morph_index) => {
+                        // update accumulator
+                        morph_update += morph_index;
+                        morph_updates_accumulated += 1.0;
+                        // apply accumulator
+                        self.morph_index = morph_update / morph_updates_accumulated;
+                    }
+                    _ => (),
                 }
-                tweens.retain(|tween| !tween.is_complete());
-            } else if let Some(part) = self.parts.iter_mut().find(|p| p.item_id() == key) {
-                let (new_transform, new_color, new_coloring, new_view_rect) = tweens
-                    .iter_mut()
-                    .map(|tween| {
-                        let update = tween.update(elapsed);
-                        match update {
-                            PropertyTweenUpdate::Transform(transform) => {
-                                (Some(transform), None, None, None)
-                            }
-                            PropertyTweenUpdate::Color(color) => (None, Some(color), None, None),
-                            PropertyTweenUpdate::Coloring(coloring) => {
-                                (None, None, Some(coloring), None)
-                            }
-                            PropertyTweenUpdate::ViewRect(view_rect) => {
-                                (None, None, None, Some(view_rect))
-                            }
-                            PropertyTweenUpdate::Morph(_) => (None, None, None, None),
-                        }
-                    })
-                    .fold((None, None, None, None), |acc, x| {
-                        let t = if x.0.is_some() { x.0 } else { acc.0 };
-                        let c = if x.1.is_some() { x.1 } else { acc.1 };
-                        let cs = if x.2.is_some() { x.2 } else { acc.2 };
-                        let v = if x.3.is_some() { x.3 } else { acc.3 };
-                        (t, c, cs, v)
-                    });
-                let new_part = match part {
-                    Part::Vector {
-                        item_id,
-                        transform,
-                        color,
-                        bounding_box,
-                    } => Part::Vector {
-                        item_id: *item_id,
-                        transform: if let Some(new_transform) = new_transform {
-                            new_transform
-                        } else {
-                            *transform
-                        },
-                        color: if new_coloring.is_some() {
-                            new_coloring
-                        } else {
-                            color.take()
-                        },
-                        bounding_box: *bounding_box,
-                    },
-                    Part::Raster {
-                        item_id,
-                        transform,
-                        view_rect,
-                        tint,
-                        bounding_box,
-                    } => Part::Raster {
-                        item_id: *item_id,
-                        transform: if let Some(new_transform) = new_transform {
-                            new_transform
-                        } else {
-                            *transform
-                        },
-                        tint: if new_color.is_some() {
-                            new_color
-                        } else {
-                            *tint
-                        },
-                        view_rect: if let Some(new_view_rect) = new_view_rect {
-                            new_view_rect
-                        } else {
-                            *view_rect
-                        },
-                        bounding_box: *bounding_box,
-                    },
-                };
-                mem::replace(part, new_part);
-                tweens.retain(|tween| !tween.is_complete());
             }
+            self.mark_dirty();
+            // Pessemistically mark all parts as dirty if the entity updated
+            self.parts
+                .iter_mut()
+                .for_each(|(_, part)| part.mark_dirty());
+            self.tweens.retain(|tween| !tween.is_complete());
         }
+        let mut update_bounds = false;
+        for (_, part) in self.parts.iter_mut() {
+            update_bounds |= part.update_tweens(elapsed)?;
+        }
+        if update_bounds {
+            self.mark_dirty();
+        }
+        Ok(())
     }
 }

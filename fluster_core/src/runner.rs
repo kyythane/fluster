@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 
 use super::actions::{
-    Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
+    Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinitionPayload,
 };
 use super::rendering::{compute_render_data, paint, Renderer};
 use super::types::{
@@ -120,6 +120,7 @@ impl SceneData {
                         queue.push_back(*child_id);
                     }
                     // Update world_space transform for entity
+                    // Even if an entity is inactive, it's worldspace transform may change if that entity's parent updated.
                     if &next_node == root_entity_id {
                         self.world_space_transforms
                             .insert(*next_entity.id(), *next_entity.transform());
@@ -134,14 +135,17 @@ impl SceneData {
                             parent_transform * *next_entity.transform(),
                         );
                     }
-                    let next_world_space_transform =
-                        self.world_space_transforms.get(next_entity.id()).unwrap();
-                    next_entity.recompute_bounds(next_world_space_transform, library);
-                    next_entity.parts().iter().for_each(|part| {
-                        let key = (next_node, *part.item_id());
-                        self.quad_tree.remove(&key);
-                        self.quad_tree.insert(key, *part.bounds());
-                    });
+                    // Inactive entities are not in the quadtree
+                    if next_entity.active() {
+                        let next_world_space_transform =
+                            self.world_space_transforms.get(next_entity.id()).unwrap();
+                        next_entity.recompute_bounds(next_world_space_transform, library);
+                        next_entity.parts().for_each(|part| {
+                            let key = (next_node, *part.item_id());
+                            self.quad_tree.remove(&key);
+                            self.quad_tree.insert(key, *part.bounds());
+                        });
+                    }
                     next_entity.mark_clean();
                 }
             }
@@ -170,7 +174,13 @@ pub fn play(
         if !state.running {
             break;
         }
-        state = execute_actions(state, actions, &mut display_list, &mut library)?;
+        state = execute_actions(
+            state,
+            actions,
+            &mut display_list,
+            &mut library,
+            &mut scene_data,
+        )?;
         if let Some(Action::PresentFrame(start, count)) = actions.get() {
             if *count == 0 {
                 continue; //Treat PresentFrame(_, 0) as a no-op
@@ -183,7 +193,7 @@ pub fn play(
                     //TODO: handle input
                     //TODO: scripts
                     //TODO: tweens should update consistently w/ frame index instead of via timer
-                    update_tweens(state.delta_time, &mut display_list);
+                    update_tweens(state.delta_time, &mut display_list)?;
                     scene_data.recompute(&state.root_entity_id, &mut display_list, &library);
                     draw_frame(renderer, &state, &display_list, &library, &scene_data)?;
                     state = on_frame_complete(state);
@@ -224,10 +234,11 @@ fn time_seconds() -> f64 {
         .as_secs_f64()
 }
 
-fn update_tweens(elapsed: f32, display_list: &mut HashMap<Uuid, Entity>) {
+fn update_tweens(elapsed: f32, display_list: &mut HashMap<Uuid, Entity>) -> Result<(), String> {
     for (_, entity) in display_list.iter_mut() {
-        entity.update_tweens(elapsed);
+        entity.update_tweens(elapsed)?;
     }
+    Ok(())
 }
 
 fn define_shape(id: &Uuid, shape: &Shape, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
@@ -261,7 +272,15 @@ fn initialize(
                 if !display_list.is_empty() {
                     return Err("Attempted to create root in non-empty display list".to_string());
                 }
-                let root = Entity::new(*id, 0, "root", *id, vec![], Transform2F::default(), 0.0);
+                let root = Entity::new(
+                    *id,
+                    0,
+                    "root",
+                    *id,
+                    HashMap::new(),
+                    Transform2F::default(),
+                    0.0,
+                );
                 display_list.insert(*id, root);
             }
             Action::DefineShape { id, shape } => {
@@ -295,6 +314,7 @@ fn execute_actions(
     actions: &mut ActionList,
     display_list: &mut HashMap<Uuid, Entity>,
     library: &mut HashMap<Uuid, DisplayLibraryItem>,
+    scene_date: &mut SceneData,
 ) -> Result<State, String> {
     let mut state = state;
     while let Some(action) = actions.get_mut() {
@@ -365,33 +385,54 @@ fn add_entity(
             let parts = {
                 let constructed = parts
                     .iter()
-                    .map(|x| match x {
-                        PartDefinition::Vector { item_id, transform } => {
-                            let item = library.get(&item_id);
-                            match item {
-                                Some(DisplayLibraryItem::Vector { .. }) => {
-                                    Some(Part::new_vector(*item_id, *transform, None))
+                    .map(|definition| {
+                        let mut color = None;
+                        let mut tint = None;
+                        let mut view_rect = None;
+                        for definition_payload in definition.payload() {
+                            match definition_payload {
+                                PartDefinitionPayload::ViewRect(rect) => {
+                                    view_rect = Some(*rect);
                                 }
-                                _ => None,
+                                PartDefinitionPayload::Coloring(coloring) => {
+                                    color = Some(coloring.clone());
+                                }
+                                PartDefinitionPayload::Tint(new_tint) => {
+                                    tint = Some(*new_tint);
+                                }
                             }
                         }
-                        PartDefinition::Raster {
-                            item_id,
-                            transform,
-                            view_rect,
-                        } => match library.get(&item_id) {
-                            Some(DisplayLibraryItem::Raster { .. }) => Some(Part::new_raster(
-                                *item_id,
-                                RectF::from_points(view_rect.origin, view_rect.lower_right),
-                                *transform,
-                                None,
+                        match library.get(definition.item_id()) {
+                            Some(DisplayLibraryItem::Vector(..)) => Some((
+                                *definition.part_id(),
+                                Part::new_vector(
+                                    *definition.item_id(),
+                                    definition.transform(),
+                                    color,
+                                ),
                             )),
-                            _ => None,
-                        },
+                            Some(DisplayLibraryItem::Raster(pattern)) => {
+                                let view_rect = if let Some(points) = view_rect {
+                                    RectF::from_points(points.origin, points.lower_right)
+                                } else {
+                                    RectF::from_points(Vector2F::zero(), pattern.size().to_f32())
+                                };
+                                Some((
+                                    *definition.part_id(),
+                                    Part::new_raster(
+                                        *definition.item_id(),
+                                        view_rect,
+                                        definition.transform(),
+                                        tint,
+                                    ),
+                                ))
+                            }
+                            None => None,
+                        }
                     })
                     .filter(|e| e.is_some())
                     .map(|e| e.unwrap())
-                    .collect::<Vec<Part>>();
+                    .collect::<HashMap<Uuid, Part>>();
                 if constructed.len() < parts.len() {
                     return Err(format!("Some parts on {} could not be processed", id));
                 }
@@ -425,8 +466,8 @@ fn add_tweens(
     library: &HashMap<Uuid, DisplayLibraryItem>,
 ) -> Result<(), String> {
     let duration_seconds =
-        state.seconds_per_frame * (entity_update_definition.duration_frames as f32);
-    if let Some(entity) = display_list.get_mut(&entity_update_definition.id) {
+        state.seconds_per_frame * (entity_update_definition.duration_frames() as f32);
+    if let Some(entity) = display_list.get_mut(&entity_update_definition.id()) {
         entity.add_tweens(entity_update_definition, duration_seconds, library)?;
     }
     Ok(()) //Updating a removed entity or part is a no-op, since a script or event could remove an entity in a way the editor can't account for.
@@ -450,13 +491,15 @@ fn draw_frame(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::actions::{
+        EntityUpdatePayload, PartDefinition, PartUpdateDefinition, PartUpdatePayload,
+    };
     use crate::tween::Easing;
-    use crate::tween::PropertyTween;
     use crate::types::basic::ScaleRotationTranslation;
     use crate::types::shapes::{Coloring, Edge};
     use mockall::predicate::*;
     use mockall::*;
-    use pathfinder_content::pattern::Pattern;
+    use pathfinder_content::{pattern::Pattern, stroke::StrokeStyle};
     use pathfinder_geometry::transform2d::Transform2F;
     use pathfinder_geometry::vector::Vector2F;
     use std::f32::consts::FRAC_PI_2;
@@ -505,6 +548,8 @@ mod tests {
         let entity2_id = Uuid::parse_str("3ec76e6a-7758-47bf-bcb5-7cf5bc309aad").unwrap();
         let root_id = Uuid::parse_str("cfc4e1a4-5623-485a-bd79-88dc82e3e26f").unwrap();
         let shape_id = Uuid::parse_str("1c3ad65b-ebbf-4d5e-8943-28b94df19361").unwrap();
+        let part_id = Uuid::parse_str("1c3ad65b-ebbf-485a-bd79-9ba336e9248c").unwrap();
+        let part_id_2 = Uuid::parse_str("3ec76e6a-7758-47bf-bd79-9ba336e9248c").unwrap();
         let actions = vec![
             Action::SetBackground {
                 color: ColorU::black(),
@@ -526,10 +571,12 @@ mod tests {
                 name: String::from("first"),
                 transform: Transform2F::default(),
                 depth: 2,
-                parts: vec![PartDefinition::Vector {
-                    item_id: shape_id,
-                    transform: Transform2F::default(),
-                }],
+                parts: vec![PartDefinition::new(
+                    part_id,
+                    shape_id,
+                    ScaleRotationTranslation::default(),
+                    vec![],
+                )],
                 parent: None,
                 morph_index: 0.0,
             }),
@@ -538,10 +585,12 @@ mod tests {
                 name: String::from("second"),
                 transform: Transform2F::default(),
                 depth: 3,
-                parts: vec![PartDefinition::Vector {
-                    item_id: shape_id,
-                    transform: Transform2F::default(),
-                }],
+                parts: vec![PartDefinition::new(
+                    part_id_2,
+                    shape_id,
+                    ScaleRotationTranslation::default(),
+                    vec![],
+                )],
                 parent: Some(entity_id),
                 morph_index: 0.0,
             }),
@@ -552,18 +601,7 @@ mod tests {
         ];
         let mut action_list = ActionList::new(Box::new(|| None), Some(&actions));
         let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
-        display_list.insert(
-            root_id,
-            Entity::new(
-                root_id,
-                0,
-                "root",
-                root_id,
-                vec![],
-                Transform2F::default(),
-                0.0,
-            ),
-        );
+        display_list.insert(root_id, Entity::create_root(root_id));
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
         let mut state = State {
             frame: 0,
@@ -575,7 +613,15 @@ mod tests {
             seconds_per_frame: 0.016,
             stage_size: Vector2F::new(800.0, 600.0),
         };
-        state = execute_actions(state, &mut action_list, &mut display_list, &mut library).unwrap();
+        let mut scene_data = SceneData::new(Vector2F::new(800.0, 600.0));
+        state = execute_actions(
+            state,
+            &mut action_list,
+            &mut display_list,
+            &mut library,
+            &mut scene_data,
+        )
+        .unwrap();
         assert_eq!(state.background_color, ColorU::black());
         assert_eq!(action_list.current_index(), 4);
         assert_eq!(action_list.get(), Some(&Action::PresentFrame(1, 1)));
@@ -603,59 +649,66 @@ mod tests {
         let root_id = Uuid::parse_str("cfc4e1a4-5623-485a-bd79-88dc82e3e26f").unwrap();
         let entity_id = Uuid::parse_str("b06f8577-aa30-4000-9967-9ba336e9248c").unwrap();
         let shape_id = Uuid::parse_str("1c3ad65b-ebbf-4d5e-8943-28b94df19361").unwrap();
+        let part_id = Uuid::parse_str("cfc4e1a4-5623-485a-8943-28b94df19361").unwrap();
 
         let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
-        let mut root = Entity::new(
+        let mut root = Entity::create_root(root_id);
+        root.add_child(entity_id);
+        display_list.insert(root_id, root);
+        let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
+        library.insert(
+            shape_id,
+            DisplayLibraryItem::Vector(Shape::Path {
+                edges: vec![],
+                color: ColorU::white(),
+                is_closed: false,
+                stroke_style: StrokeStyle::default(),
+            }),
+        );
+        let mut parts = HashMap::new();
+        parts.insert(
+            part_id,
+            Part::new_vector(shape_id, Transform2F::default(), None),
+        );
+        let mut entity = Entity::new(
+            entity_id,
+            1,
+            "entity",
             root_id,
-            0,
-            "root",
-            root_id,
-            vec![],
+            parts,
             Transform2F::default(),
             0.0,
         );
-        root.add_child(entity_id);
-        display_list.insert(root_id, root);
-        let mut tweens: HashMap<Uuid, Vec<PropertyTween>> = HashMap::new();
-        tweens.insert(
-            entity_id,
-            vec![PropertyTween::new_transform(
-                ScaleRotationTranslation::from_transform(&Transform2F::default()),
-                ScaleRotationTranslation::from_transform(&Transform2F::from_rotation(FRAC_PI_2)),
+        // easing: Some(Easing::CubicIn),
+        entity
+            .add_tweens(
+                &EntityUpdateDefinition::new(
+                    entity_id,
+                    5,
+                    vec![PartUpdateDefinition::new(
+                        part_id,
+                        Easing::Linear,
+                        PartUpdatePayload::from_transform(&Transform2F::from_scale(Vector2F::new(
+                            6.0, 15.0,
+                        ))),
+                    )],
+                    vec![EntityUpdatePayload::from_transform(
+                        &Transform2F::from_rotation(FRAC_PI_2),
+                        Easing::CubicIn,
+                    )],
+                ),
                 FRAME_TIME * 5.0,
-                Easing::CubicIn,
-            )],
-        );
-        tweens.insert(
-            shape_id,
-            vec![PropertyTween::new_transform(
-                ScaleRotationTranslation::from_transform(&Transform2F::default()),
-                ScaleRotationTranslation::from_transform(&Transform2F::from_scale(Vector2F::new(
-                    6.0, 15.0,
-                ))),
-                FRAME_TIME * 5.0,
-                Easing::Linear,
-            )],
-        );
-        display_list.insert(
-            entity_id,
-            Entity::new(
-                entity_id,
-                1,
-                "entity",
-                root_id,
-                vec![Part::new_vector(shape_id, Transform2F::default(), None)],
-                Transform2F::default(),
-                0.0,
-            ),
-        );
+                &library,
+            )
+            .unwrap();
+        display_list.insert(entity_id, entity);
 
         let mut delta_time = 0.0;
         let mut frame_end_time = time_seconds();
 
         let sleep_duration = time::Duration::from_secs_f32(FRAME_TIME);
         for _ in 0..6 {
-            update_tweens(delta_time, &mut display_list);
+            update_tweens(delta_time, &mut display_list).unwrap();
             thread::sleep(sleep_duration);
             let new_frame_end_time = time_seconds();
             delta_time = (new_frame_end_time - frame_end_time) as f32;
@@ -663,10 +716,7 @@ mod tests {
         }
         let entity = display_list.get(&entity_id);
         assert!((entity.unwrap().transform().rotation() - FRAC_PI_2).abs() < std::f32::EPSILON);
-        let part_transform = match (entity.unwrap().parts())[0] {
-            Part::Raster { transform, .. } => transform,
-            Part::Vector { transform, .. } => transform,
-        };
+        let part_transform = entity.unwrap().get_part(&part_id).unwrap().transform();
         assert_eq!(
             Vector2F::new(part_transform.m11(), part_transform.m22()),
             Vector2F::new(6.0, 15.0)
@@ -689,6 +739,7 @@ mod tests {
         let root_id = Uuid::parse_str("cfc4e1a4-5623-485a-bd79-88dc82e3e26f").unwrap();
         let entity_id = Uuid::parse_str("b06f8577-aa30-4000-9967-9ba336e9248c").unwrap();
         let shape_id = Uuid::parse_str("1c3ad65b-ebbf-4d5e-8943-28b94df19361").unwrap();
+        let part_id = Uuid::parse_str("b06f8577-aa30-4000-bd79-88dc82e3e26f").unwrap();
 
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
         library.insert(
@@ -704,17 +755,14 @@ mod tests {
             }),
         );
         let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
-        let mut root = Entity::new(
-            root_id,
-            0,
-            "root",
-            root_id,
-            vec![],
-            Transform2F::default(),
-            0.0,
-        );
+        let mut root = Entity::create_root(root_id);
         root.add_child(entity_id);
         display_list.insert(root_id, root);
+        let mut parts = HashMap::new();
+        parts.insert(
+            part_id,
+            Part::new_vector(shape_id, Transform2F::default(), None),
+        );
         display_list.insert(
             entity_id,
             Entity::new(
@@ -722,7 +770,7 @@ mod tests {
                 1,
                 "entity",
                 root_id,
-                vec![Part::new_vector(shape_id, Transform2F::default(), None)],
+                parts,
                 Transform2F::default(),
                 0.0,
             ),

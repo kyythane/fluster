@@ -27,6 +27,14 @@ pub struct ScaleRotationTranslation {
 }
 
 impl ScaleRotationTranslation {
+    pub fn new(scale: Vector2F, theta: f32, translation: Vector2F) -> Self {
+        Self {
+            scale,
+            theta,
+            translation,
+        }
+    }
+
     pub fn from_transform(transform: &Transform2F) -> ScaleRotationTranslation {
         let theta = transform.rotation();
         let cos_theta = theta.cos();
@@ -34,6 +42,16 @@ impl ScaleRotationTranslation {
             scale: Vector2F::new(transform.m11() / cos_theta, transform.m22() / cos_theta),
             theta,
             translation: transform.translation(),
+        }
+    }
+}
+
+impl Default for ScaleRotationTranslation {
+    fn default() -> Self {
+        ScaleRotationTranslation {
+            scale: Vector2F::splat(1.0),
+            theta: 0.0,
+            translation: Vector2F::zero(),
         }
     }
 }

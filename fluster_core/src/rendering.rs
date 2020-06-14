@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 use super::types::{
-    model::{DisplayLibraryItem, Entity, Part},
+    model::{DisplayLibraryItem, Entity, PartMetaData},
     shapes::{Coloring, Shape},
 };
 use crate::runner::SceneData;
@@ -91,34 +91,27 @@ pub fn paint<S: BuildHasher>(
             .get(entity.id())
             .unwrap();
         for part in entity.parts() {
-            match part {
-                Part::Vector {
-                    item_id,
-                    transform,
-                    color,
-                    ..
-                } => {
-                    if let Some(&DisplayLibraryItem::Vector(ref shape)) = library.get(&item_id) {
+            match part.meta_data() {
+                PartMetaData::Vector { color } => {
+                    if let Some(&DisplayLibraryItem::Vector(ref shape)) =
+                        library.get(part.item_id())
+                    {
                         renderer.draw_shape(
                             shape,
-                            *world_space_transform * *transform,
+                            *world_space_transform * *part.transform(),
                             color,
                             entity.morph_index(),
                         );
                     }
                 }
-                Part::Raster {
-                    item_id,
-                    transform,
-                    view_rect,
-                    tint,
-                    ..
-                } => {
-                    if let Some(&DisplayLibraryItem::Raster(ref bitmap)) = library.get(&item_id) {
+                PartMetaData::Raster { tint, view_rect } => {
+                    if let Some(&DisplayLibraryItem::Raster(ref bitmap)) =
+                        library.get(part.item_id())
+                    {
                         renderer.draw_raster(
                             bitmap,
                             *view_rect,
-                            *world_space_transform * *transform,
+                            *world_space_transform * *part.transform(),
                             *tint,
                         );
                     }

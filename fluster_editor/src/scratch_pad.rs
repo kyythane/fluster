@@ -233,7 +233,8 @@ impl ScratchPadState {
     }
 }
 struct ShapeScratchPad {
-    id: Uuid,
+    part_id: Uuid,
+    item_id: Uuid,
     edges: Vec<Edge>,
     committed_edges: usize,
     shape_prototype: Shape,
@@ -241,14 +242,15 @@ struct ShapeScratchPad {
 }
 
 struct VertexScratchPad {
-    id: Uuid,
+    item_id: Uuid,
     edges: Vec<Edge>,
     shape_prototype: Shape,
     selected_point: (usize, usize),
 }
 
 struct TemplateShapeScratchpad {
-    id: Uuid,
+    part_id: Uuid,
+    item_id: Uuid,
     shape_prototype: Shape,
     start_position: Vector2F,
     end_position: Vector2F,
@@ -259,7 +261,8 @@ struct TemplateShapeScratchpad {
 impl ShapeScratchPad {
     fn init(options: &Vec<ToolOption>) -> Self {
         Self {
-            id: Uuid::new_v4(),
+            part_id: Uuid::new_v4(),
+            item_id: Uuid::new_v4(),
             edges: vec![],
             committed_edges: 0,
             shape_prototype: create_shape_prototype(options),
@@ -276,11 +279,16 @@ impl ShapeScratchPad {
     ) {
         self.committed_edges = 1;
         self.edges.push(Edge::Move(start_position));
-        let part = Part::new_vector(self.id, Transform2F::default(), None);
+        let part = Part::new_vector(self.item_id, Transform2F::default(), None);
         display_list
             .entry(*root_entity_id)
-            .and_modify(|root| root.add_part(part));
-        update_library(library, self.id, &self.shape_prototype, self.edges.clone());
+            .and_modify(|root| root.add_part(&self.part_id, part));
+        update_library(
+            library,
+            self.item_id,
+            &self.shape_prototype,
+            self.edges.clone(),
+        );
     }
 
     fn next_edge(
@@ -294,7 +302,12 @@ impl ShapeScratchPad {
         //TODO: other path types
         self.edges.push(Edge::Line(next_position));
         self.committed_edges = self.edges.len();
-        update_library(library, self.id, &self.shape_prototype, self.edges.clone());
+        update_library(
+            library,
+            self.item_id,
+            &self.shape_prototype,
+            self.edges.clone(),
+        );
     }
 
     fn update_preview_edge(
@@ -306,7 +319,12 @@ impl ShapeScratchPad {
             self.edges.pop();
         }
         self.edges.push(Edge::Line(temp_position));
-        update_library(library, self.id, &self.shape_prototype, self.edges.clone());
+        update_library(
+            library,
+            self.item_id,
+            &self.shape_prototype,
+            self.edges.clone(),
+        );
     }
 
     fn complete_path(
@@ -319,14 +337,14 @@ impl ShapeScratchPad {
             self.edges.pop();
         }
         if self.committed_edges <= 1 {
-            library.remove(&self.id);
-            display_list
-                .entry(*root_entity_id)
-                .and_modify(|root| root.remove_part(&self.id));
+            library.remove(&self.item_id);
+            display_list.entry(*root_entity_id).and_modify(|root| {
+                root.remove_part(&self.part_id);
+            });
         } else {
             update_library(
                 library,
-                self.id,
+                self.item_id,
                 &self.shape_prototype,
                 mem::take(&mut self.edges),
             );
@@ -342,7 +360,7 @@ impl VertexScratchPad {
         if let Some(vertex) = selection_handle.min_vertex() {
             if let Some(DisplayLibraryItem::Vector(shape)) = library.get(vertex.library_id()) {
                 Ok(Self {
-                    id: Uuid::new_v4(),
+                    item_id: Uuid::new_v4(),
                     edges: vec![],
                     shape_prototype: shape.clone(),
                     selected_point: (0, 0), // TODO: merge commited_edges and selected_point concept
@@ -372,7 +390,7 @@ impl VertexScratchPad {
                     } else {
                         0.0
                     };
-                self.id = *vertex.library_id();
+                self.item_id = *vertex.library_id();
                 self.edges = shape.edge_list(morph_index);
                 self.selected_point = (vertex.edge_id(), vertex.vertex_id());
             }
@@ -385,13 +403,18 @@ impl VertexScratchPad {
         temp_position: Vector2F,
     ) {
         self.edges[self.selected_point.0].update_point(self.selected_point.1, temp_position);
-        update_library(library, self.id, &self.shape_prototype, self.edges.clone());
+        update_library(
+            library,
+            self.item_id,
+            &self.shape_prototype,
+            self.edges.clone(),
+        );
     }
 
     fn complete_drag(&mut self, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
         update_library(
             library,
-            self.id,
+            self.item_id,
             &self.shape_prototype,
             mem::take(&mut self.edges),
         );
@@ -422,7 +445,8 @@ impl TemplateShapeScratchpad {
             ToolOption::UseSuperEllipseApproximation(use_super_ellipse_approximation),
         );
         Self {
-            id: Uuid::new_v4(),
+            part_id: Uuid::new_v4(),
+            item_id: Uuid::new_v4(),
             shape_prototype: create_shape_prototype(options),
             start_position,
             end_position: start_position,
@@ -526,11 +550,11 @@ impl TemplateShapeScratchpad {
         display_list: &mut HashMap<Uuid, Entity>,
         root_entity_id: &Uuid,
     ) {
-        let part = Part::new_vector(self.id, Transform2F::default(), None);
+        let part = Part::new_vector(self.item_id, Transform2F::default(), None);
         display_list
             .entry(*root_entity_id)
-            .and_modify(|root| root.add_part(part));
-        update_library(library, self.id, &self.shape_prototype, vec![]);
+            .and_modify(|root| root.add_part(&self.part_id, part));
+        update_library(library, self.item_id, &self.shape_prototype, vec![]);
     }
 
     fn update_preview(
@@ -541,7 +565,7 @@ impl TemplateShapeScratchpad {
         self.end_position = temp_position;
         update_library(
             library,
-            self.id,
+            self.item_id,
             &self.shape_prototype,
             self.compute_edge()?,
         );
@@ -555,14 +579,14 @@ impl TemplateShapeScratchpad {
         root_entity_id: &Uuid,
     ) -> Result<(), String> {
         if (self.end_position - self.start_position).length() < std::f32::EPSILON {
-            library.remove(&self.id);
-            display_list
-                .entry(*root_entity_id)
-                .and_modify(|root| root.remove_part(&self.id));
+            library.remove(&self.item_id);
+            display_list.entry(*root_entity_id).and_modify(|root| {
+                root.remove_part(&self.part_id);
+            });
         } else {
             update_library(
                 library,
-                self.id,
+                self.item_id,
                 &self.shape_prototype,
                 self.compute_edge()?,
             );

@@ -12,7 +12,7 @@ use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
@@ -136,58 +136,121 @@ impl RectPoints {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum PartDefinition {
-    Vector {
-        item_id: Uuid,
-        #[serde(serialize_with = "transform_ser", deserialize_with = "transform_des")]
-        transform: Transform2F,
-    },
-    Raster {
-        item_id: Uuid,
-        #[serde(serialize_with = "transform_ser", deserialize_with = "transform_des")]
-        transform: Transform2F,
-        view_rect: RectPoints,
-    },
+pub struct PartDefinition {
+    part_id: Uuid,
+    item_id: Uuid,
+    transform: ScaleRotationTranslation,
+    payload: Vec<PartDefinitionPayload>,
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub enum PartDefinitionPayload {
+    Coloring(Coloring),
+    Tint(#[serde(with = "ColorUDef")] ColorU),
+    ViewRect(RectPoints),
 }
 
 impl PartDefinition {
-    pub fn item_id(&self) -> &Uuid {
-        match self {
-            PartDefinition::Vector { item_id, .. } => item_id,
-            PartDefinition::Raster { item_id, .. } => item_id,
+    pub fn new(
+        part_id: Uuid,
+        item_id: Uuid,
+        transform: ScaleRotationTranslation,
+        payload: Vec<PartDefinitionPayload>,
+    ) -> Self {
+        Self {
+            part_id,
+            item_id,
+            transform,
+            payload,
         }
+    }
+
+    pub fn part_id(&self) -> &Uuid {
+        &self.part_id
+    }
+
+    pub fn item_id(&self) -> &Uuid {
+        &self.item_id
+    }
+
+    pub fn transform(&self) -> Transform2F {
+        Transform2F::from_scale_rotation_translation(
+            self.transform.scale,
+            self.transform.theta,
+            self.transform.translation,
+        )
+    }
+
+    pub fn payload(&self) -> impl Iterator<Item = &PartDefinitionPayload> {
+        self.payload.iter()
     }
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum PartUpdateDefinition {
-    Vector {
-        color: Option<Coloring>,
-        easing: Easing,
-        //TODO: Gradients
-        //TODO: line weight
-        item_id: Uuid,
-        transform: Option<ScaleRotationTranslation>,
-    },
-    Raster {
-        #[serde(
-            serialize_with = "option_color_ser",
-            deserialize_with = "option_color_des"
-        )]
-        tint: Option<ColorU>,
-        easing: Easing,
-        item_id: Uuid,
-        transform: Option<ScaleRotationTranslation>,
-        view_rect: Option<RectPoints>,
-    },
+pub struct PartUpdateDefinition {
+    part_id: Uuid,
+    easing: Easing,
+    payload: PartUpdatePayload,
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub enum PartUpdatePayload {
+    Transform(ScaleRotationTranslation),
+    Coloring(Coloring),
+    Tint(#[serde(with = "ColorUDef")] ColorU),
+    ViewRect(RectPoints),
+}
+
+impl PartUpdatePayload {
+    pub fn from_scale_rotation_translation(
+        scale_rotation_translation: ScaleRotationTranslation,
+    ) -> Self {
+        Self::Transform(scale_rotation_translation)
+    }
+
+    pub fn from_transform(transform: &Transform2F) -> Self {
+        Self::Transform(ScaleRotationTranslation::from_transform(transform))
+    }
+
+    pub fn from_coloring(coloring: Coloring) -> Self {
+        Self::Coloring(coloring)
+    }
+
+    pub fn from_view_rect_points(rect_points: RectPoints) -> Self {
+        Self::ViewRect(rect_points)
+    }
+
+    pub fn from_view_rect(rect: &RectF) -> Self {
+        Self::ViewRect(RectPoints {
+            origin: rect.origin(),
+            lower_right: rect.lower_right(),
+        })
+    }
+
+    pub fn from_tint(tint: ColorU) -> Self {
+        Self::Tint(tint)
+    }
 }
 
 impl PartUpdateDefinition {
-    pub fn item_id(&self) -> &Uuid {
-        match self {
-            PartUpdateDefinition::Vector { item_id, .. } => item_id,
-            PartUpdateDefinition::Raster { item_id, .. } => item_id,
+    pub fn new(part_id: Uuid, easing: Easing, payload: PartUpdatePayload) -> Self {
+        Self {
+            part_id,
+            easing,
+            payload,
         }
+    }
+
+    pub fn part_id(&self) -> &Uuid {
+        &self.part_id
+    }
+
+    pub fn easing(&self) -> Easing {
+        self.easing
+    }
+
+    pub fn payload(&self) -> &PartUpdatePayload {
+        &self.payload
     }
 }
 
@@ -205,12 +268,80 @@ pub struct EntityDefinition {
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct EntityUpdateDefinition {
-    pub duration_frames: u16,
-    pub easing: Option<Easing>,
-    pub id: Uuid,
-    pub part_updates: Vec<PartUpdateDefinition>,
-    pub transform: Option<ScaleRotationTranslation>,
-    pub morph_index: Option<f32>,
+    duration_frames: u16,
+    id: Uuid,
+    part_updates: Vec<PartUpdateDefinition>,
+    entity_updates: Vec<EntityUpdatePayload>,
+}
+
+impl EntityUpdateDefinition {
+    pub fn new(
+        id: Uuid,
+        duration_frames: u16,
+        part_updates: Vec<PartUpdateDefinition>,
+        entity_updates: Vec<EntityUpdatePayload>,
+    ) -> Self {
+        Self {
+            id,
+            duration_frames,
+            part_updates,
+            entity_updates,
+        }
+    }
+
+    pub fn id(&self) -> &Uuid {
+        &self.id
+    }
+
+    pub fn duration_frames(&self) -> u16 {
+        self.duration_frames
+    }
+
+    pub fn part_updates(&self) -> impl Iterator<Item = &PartUpdateDefinition> {
+        self.part_updates.iter()
+    }
+
+    pub fn entity_updates(&self) -> impl Iterator<Item = &EntityUpdatePayload> {
+        self.entity_updates.iter()
+    }
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub enum EntityUpdatePayload {
+    Transform {
+        easing: Easing,
+        transform: ScaleRotationTranslation,
+    },
+    MorphIndex {
+        easing: Easing,
+        morph_index: f32,
+    },
+}
+
+impl EntityUpdatePayload {
+    pub fn from_morph_index(morph_index: f32, easing: Easing) -> Self {
+        Self::MorphIndex {
+            morph_index,
+            easing,
+        }
+    }
+
+    pub fn from_scale_rotation_translation(
+        scale_rotation_translation: ScaleRotationTranslation,
+        easing: Easing,
+    ) -> Self {
+        Self::Transform {
+            transform: scale_rotation_translation,
+            easing,
+        }
+    }
+
+    pub fn from_transform(transform: &Transform2F, easing: Easing) -> Self {
+        Self::Transform {
+            transform: ScaleRotationTranslation::from_transform(&transform),
+            easing,
+        }
+    }
 }
 
 //TODO: additional actions: Text, Scripts, Fonts, AddPart, RemovePart
@@ -236,33 +367,6 @@ pub enum Action {
     RemoveEntity(Uuid),
     PresentFrame(u32, u32), //TODO: if frames have set indexes, then how would it be possible to load in additional frames? Clip ID?
     Quit,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ColorWrapper(#[serde(with = "ColorUDef")] ColorU);
-
-fn option_color_des<'de, D>(deserializer: D) -> Result<Option<ColorU>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    match Option::deserialize(deserializer) {
-        Ok(option) => match option {
-            Some(ColorWrapper(c)) => Ok(Some(c)),
-            None => Ok(None),
-        },
-        Err(err) => Err(err),
-    }
-}
-
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn option_color_ser<S>(u: &Option<ColorU>, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    match u {
-        Some(ref color) => serializer.serialize_some(&ColorWrapper(*color)),
-        None => serializer.serialize_none(),
-    }
 }
 
 #[cfg(test)]

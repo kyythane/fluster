@@ -1,5 +1,5 @@
 #![deny(clippy::all)]
-use crate::messages::{AppMessage, EditMessage};
+use crate::messages::AppMessage;
 use crate::rendering::StageRenderer;
 use crate::simulation::{StageState, TimelineState};
 use crate::tools::{EditDisplayState, EditState, Tool};

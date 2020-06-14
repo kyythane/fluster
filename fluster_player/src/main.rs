@@ -1,6 +1,6 @@
 use fluster_core::actions::{
-    Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
-    PartUpdateDefinition,
+    Action, ActionList, EntityDefinition, EntityUpdateDefinition, EntityUpdatePayload,
+    PartDefinition, PartUpdateDefinition, PartUpdatePayload,
 };
 use fluster_core::runner;
 use fluster_core::tween::Easing;
@@ -199,38 +199,38 @@ fn build_action_list() -> ActionList {
             ),
             depth: 2,
             parts: vec![
-                PartDefinition::Vector {
-                    item_id: shape2_id,
-                    transform: Transform2F::from_scale_rotation_translation(
-                        Vector2F::splat(2.0),
-                        0.0,
-                        Vector2F::splat(0.0),
-                    ),
-                },
-                PartDefinition::Vector {
-                    item_id: shape_id,
-                    transform: Transform2F::from_scale_rotation_translation(
-                        Vector2F::splat(2.0),
-                        0.0,
-                        Vector2F::splat(0.0),
-                    ),
-                },
-                PartDefinition::Vector {
-                    item_id: shape5_id,
-                    transform: Transform2F::from_scale_rotation_translation(
+                PartDefinition::new(
+                    shape2_id,
+                    shape2_id,
+                    ScaleRotationTranslation::new(Vector2F::splat(2.0), 0.0, Vector2F::splat(0.0)),
+                    vec![],
+                ),
+                PartDefinition::new(
+                    shape_id,
+                    shape_id,
+                    ScaleRotationTranslation::new(Vector2F::splat(2.0), 0.0, Vector2F::splat(0.0)),
+                    vec![],
+                ),
+                PartDefinition::new(
+                    shape5_id,
+                    shape5_id,
+                    ScaleRotationTranslation::new(
                         Vector2F::splat(2.0),
                         0.0,
                         Vector2F::new(300.0, 300.0),
                     ),
-                },
-                PartDefinition::Vector {
-                    item_id: shape4_id,
-                    transform: Transform2F::from_scale_rotation_translation(
+                    vec![],
+                ),
+                PartDefinition::new(
+                    shape4_id,
+                    shape4_id,
+                    ScaleRotationTranslation::new(
                         Vector2F::splat(2.0),
                         0.0,
                         Vector2F::new(0.0, 0.0),
                     ),
-                },
+                    vec![],
+                ),
             ],
             parent: None,
             morph_index: 0.0,
@@ -240,53 +240,54 @@ fn build_action_list() -> ActionList {
             name: String::from("second"),
             transform: Transform2F::default(),
             depth: 3,
-            parts: vec![PartDefinition::Vector {
-                item_id: shape3_id,
-                transform: Transform2F::default(),
-            }],
+            parts: vec![PartDefinition::new(
+                shape3_id,
+                shape3_id,
+                ScaleRotationTranslation::default(),
+                vec![],
+            )],
             parent: Some(entity_id),
             morph_index: 0.0,
         }),
         Action::PresentFrame(0, 1),
-        Action::UpdateEntity(EntityUpdateDefinition {
-            duration_frames: 480,
-            easing: Some(Easing::BounceOut),
-            id: entity2_id,
-            part_updates: vec![],
-            transform: Some(ScaleRotationTranslation {
-                scale: Vector2F::splat(1.0),
-                theta: PI,
-                translation: Vector2F::new(200.0, 0.0),
-            }),
-            morph_index: None,
-        }),
-        Action::UpdateEntity(EntityUpdateDefinition {
-            duration_frames: 360,
-            easing: Some(Easing::QuinticIn),
-            id: entity_id,
-            part_updates: vec![],
-            transform: None,
-            morph_index: Some(1.0),
-        }),
+        Action::UpdateEntity(EntityUpdateDefinition::new(
+            entity2_id,
+            480,
+            vec![],
+            vec![EntityUpdatePayload::from_transform(
+                &Transform2F::from_scale_rotation_translation(
+                    Vector2F::splat(1.0),
+                    PI,
+                    Vector2F::new(200.0, 0.0),
+                ),
+                Easing::BounceOut,
+            )],
+        )),
+        Action::UpdateEntity(EntityUpdateDefinition::new(
+            entity_id,
+            360,
+            vec![],
+            vec![EntityUpdatePayload::from_morph_index(
+                1.0,
+                Easing::BounceOut,
+            )],
+        )),
         Action::PresentFrame(1, 240),
-        Action::UpdateEntity(EntityUpdateDefinition {
-            duration_frames: 300,
-            easing: None,
-            id: entity2_id,
-            part_updates: vec![PartUpdateDefinition::Vector {
-                color: Some(Coloring::Colorings(vec![
+        Action::UpdateEntity(EntityUpdateDefinition::new(
+            entity2_id,
+            300,
+            vec![PartUpdateDefinition::new(
+                shape3_id,
+                Easing::CubicInOut,
+                PartUpdatePayload::from_coloring(Coloring::Colorings(vec![
                     Coloring::Color(ColorU::new(210, 145, 188, 255)),
                     Coloring::Color(ColorU::new(224, 187, 228, 255)),
                     Coloring::Color(ColorU::new(210, 145, 188, 255)),
                     Coloring::Color(ColorU::new(255, 223, 211, 255)),
                 ])),
-                easing: Easing::CubicInOut,
-                item_id: shape3_id,
-                transform: None,
-            }],
-            transform: None,
-            morph_index: None,
-        }),
+            )],
+            vec![],
+        )),
         Action::PresentFrame(240, 600),
         Action::Quit,
     ];

@@ -179,7 +179,10 @@ pub fn deserialize_action(bytes: &[u8], _version: u8) -> Result<Action, BinError
 mod tests {
     use super::*;
     use crate::actions::{EntityDefinition, PartDefinition};
-    use crate::types::shapes::{Edge, Shape};
+    use crate::types::{
+        basic::ScaleRotationTranslation,
+        shapes::{Edge, Shape},
+    };
     use pathfinder_color::ColorU;
     use pathfinder_geometry::transform2d::Transform2F;
     use pathfinder_geometry::vector::Vector2F;
@@ -189,16 +192,19 @@ mod tests {
     fn it_serializes_and_deserializes_actions() {
         let entity_id = Uuid::parse_str("b06f8577-aa30-4000-9967-9ba336e9248c").unwrap();
         let shape_id = Uuid::parse_str("1c3ad65b-ebbf-4d5e-8943-28b94df19361").unwrap();
+        let part_id = Uuid::parse_str("b06f8577-aa30-4000-9943-28b94df19361").unwrap();
 
         let action = Action::AddEntity(EntityDefinition {
             id: entity_id,
             name: String::from("first"),
             transform: Transform2F::default(),
             depth: 2,
-            parts: vec![PartDefinition::Vector {
-                item_id: shape_id,
-                transform: Transform2F::default(),
-            }],
+            parts: vec![PartDefinition::new(
+                part_id,
+                shape_id,
+                ScaleRotationTranslation::default(),
+                vec![],
+            )],
             parent: None,
             morph_index: 0.0,
         });
@@ -234,6 +240,7 @@ mod tests {
         use iobuffer::IoBuffer;
         let entity_id = Uuid::parse_str("b06f8577-aa30-4000-9967-9ba336e9248c").unwrap();
         let shape_id = Uuid::parse_str("1c3ad65b-ebbf-4d5e-8943-28b94df19361").unwrap();
+        let part_id = Uuid::parse_str("b06f8577-aa30-4000-9943-28b94df19361").unwrap();
         let actions = vec![
             Action::DefineShape {
                 id: shape_id,
@@ -252,10 +259,12 @@ mod tests {
                 name: String::from("first"),
                 transform: Transform2F::default(),
                 depth: 2,
-                parts: vec![PartDefinition::Vector {
-                    item_id: shape_id,
-                    transform: Transform2F::default(),
-                }],
+                parts: vec![PartDefinition::new(
+                    part_id,
+                    shape_id,
+                    ScaleRotationTranslation::default(),
+                    vec![],
+                )],
                 parent: None,
                 morph_index: 0.0,
             }),
