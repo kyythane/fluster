@@ -1,7 +1,8 @@
 #![deny(clippy::all)]
 
 use super::actions::{
-    Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinitionPayload,
+    Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
+    PartDefinitionPayload,
 };
 use super::rendering::{compute_render_data, paint, Renderer};
 use super::types::{
@@ -345,7 +346,7 @@ fn execute_actions(
     actions: &mut ActionList,
     display_list: &mut HashMap<Uuid, Entity>,
     library: &mut HashMap<Uuid, DisplayLibraryItem>,
-    scene_date: &mut SceneData,
+    scene_data: &mut SceneData,
 ) -> Result<State, String> {
     let mut state = state;
     while let Some(action) = actions.get_mut() {
@@ -362,7 +363,24 @@ fn execute_actions(
             Action::UpdateEntity(entity_update_definition) => {
                 add_tweens(&state, entity_update_definition, display_list, library)?;
             }
-            Action::RemoveEntity(id) => remove_entity(id, display_list, scene_date),
+            Action::RemoveEntity(id) => remove_entity(id, display_list, scene_data),
+            Action::AddPart {
+                entity_id,
+                part_definition,
+            } => {
+                if let Some(entity) = display_list.get_mut(entity_id) {
+                    if let Some((part_id, part)) = build_part(part_definition, library) {
+                        entity.add_part(&part_id, part)
+                    };
+                }
+            }
+            Action::RemovePart { entity_id, part_id } => {
+                if let Some(entity) = display_list.get_mut(entity_id) {
+                    if let Some(_) = entity.remove_part(part_id) {
+                        scene_data.quad_tree.remove(&(*entity_id, *part_id));
+                    }
+                }
+            }
             Action::SetBackground { color } => state.background_color = *color,
             Action::PresentFrame(_, _) => break,
             Action::CreateRoot { .. } => {
@@ -378,6 +396,51 @@ fn execute_actions(
         actions.advance();
     }
     Ok(state)
+}
+
+fn build_part(
+    definition: &PartDefinition,
+    library: &HashMap<Uuid, DisplayLibraryItem>,
+) -> Option<(Uuid, Part)> {
+    let mut color = None;
+    let mut tint = None;
+    let mut view_rect = None;
+    for definition_payload in definition.payload() {
+        match definition_payload {
+            PartDefinitionPayload::ViewRect(rect) => {
+                view_rect = Some(*rect);
+            }
+            PartDefinitionPayload::Coloring(coloring) => {
+                color = Some(coloring.clone());
+            }
+            PartDefinitionPayload::Tint(new_tint) => {
+                tint = Some(*new_tint);
+            }
+        }
+    }
+    match library.get(definition.item_id()) {
+        Some(DisplayLibraryItem::Vector(..)) => Some((
+            *definition.part_id(),
+            Part::new_vector(*definition.item_id(), definition.transform(), color),
+        )),
+        Some(DisplayLibraryItem::Raster(pattern)) => {
+            let view_rect = if let Some(points) = view_rect {
+                RectF::from_points(points.origin, points.lower_right)
+            } else {
+                RectF::from_points(Vector2F::zero(), pattern.size().to_f32())
+            };
+            Some((
+                *definition.part_id(),
+                Part::new_raster(
+                    *definition.item_id(),
+                    view_rect,
+                    definition.transform(),
+                    tint,
+                ),
+            ))
+        }
+        None => None,
+    }
 }
 
 fn add_entity(
@@ -407,51 +470,7 @@ fn add_entity(
             let parts = {
                 let constructed = parts
                     .iter()
-                    .map(|definition| {
-                        let mut color = None;
-                        let mut tint = None;
-                        let mut view_rect = None;
-                        for definition_payload in definition.payload() {
-                            match definition_payload {
-                                PartDefinitionPayload::ViewRect(rect) => {
-                                    view_rect = Some(*rect);
-                                }
-                                PartDefinitionPayload::Coloring(coloring) => {
-                                    color = Some(coloring.clone());
-                                }
-                                PartDefinitionPayload::Tint(new_tint) => {
-                                    tint = Some(*new_tint);
-                                }
-                            }
-                        }
-                        match library.get(definition.item_id()) {
-                            Some(DisplayLibraryItem::Vector(..)) => Some((
-                                *definition.part_id(),
-                                Part::new_vector(
-                                    *definition.item_id(),
-                                    definition.transform(),
-                                    color,
-                                ),
-                            )),
-                            Some(DisplayLibraryItem::Raster(pattern)) => {
-                                let view_rect = if let Some(points) = view_rect {
-                                    RectF::from_points(points.origin, points.lower_right)
-                                } else {
-                                    RectF::from_points(Vector2F::zero(), pattern.size().to_f32())
-                                };
-                                Some((
-                                    *definition.part_id(),
-                                    Part::new_raster(
-                                        *definition.item_id(),
-                                        view_rect,
-                                        definition.transform(),
-                                        tint,
-                                    ),
-                                ))
-                            }
-                            None => None,
-                        }
-                    })
+                    .map(|definition| build_part(definition, library))
                     .filter(|e| e.is_some())
                     .map(|e| e.unwrap())
                     .collect::<HashMap<Uuid, Part>>();

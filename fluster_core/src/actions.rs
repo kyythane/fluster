@@ -365,6 +365,14 @@ pub enum Action {
     AddEntity(EntityDefinition),
     UpdateEntity(EntityUpdateDefinition),
     RemoveEntity(Uuid),
+    AddPart {
+        entity_id: Uuid,
+        part_definition: PartDefinition,
+    },
+    RemovePart {
+        entity_id: Uuid,
+        part_id: Uuid,
+    },
     PresentFrame(u32, u32), //TODO: if frames have set indexes, then how would it be possible to load in additional frames? Clip ID?
     Quit,
 }
