@@ -200,7 +200,7 @@ impl ScratchPadState {
                 }
                 ToolMessage::MovePointEnd => {
                     if let Self::EditVertexes(vertex_scratch_pad) = self {
-                        vertex_scratch_pad.complete_drag(library);
+                        vertex_scratch_pad.complete_drag(display_list, library);
                         mem::replace(self, Self::None);
                         Ok(true) //TODO: update scene message
                     } else {
@@ -264,6 +264,7 @@ struct ShapeScratchPad {
 
 struct VertexScratchPad {
     item_id: Uuid,
+    entity_id: Uuid,
     edges: Vec<Edge>,
     shape_prototype: Shape,
     selected_point: (usize, usize),
@@ -301,9 +302,11 @@ impl ShapeScratchPad {
         self.committed_edges = 1;
         self.edges.push(Edge::Move(start_position));
         let part = Part::new_vector(self.item_id, Transform2F::default(), None);
-        display_list
-            .entry(*root_entity_id)
-            .and_modify(|root| root.add_part(&self.part_id, part));
+        display_list.entry(*root_entity_id).and_modify(|root| {
+            root.add_part(&self.part_id, part);
+            // Mark the root clean since we don't want to recompute bounds until the shape is done
+            root.mark_clean();
+        });
         update_library(
             library,
             self.item_id,
@@ -362,6 +365,7 @@ impl ShapeScratchPad {
             library.remove(&self.item_id);
             display_list.entry(*root_entity_id).and_modify(|root| {
                 root.remove_part(&self.part_id);
+                root.mark_dirty();
             });
             scene_data
                 .quad_tree_mut()
@@ -373,6 +377,9 @@ impl ShapeScratchPad {
                 &self.shape_prototype,
                 mem::take(&mut self.edges),
             );
+            display_list.entry(*root_entity_id).and_modify(|root| {
+                root.mark_dirty();
+            });
         }
     }
 }
@@ -385,10 +392,11 @@ impl VertexScratchPad {
         if let Some(vertex) = selection_handle.min_vertex() {
             if let Some(DisplayLibraryItem::Vector(shape)) = library.get(vertex.library_id()) {
                 Ok(Self {
+                    entity_id: *selection_handle.entity_id(),
                     item_id: Uuid::new_v4(),
                     edges: vec![],
                     shape_prototype: shape.clone(),
-                    selected_point: (0, 0), // TODO: merge commited_edges and selected_point concept
+                    selected_point: (0, 0),
                 })
             } else {
                 Err(format!(
@@ -436,13 +444,20 @@ impl VertexScratchPad {
         );
     }
 
-    fn complete_drag(&mut self, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
+    fn complete_drag(
+        &mut self,
+        display_list: &mut HashMap<Uuid, Entity>,
+        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+    ) {
         update_library(
             library,
             self.item_id,
             &self.shape_prototype,
             mem::take(&mut self.edges),
         );
+        display_list.entry(self.entity_id).and_modify(|root| {
+            root.mark_dirty();
+        });
     }
 }
 
@@ -576,9 +591,11 @@ impl TemplateShapeScratchpad {
         root_entity_id: &Uuid,
     ) {
         let part = Part::new_vector(self.item_id, Transform2F::default(), None);
-        display_list
-            .entry(*root_entity_id)
-            .and_modify(|root| root.add_part(&self.part_id, part));
+        display_list.entry(*root_entity_id).and_modify(|root| {
+            root.add_part(&self.part_id, part);
+            // Mark the root clean since we don't want to recompute bounds until the shape is done
+            root.mark_clean();
+        });
         update_library(library, self.item_id, &self.shape_prototype, vec![]);
     }
 
@@ -619,6 +636,9 @@ impl TemplateShapeScratchpad {
                 &self.shape_prototype,
                 self.compute_edge()?,
             );
+            display_list.entry(*root_entity_id).and_modify(|root| {
+                root.mark_dirty();
+            });
         }
         Ok(())
     }

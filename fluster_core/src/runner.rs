@@ -161,6 +161,7 @@ impl SceneData {
                         next_entity.parts_with_id().for_each(|(part_id, part)| {
                             let key = (next_node, *part_id);
                             self.quad_tree.remove(&key);
+                            println!("{:?} {:?}", key, part.bounds());
                             self.quad_tree.insert(key, *part.bounds());
                         });
                     }
