@@ -1,9 +1,13 @@
 #![deny(clippy::all)]
 use crate::messages::{EditMessage, SelectionHandle, VertexHandle};
-use crate::{rendering::RenderData, scratch_pad::ScratchPad, tools::SelectionShape};
+use crate::{
+    rendering::RenderData,
+    scratch_pad::{ScratchPad, EDIT_LAYER},
+    tools::SelectionShape,
+};
 use fluster_core::rendering::{adjust_depth, PaintData};
 use fluster_core::{
-    runner::SceneData,
+    runner::{QuadTreeLayerOptions, SceneData},
     types::{
         model::{DisplayLibraryItem, Entity, Part},
         shapes::{Edge, Shape},
@@ -11,6 +15,7 @@ use fluster_core::{
 };
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
+use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -44,8 +49,14 @@ impl StageState {
             size: stage_size,
             scale: 1.0,
             scratch_pad: ScratchPad::default(),
-            scene_data: SceneData::new(stage_size.to_f32()),
+            scene_data: SceneData::new(),
         };
+        // NOTE: currently making edit collision 2x the stage size to allow for overdraw.
+        new_self.scene_data.add_layer(
+            EDIT_LAYER,
+            RectF::new(stage_size.to_f32() * -1.0, stage_size.to_f32() * 2.0),
+            QuadTreeLayerOptions::new(12.0),
+        );
         // Need to init scene. Since StageState already knows how to set that up, just call into it
         new_self.update_scene();
         return new_self;
@@ -130,8 +141,18 @@ impl StageState {
         match selection_shape {
             // Broadphase, collect all the parts with bounding boxes that overlap our query
             SelectionShape::None => vec![],
-            SelectionShape::Point(point) => self.scene_data.quad_tree().query_point(point),
-            SelectionShape::Area(rect) => self.scene_data.quad_tree().query_rect(rect),
+            SelectionShape::Point(point) => self
+                .scene_data
+                .quad_tree(&EDIT_LAYER)
+                .unwrap()
+                .0
+                .query_point(point),
+            SelectionShape::Area(rect) => self
+                .scene_data
+                .quad_tree(&EDIT_LAYER)
+                .unwrap()
+                .0
+                .query_rect(rect),
         }
         .into_iter()
         .fold(

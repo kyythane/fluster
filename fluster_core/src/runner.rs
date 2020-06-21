@@ -64,25 +64,43 @@ impl State {
 
 pub type QuadTreeLayer = u32;
 
+#[derive(Debug, Default)]
+pub struct QuadTreeLayerOptions {
+    dilation: f32,
+}
+
+impl QuadTreeLayerOptions {
+    pub fn new(dilation: f32) -> Self {
+        Self { dilation }
+    }
+}
+
 #[derive(Debug)]
 pub struct SceneData {
-    quad_trees: HashMap<QuadTreeLayer, QuadTree<(Uuid, Uuid), RandomState>>,
+    quad_trees: HashMap<QuadTreeLayer, (QuadTree<(Uuid, Uuid), RandomState>, QuadTreeLayerOptions)>,
     // TODO: should the entity track it's own world space transform instead? Or should we convert to an ECS?
     world_space_transforms: HashMap<Uuid, Transform2F>,
 }
 
 impl SceneData {
-    pub fn new(size: Vector2F) -> Self {
+    pub fn new() -> Self {
         SceneData {
             quad_trees: HashMap::new(),
             world_space_transforms: HashMap::new(),
         }
     }
 
-    pub fn add_layer(&mut self, layer: QuadTreeLayer, bounds: RectF) -> bool {
+    pub fn add_layer(
+        &mut self,
+        layer: QuadTreeLayer,
+        bounds: RectF,
+        options: QuadTreeLayerOptions,
+    ) -> bool {
         if !self.quad_trees.contains_key(&layer) {
-            self.quad_trees
-                .insert(layer, QuadTree::default(bounds, RandomState::new()));
+            self.quad_trees.insert(
+                layer,
+                (QuadTree::default(bounds, RandomState::new()), options),
+            );
             true
         } else {
             false
@@ -95,7 +113,7 @@ impl SceneData {
 
     pub fn remove(&mut self, entity_id: Uuid, part_id: Uuid) {
         let key = (entity_id, part_id);
-        self.quad_trees.iter_mut().for_each(|(_, tree)| {
+        self.quad_trees.iter_mut().for_each(|(_, (tree, _))| {
             tree.remove(&key);
         });
         self.world_space_transforms.remove(&entity_id);
@@ -105,7 +123,10 @@ impl SceneData {
         &self.world_space_transforms
     }
 
-    pub fn quad_tree(&self, layer: &QuadTreeLayer) -> Option<&QuadTree<(Uuid, Uuid), RandomState>> {
+    pub fn quad_tree(
+        &self,
+        layer: &QuadTreeLayer,
+    ) -> Option<&(QuadTree<(Uuid, Uuid), RandomState>, QuadTreeLayerOptions)> {
         self.quad_trees.get(layer)
     }
 
@@ -116,7 +137,7 @@ impl SceneData {
     pub fn quad_tree_mut(
         &mut self,
         layer: &QuadTreeLayer,
-    ) -> Option<&mut QuadTree<(Uuid, Uuid), RandomState>> {
+    ) -> Option<&mut (QuadTree<(Uuid, Uuid), RandomState>, QuadTreeLayerOptions)> {
         self.quad_trees.get_mut(layer)
     }
 
@@ -181,9 +202,9 @@ impl SceneData {
                             let key = (next_node, *part_id);
                             let bounds = *part.bounds();
                             for layer in part.collision_layers() {
-                                self.quad_trees.entry(*layer).and_modify(|tree| {
+                                self.quad_trees.entry(*layer).and_modify(|(tree, options)| {
                                     tree.remove(&key);
-                                    tree.insert(key, bounds);
+                                    tree.insert(key, bounds.dilate(options.dilation));
                                 });
                             }
                         });
@@ -204,7 +225,7 @@ pub fn play(
 ) -> Result<(), String> {
     let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
     let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
-    let mut scene_data = SceneData::new(stage_size);
+    let mut scene_data = SceneData::new();
     let mut state = initialize(
         actions,
         &mut display_list,
@@ -416,7 +437,7 @@ fn execute_actions(
                     if let Some(part) = entity.remove_part(part_id) {
                         let key = (*entity_id, *part_id);
                         for layer in part.collision_layers() {
-                            if let Some(quad_tree) = scene_data.quad_tree_mut(layer) {
+                            if let Some((quad_tree, _)) = scene_data.quad_tree_mut(layer) {
                                 quad_tree.remove(&key);
                             }
                         }
@@ -696,7 +717,7 @@ mod tests {
             seconds_per_frame: 0.016,
             stage_size: Vector2F::new(800.0, 600.0),
         };
-        let mut scene_data = SceneData::new(Vector2F::new(800.0, 600.0));
+        let mut scene_data = SceneData::new();
         state = execute_actions(
             state,
             &mut action_list,
@@ -901,7 +922,7 @@ mod tests {
             })
             .return_const(())
             .in_sequence(&mut seq);
-        let mut scene_data = SceneData::new(state.stage_size);
+        let mut scene_data = SceneData::new();
         scene_data.recompute(&state.root_entity_id, &mut display_list, &library);
         mock_renderer
             .expect_end_frame()

@@ -2,7 +2,7 @@
 use crate::messages::{EditMessage, SelectionHandle, Template, ToolMessage};
 use crate::tools::{ToolOption, ToolOptionHandle};
 use fluster_core::{
-    runner::SceneData,
+    runner::{QuadTreeLayer, SceneData},
     types::{
         model::{DisplayLibraryItem, Entity, Part},
         shapes::{Edge, Shape},
@@ -15,6 +15,8 @@ use pathfinder_geometry::vector::Vector2F;
 use std::collections::HashMap;
 use std::mem;
 use uuid::Uuid;
+
+pub const EDIT_LAYER: QuadTreeLayer = std::u32::MAX - 1;
 
 fn create_shape_prototype(options: &Vec<ToolOption>) -> Shape {
     //TODO: Fill and StrokedFill, rename Path to Stroke
@@ -368,7 +370,9 @@ impl ShapeScratchPad {
                 root.mark_dirty();
             });
             scene_data
-                .quad_tree_mut()
+                .quad_tree_mut(&EDIT_LAYER)
+                .unwrap()
+                .0
                 .remove(&(*root_entity_id, self.part_id));
         } else {
             update_library(
@@ -627,7 +631,9 @@ impl TemplateShapeScratchpad {
                 root.remove_part(&self.part_id);
             });
             scene_data
-                .quad_tree_mut()
+                .quad_tree_mut(&EDIT_LAYER)
+                .unwrap()
+                .0
                 .remove(&(*root_entity_id, self.part_id));
         } else {
             update_library(
