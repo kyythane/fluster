@@ -4,13 +4,16 @@ use crate::actions::{
     EntityUpdateDefinition, EntityUpdatePayload, PartUpdateDefinition, PartUpdatePayload,
     RectPoints,
 };
-use crate::tween::{PropertyTween, PropertyTweenUpdate, Tween};
+use crate::{
+    runner::QuadTreeLayer,
+    tween::{PropertyTween, PropertyTweenUpdate, Tween},
+};
 use pathfinder_color::ColorU;
 use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::{transform2d::Transform2F, vector::Vector2F};
 use reduce::Reduce;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 #[derive(Clone, PartialEq, Debug)]
 pub enum DisplayLibraryItem {
@@ -41,6 +44,7 @@ pub struct Part {
     active: bool,
     tweens: Vec<PropertyTween>,
     meta_data: PartMetaData,
+    collision_layers: HashSet<QuadTreeLayer>,
 }
 
 //TODO: revist parts. Convert to struct (item_id, transfom, bounding_box, dirty, active) w/ metadata enum
@@ -65,6 +69,7 @@ impl Part {
             active: true,
             tweens: vec![],
             meta_data: PartMetaData::Vector { color },
+            collision_layers: HashSet::new(),
         }
     }
 
@@ -82,7 +87,20 @@ impl Part {
             active: true,
             tweens: vec![],
             meta_data: PartMetaData::Raster { view_rect, tint },
+            collision_layers: HashSet::new(),
         }
+    }
+
+    pub fn add_to_collision_layer(&mut self, layer: QuadTreeLayer) -> bool {
+        self.collision_layers.insert(layer)
+    }
+
+    pub fn remove_from_layer(&mut self, layer: &QuadTreeLayer) -> bool {
+        self.collision_layers.remove(layer)
+    }
+
+    pub fn collision_layers(&self) -> impl Iterator<Item = &QuadTreeLayer> {
+        self.collision_layers.iter()
     }
 
     pub fn recompute_bounds(

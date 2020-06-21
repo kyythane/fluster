@@ -62,9 +62,11 @@ impl State {
     }
 }
 
+pub type QuadTreeLayer = u32;
+
 #[derive(Debug)]
 pub struct SceneData {
-    quad_tree: QuadTree<(Uuid, Uuid), RandomState>,
+    quad_trees: HashMap<QuadTreeLayer, QuadTree<(Uuid, Uuid), RandomState>>,
     // TODO: should the entity track it's own world space transform instead? Or should we convert to an ECS?
     world_space_transforms: HashMap<Uuid, Transform2F>,
 }
@@ -72,16 +74,30 @@ pub struct SceneData {
 impl SceneData {
     pub fn new(size: Vector2F) -> Self {
         SceneData {
-            quad_tree: QuadTree::default(
-                RectF::from_points(Vector2F::zero(), size),
-                RandomState::new(),
-            ),
+            quad_trees: HashMap::new(),
             world_space_transforms: HashMap::new(),
         }
     }
 
+    pub fn add_layer(&mut self, layer: QuadTreeLayer, bounds: RectF) -> bool {
+        if !self.quad_trees.contains_key(&layer) {
+            self.quad_trees
+                .insert(layer, QuadTree::default(bounds, RandomState::new()));
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn remove_layer(&mut self, layer: &QuadTreeLayer) {
+        self.quad_trees.remove(layer);
+    }
+
     pub fn remove(&mut self, entity_id: Uuid, part_id: Uuid) {
-        self.quad_tree.remove(&(entity_id, part_id));
+        let key = (entity_id, part_id);
+        self.quad_trees.iter_mut().for_each(|(_, tree)| {
+            tree.remove(&key);
+        });
         self.world_space_transforms.remove(&entity_id);
     }
 
@@ -89,16 +105,19 @@ impl SceneData {
         &self.world_space_transforms
     }
 
-    pub fn quad_tree(&self) -> &QuadTree<(Uuid, Uuid), RandomState> {
-        &self.quad_tree
+    pub fn quad_tree(&self, layer: &QuadTreeLayer) -> Option<&QuadTree<(Uuid, Uuid), RandomState>> {
+        self.quad_trees.get(layer)
     }
 
     pub fn world_space_transforms_mut(&mut self) -> &mut HashMap<Uuid, Transform2F> {
         &mut self.world_space_transforms
     }
 
-    pub fn quad_tree_mut(&mut self) -> &mut QuadTree<(Uuid, Uuid), RandomState> {
-        &mut self.quad_tree
+    pub fn quad_tree_mut(
+        &mut self,
+        layer: &QuadTreeLayer,
+    ) -> Option<&mut QuadTree<(Uuid, Uuid), RandomState>> {
+        self.quad_trees.get_mut(layer)
     }
 
     pub fn recompute(
@@ -153,16 +172,20 @@ impl SceneData {
                             parent_transform * *next_entity.transform(),
                         );
                     }
-                    // Inactive entities are not in the quadtree
+                    // Inactive entities are not in any quadtrees
                     if next_entity.active() {
                         let next_world_space_transform =
                             self.world_space_transforms.get(next_entity.id()).unwrap();
                         next_entity.recompute_bounds(next_world_space_transform, library);
                         next_entity.parts_with_id().for_each(|(part_id, part)| {
                             let key = (next_node, *part_id);
-                            self.quad_tree.remove(&key);
-                            println!("{:?} {:?}", key, part.bounds());
-                            self.quad_tree.insert(key, *part.bounds());
+                            let bounds = *part.bounds();
+                            for layer in part.collision_layers() {
+                                self.quad_trees.entry(*layer).and_modify(|tree| {
+                                    tree.remove(&key);
+                                    tree.insert(key, bounds);
+                                });
+                            }
                         });
                     }
                     next_entity.mark_clean();
@@ -390,8 +413,13 @@ fn execute_actions(
             }
             Action::RemovePart { entity_id, part_id } => {
                 if let Some(entity) = display_list.get_mut(entity_id) {
-                    if let Some(_) = entity.remove_part(part_id) {
-                        scene_data.quad_tree.remove(&(*entity_id, *part_id));
+                    if let Some(part) = entity.remove_part(part_id) {
+                        let key = (*entity_id, *part_id);
+                        for layer in part.collision_layers() {
+                            if let Some(quad_tree) = scene_data.quad_tree_mut(layer) {
+                                quad_tree.remove(&key);
+                            }
+                        }
                     }
                 }
             }
