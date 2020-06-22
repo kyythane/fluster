@@ -51,10 +51,10 @@ impl StageState {
             scratch_pad: ScratchPad::default(),
             scene_data: SceneData::new(),
         };
-        // NOTE: currently making edit collision 2x the stage size to allow for overdraw.
+        // NOTE: currently making edit collision 3x the stage size to allow for overdraw.
         new_self.scene_data.add_layer(
             EDIT_LAYER,
-            RectF::new(stage_size.to_f32() * -1.0, stage_size.to_f32() * 2.0),
+            RectF::new(stage_size.to_f32() * -1.0, stage_size.to_f32() * 3.0),
             QuadTreeLayerOptions::new(12.0),
         );
         // Need to init scene. Since StageState already knows how to set that up, just call into it
@@ -79,7 +79,6 @@ impl StageState {
                 );
             }
         }
-        println!("{:?}", edges);
         self.library.insert(
             self.handle_container_id,
             DisplayLibraryItem::Vector(Shape::Path {
@@ -158,8 +157,8 @@ impl StageState {
         .fold(
             // Since we query by part AABB, we need to collect them under the owning entity
             HashMap::new(),
-            |mut map: HashMap<Uuid, HashSet<Uuid>>, ((e_id, p_id), _)| {
-                map.entry(e_id).or_default().insert(p_id);
+            |mut map: HashMap<Uuid, Vec<Uuid>>, ((e_id, p_id), _)| {
+                map.entry(e_id).or_default().push(p_id);
                 map
             },
         )
@@ -171,18 +170,16 @@ impl StageState {
                 .world_space_transforms()
                 .get(entity.id())
                 .unwrap();
-            entity
-                .parts()
-                .filter(move |part| p_ids.contains(part.item_id()))
-                .map(move |part| {
-                    let vertex_handles = self.collect_vertex_handles(
-                        selection_shape,
-                        entity,
-                        world_space_transform,
-                        part,
-                    );
-                    SelectionHandle::new(e_id, *part.item_id(), vertex_handles)
-                })
+            p_ids.into_iter().map(move |p_id| {
+                let part = entity.get_part(&p_id).unwrap();
+                let vertex_handles = self.collect_vertex_handles(
+                    selection_shape,
+                    entity,
+                    world_space_transform,
+                    part,
+                );
+                SelectionHandle::new(e_id, *part.item_id(), vertex_handles)
+            })
         })
         .collect::<Vec<SelectionHandle>>()
     }

@@ -303,7 +303,8 @@ impl ShapeScratchPad {
     ) {
         self.committed_edges = 1;
         self.edges.push(Edge::Move(start_position));
-        let part = Part::new_vector(self.item_id, Transform2F::default(), None);
+        let mut part = Part::new_vector(self.item_id, Transform2F::default(), None);
+        part.add_to_collision_layer(EDIT_LAYER);
         display_list.entry(*root_entity_id).and_modify(|root| {
             root.add_part(&self.part_id, part);
             // Mark the root clean since we don't want to recompute bounds until the shape is done
@@ -594,7 +595,8 @@ impl TemplateShapeScratchpad {
         display_list: &mut HashMap<Uuid, Entity>,
         root_entity_id: &Uuid,
     ) {
-        let part = Part::new_vector(self.item_id, Transform2F::default(), None);
+        let mut part = Part::new_vector(self.item_id, Transform2F::default(), None);
+        part.add_to_collision_layer(EDIT_LAYER);
         display_list.entry(*root_entity_id).and_modify(|root| {
             root.add_part(&self.part_id, part);
             // Mark the root clean since we don't want to recompute bounds until the shape is done
