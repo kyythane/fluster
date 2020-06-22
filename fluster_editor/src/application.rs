@@ -252,18 +252,16 @@ impl Application for App {
     }
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
-        match message {
+        let refresh_stage = match message {
             Self::Message::EditMessage(edit_message) => {
                 self.edit_state.update(&edit_message);
-                let refresh_stage = self.stage_state.apply_edit(&edit_message);
-                if refresh_stage {
-                    self.refresh_stage();
-                }
+                self.stage_state.apply_edit(&edit_message)
             }
             Self::Message::EditHandleMessage(handles) => self.stage_state.draw_handles(handles),
-            Self::Message::StageUpdateMessage => {
-                self.refresh_stage();
-            }
+            Self::Message::StageUpdateMessage => true,
+        };
+        if refresh_stage {
+            self.refresh_stage();
         }
         Command::none()
     }

@@ -37,9 +37,17 @@ pub struct StageState {
 impl StageState {
     pub fn new(stage_size: Vector2I, background_color: ColorU) -> Self {
         let root_entity_id = Uuid::new_v4();
-        let mut display_list = HashMap::new();
-        display_list.insert(root_entity_id, Entity::create_root(root_entity_id));
+        let mut root_entity = Entity::create_root(root_entity_id);
         let handle_container_id = Uuid::new_v4();
+        // use handle_container_id for both part and item id since it is unique.
+        // Note: this part should not have a collision layer, so it isn't included in mouse picking!
+        root_entity.add_part(
+            &handle_container_id,
+            Part::new_vector(handle_container_id, Transform2F::default(), None),
+        );
+
+        let mut display_list = HashMap::new();
+        display_list.insert(root_entity_id, root_entity);
         let mut new_self = Self {
             background_color,
             root_entity_id,
@@ -51,6 +59,8 @@ impl StageState {
             scratch_pad: ScratchPad::default(),
             scene_data: SceneData::new(),
         };
+        // Need to init the draw_handle container before we init scene data so we don't compute_bounds doesn't throw because it can't find a library item
+        new_self.update_draw_handle(vec![]);
         // NOTE: currently making edit collision 3x the stage size to allow for overdraw.
         new_self.scene_data.add_layer(
             EDIT_LAYER,
@@ -66,7 +76,7 @@ impl StageState {
         &self.root_entity_id
     }
 
-    pub fn draw_handles(&mut self, handles: Vec<SelectionHandle>) {
+    pub fn draw_handles(&mut self, handles: Vec<SelectionHandle>) -> bool {
         let mut edges = vec![];
         for handle in handles {
             for vertex_handle in handle.vertex_handles() {
@@ -79,6 +89,20 @@ impl StageState {
                 );
             }
         }
+        let redraw_needed = edges.len() > 0 || {
+            if let Some(DisplayLibraryItem::Vector(path)) =
+                self.library.get(&self.handle_container_id)
+            {
+                path.len() > 0
+            } else {
+                false
+            }
+        };
+        self.update_draw_handle(edges);
+        redraw_needed
+    }
+
+    fn update_draw_handle(&mut self, edges: Vec<Edge>) {
         self.library.insert(
             self.handle_container_id,
             DisplayLibraryItem::Vector(Shape::Path {
@@ -86,7 +110,7 @@ impl StageState {
                 is_closed: false,
                 edges,
                 stroke_style: StrokeStyle {
-                    line_width: 1.0,
+                    line_width: 2.0,
                     line_cap: LineCap::default(),
                     line_join: LineJoin::default(),
                 },

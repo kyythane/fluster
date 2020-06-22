@@ -551,6 +551,10 @@ impl AugmentedShape {
     pub fn edge_list(&self, morph_percent: f32) -> Vec<Edge> {
         self.shape.edge_list(morph_percent)
     }
+
+    pub fn len(&self) -> usize {
+        self.shape.len()
+    }
 }
 
 impl Shape {
@@ -619,6 +623,25 @@ impl Shape {
             Shape::Group { shapes } => {
                 Coloring::Colorings(shapes.iter().map(|s| s.shape.color()).collect())
             }
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Shape::Path { edges, .. } | Shape::Fill { edges, .. } | Shape::Clip { edges, .. } => {
+                edges.len()
+            }
+            Shape::MorphPath {
+                edges: morph_edges, ..
+            }
+            | Shape::MorphFill {
+                edges: morph_edges, ..
+            } => morph_edges.len(),
+            Shape::Group { shapes } => shapes
+                .iter()
+                .map(|s| s.len())
+                .reduce(|l, acc| l + acc)
+                .unwrap_or_else(|| 0),
         }
     }
 }
