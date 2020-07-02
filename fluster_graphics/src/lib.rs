@@ -28,12 +28,11 @@ fn patch_line_join(j: StrokeLineJoin) -> LineJoin {
 fn stroke_path(
     canvas: &mut CanvasRenderingContext2D,
     edges: impl Iterator<Item = Edge>,
-    is_closed: bool,
     stroke_style: &StrokeStyle,
     transform: &Transform2F,
     color: ColorU,
 ) {
-    let path = Edge::edges_to_path(edges, is_closed);
+    let path = Edge::edges_to_path(edges);
     canvas.set_transform(transform);
     canvas.set_line_width(stroke_style.line_width);
     canvas.set_line_cap(stroke_style.line_cap);
@@ -97,7 +96,6 @@ where
                     edges,
                     color,
                     stroke_style,
-                    is_closed,
                 } => {
                     if edges.len() > 1 {
                         let color = if let Some(Coloring::Color(color_override)) = color_override {
@@ -108,7 +106,6 @@ where
                         stroke_path(
                             canvas,
                             edges.iter().map(|e| *e),
-                            *is_closed,
                             stroke_style,
                             &transform,
                             *color,
@@ -122,7 +119,7 @@ where
                         } else {
                             color
                         };
-                        let path = Edge::edges_to_path(edges.iter().map(|e| *e), true);
+                        let path = Edge::edges_to_path(edges.iter().map(|e| *e));
                         canvas.set_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
@@ -132,7 +129,6 @@ where
                     edges,
                     color,
                     stroke_style,
-                    is_closed,
                 } => {
                     if edges.len() > 1 {
                         let color = if let Some(Coloring::Color(color_override)) = color_override {
@@ -141,7 +137,7 @@ where
                             color
                         };
                         let edges = edges.iter().map(|mp| mp.to_edge(morph_index));
-                        stroke_path(canvas, edges, *is_closed, stroke_style, &transform, *color);
+                        stroke_path(canvas, edges, stroke_style, &transform, *color);
                     }
                 }
                 Shape::MorphFill { edges, color } => {
@@ -152,7 +148,7 @@ where
                             color
                         };
                         let edges = edges.iter().map(|mp| mp.to_edge(morph_index));
-                        let path = Edge::edges_to_path(edges, true);
+                        let path = Edge::edges_to_path(edges);
                         canvas.set_transform(&transform);
                         canvas.set_fill_style(FillStyle::Color(*color));
                         canvas.fill_path(path, FillRule::Winding);
@@ -160,7 +156,7 @@ where
                 }
                 Shape::Clip { edges } => {
                     if edges.len() > 2 {
-                        let path = Edge::edges_to_path(edges.iter().map(|e| *e), true);
+                        let path = Edge::edges_to_path(edges.iter().map(|e| *e));
                         canvas.set_transform(&transform);
                         canvas.clip_path(path, FillRule::Winding);
                     }

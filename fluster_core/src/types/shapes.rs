@@ -47,6 +47,7 @@ pub enum Edge {
         axes: Vector2F,
         // TOOD: ArcDirection
     },
+    Close,
 }
 
 impl Edge {
@@ -59,6 +60,7 @@ impl Edge {
                 start_angle: 0.0,
                 end_angle: PI * 2.0,
             },
+            Self::Close,
         ]
     }
 
@@ -73,6 +75,7 @@ impl Edge {
             edges.push(Self::Line(transform * curr));
             edge = angle * edge;
         }
+        edges.push(Self::Close);
         edges
     }
 
@@ -110,6 +113,7 @@ impl Edge {
             });
             edge = angle * edge;
         }
+        edges.push(Self::Close);
         edges
     }
 
@@ -120,6 +124,7 @@ impl Edge {
             Self::Line(transform * size),
             Self::Line(transform * Vector2F::new(0.0, size.y())),
             Self::Line(transform * Vector2F::zero()), //Add the last line since we don't know if this will be closed
+            Self::Close,
         ]
     }
 
@@ -150,6 +155,7 @@ impl Edge {
                 to: transform * Vector2F::new(corner_radius, 0.0),
                 radius: corner_radius,
             },
+            Self::Close,
         ]
     }
 
@@ -192,6 +198,7 @@ impl Edge {
                 ),
             to: transform * key_points[0],
         });
+        edges.push(Self::Close);
         edges
     }
 
@@ -201,10 +208,11 @@ impl Edge {
             Self::Line(v) => *v,
             Self::Quadratic { to, .. } | Self::Bezier { to, .. } | Self::ArcTo { to, .. } => *to,
             Self::Arc { .. } => Vector2F::zero(), // TODO: compute
+            Self::Close { .. } => Vector2F::zero(), //TODO: Uh.... What should this endpoint be
         }
     }
 
-    pub fn edges_to_path(edges: impl Iterator<Item = Edge>, is_closed: bool) -> Path2D {
+    pub fn edges_to_path(edges: impl Iterator<Item = Edge>) -> Path2D {
         let mut path = Path2D::new();
         edges.for_each(|edge| match edge {
             Self::Move(to) => path.move_to(to),
@@ -232,10 +240,8 @@ impl Edge {
                     path.ellipse(center, axes, 0.0, start_angle, end_angle);
                 }
             }
+            Self::Close => path.close_path(),
         });
-        if is_closed {
-            path.close_path();
-        }
         path
     }
 
@@ -297,16 +303,13 @@ impl Edge {
                 }
             }
             Self::Arc { .. } => todo!(),
+            Self::Close => Self::Close,
         };
         mem::replace(self, updated);
     }
 
-    fn compute_bounding(
-        edges: impl Iterator<Item = Edge>,
-        is_closed: bool,
-        transform: &Transform2F,
-    ) -> RectF {
-        let mut outline = Self::edges_to_path(edges, is_closed).into_outline();
+    fn compute_bounding(edges: impl Iterator<Item = Edge>, transform: &Transform2F) -> RectF {
+        let mut outline = Self::edges_to_path(edges).into_outline();
         outline.transform(transform);
         outline.bounds()
     }
@@ -351,6 +354,9 @@ impl Edge {
                 square_radius,
                 *transform,
             ), // TODO, calc start and end of arc
+            Self::Close => {
+                Self::match_points_disk(vec![].into_iter(), *point, square_radius, *transform)
+            }
         }
     }
 
@@ -404,6 +410,7 @@ impl Edge {
             Self::Arc { center, .. } => {
                 Self::match_points_rect(vec![*center].into_iter(), *rect, *transform)
             } // TODO, start end
+            Self::Close => Self::match_points_rect(vec![].into_iter(), *rect, *transform),
         }
     }
 }
@@ -454,14 +461,15 @@ pub enum MorphEdge {
         to_end: Vector2F,
         radius_end: f32,
     },
+    Close,
 }
 
 impl MorphEdge {
     pub fn to_edge(&self, percent: f32) -> Edge {
         match self {
-            MorphEdge::Move(start, end) => Edge::Move(start.lerp(*end, percent)),
-            MorphEdge::Line(start, end) => Edge::Line(start.lerp(*end, percent)),
-            MorphEdge::Quadratic {
+            Self::Move(start, end) => Edge::Move(start.lerp(*end, percent)),
+            Self::Line(start, end) => Edge::Line(start.lerp(*end, percent)),
+            Self::Quadratic {
                 control_start,
                 to_start,
                 control_end,
@@ -470,7 +478,7 @@ impl MorphEdge {
                 control: control_start.lerp(*control_end, percent),
                 to: to_start.lerp(*to_end, percent),
             },
-            MorphEdge::Bezier {
+            Self::Bezier {
                 control_1_start,
                 control_2_start,
                 to_start,
@@ -482,7 +490,7 @@ impl MorphEdge {
                 control_2: control_2_start.lerp(*control_2_end, percent),
                 to: to_start.lerp(*to_end, percent),
             },
-            MorphEdge::ArcTo {
+            Self::ArcTo {
                 control_start,
                 to_start,
                 radius_start,
@@ -494,6 +502,7 @@ impl MorphEdge {
                 to: to_start.lerp(*to_end, percent),
                 radius: util::lerp(*radius_start, *radius_end, percent),
             },
+            Self::Close => Edge::Close,
         }
     }
 }
@@ -507,7 +516,6 @@ pub enum Shape {
         color: ColorU,
         #[serde(with = "StrokeStyleDef")]
         stroke_style: StrokeStyle,
-        is_closed: bool,
     },
     Fill {
         edges: Vec<Edge>,
@@ -520,7 +528,6 @@ pub enum Shape {
         color: ColorU,
         #[serde(with = "StrokeStyleDef")]
         stroke_style: StrokeStyle,
-        is_closed: bool,
     },
     MorphFill {
         edges: Vec<MorphEdge>,
@@ -560,29 +567,19 @@ impl AugmentedShape {
 impl Shape {
     pub fn compute_bounding(&self, transform: &Transform2F, morph_percent: f32) -> RectF {
         match self {
-            Shape::Path {
-                edges, is_closed, ..
-            } => Edge::compute_bounding(edges.iter().map(|e| *e), *is_closed, &transform),
-            Shape::Fill { edges, .. } | Shape::Clip { edges, .. } => {
-                Edge::compute_bounding(edges.iter().map(|e| *e), true, &transform)
+            Shape::Path { edges, .. } | Shape::Fill { edges, .. } | Shape::Clip { edges, .. } => {
+                Edge::compute_bounding(edges.iter().map(|e| *e), &transform)
             }
             Shape::MorphPath {
-                edges: morph_edges,
-                is_closed,
-                ..
-            } => {
-                let edges = morph_edges
-                    .iter()
-                    .map(|morph_edge| morph_edge.to_edge(morph_percent));
-                Edge::compute_bounding(edges, *is_closed, &transform)
+                edges: morph_edges, ..
             }
-            Shape::MorphFill {
+            | Shape::MorphFill {
                 edges: morph_edges, ..
             } => {
                 let edges = morph_edges
                     .iter()
                     .map(|morph_edge| morph_edge.to_edge(morph_percent));
-                Edge::compute_bounding(edges, true, &transform)
+                Edge::compute_bounding(edges, &transform)
             }
             Shape::Group { shapes } => shapes
                 .iter()

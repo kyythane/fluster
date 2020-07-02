@@ -107,7 +107,6 @@ impl StageState {
             self.handle_container_id,
             DisplayLibraryItem::Vector(Shape::Path {
                 color: ColorU::new(192, 255, 0, 255),
-                is_closed: false,
                 edges,
                 stroke_style: StrokeStyle {
                     line_width: 2.0,

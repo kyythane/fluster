@@ -25,13 +25,11 @@ fn create_shape_prototype(options: &Vec<ToolOption>) -> Shape {
     let mut line_width = 1.0;
     let mut line_cap = LineCap::default();
     let mut line_join = LineJoin::default();
-    let mut is_closed = false;
     for option in options {
         match option {
             ToolOption::LineColor(color) => line_color = *color,
             //   ToolOption::FillColor(color) => fill_color = *color,
             ToolOption::StrokeWidth(width) => line_width = *width,
-            ToolOption::ClosedPath(closed) => is_closed = *closed,
             ToolOption::LineCap(cap) => line_cap = *cap,
             ToolOption::LineJoin(join) => line_join = *join,
             _ => {}
@@ -40,7 +38,6 @@ fn create_shape_prototype(options: &Vec<ToolOption>) -> Shape {
     Shape::Path {
         edges: vec![],
         color: line_color.unwrap_or(ColorU::black()),
-        is_closed,
         stroke_style: StrokeStyle {
             line_width,
             line_cap,
@@ -58,13 +55,11 @@ fn update_library(
     let shape = match shape_prototype {
         Shape::Path {
             color,
-            is_closed,
             stroke_style,
             ..
         } => Shape::Path {
             edges,
             color: *color,
-            is_closed: *is_closed,
             stroke_style: *stroke_style,
         },
         _ => todo!(),
@@ -261,6 +256,7 @@ struct ShapeScratchPad {
     edges: Vec<Edge>,
     committed_edges: usize,
     shape_prototype: Shape,
+    close_path: bool,
     selected_point: (usize, usize),
 }
 
@@ -284,12 +280,18 @@ struct TemplateShapeScratchpad {
 
 impl ShapeScratchPad {
     fn init(options: &Vec<ToolOption>) -> Self {
+        let mut close_path = false;
+        options.iter().for_each(|option| match option {
+            ToolOption::ClosedPath(close_path_opt) => close_path = *close_path_opt,
+            _ => (),
+        });
         Self {
             part_id: Uuid::new_v4(),
             item_id: Uuid::new_v4(),
             edges: vec![],
             committed_edges: 0,
             shape_prototype: create_shape_prototype(options),
+            close_path,
             selected_point: (0, 0), // TODO: merge commited_edges and selected_point concept
         }
     }
@@ -329,12 +331,11 @@ impl ShapeScratchPad {
         //TODO: other path types
         self.edges.push(Edge::Line(next_position));
         self.committed_edges = self.edges.len();
-        update_library(
-            library,
-            self.item_id,
-            &self.shape_prototype,
-            self.edges.clone(),
-        );
+        let mut edges = self.edges.clone();
+        if self.close_path {
+            edges.push(Edge::Close);
+        }
+        update_library(library, self.item_id, &self.shape_prototype, edges);
     }
 
     fn update_preview_edge(
@@ -346,12 +347,12 @@ impl ShapeScratchPad {
             self.edges.pop();
         }
         self.edges.push(Edge::Line(temp_position));
-        update_library(
-            library,
-            self.item_id,
-            &self.shape_prototype,
-            self.edges.clone(),
-        );
+        let mut edges = self.edges.clone();
+        // add close after clone to keep end of list what is currently being edited
+        if self.close_path {
+            edges.push(Edge::Close);
+        }
+        update_library(library, self.item_id, &self.shape_prototype, edges);
     }
 
     fn complete_path(
@@ -376,6 +377,9 @@ impl ShapeScratchPad {
                 .0
                 .remove(&(*root_entity_id, self.part_id));
         } else {
+            if self.close_path {
+                self.edges.push(Edge::Close);
+            }
             update_library(
                 library,
                 self.item_id,

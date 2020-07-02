@@ -765,7 +765,6 @@ mod tests {
             DisplayLibraryItem::Vector(Shape::Path {
                 edges: vec![],
                 color: ColorU::white(),
-                is_closed: false,
                 stroke_style: StrokeStyle::default(),
             }),
         );
