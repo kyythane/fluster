@@ -312,12 +312,16 @@ impl ShapeScratchPad {
             // Mark the root clean since we don't want to recompute bounds until the shape is done
             root.mark_clean();
         });
-        update_library(
-            library,
-            self.item_id,
-            &self.shape_prototype,
-            self.edges.clone(),
-        );
+        self.update_library(library);
+    }
+
+    fn update_library(&self, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
+        let mut edges = self.edges.clone();
+        // add close after clone to keep end of list what is currently being edited
+        if self.close_path {
+            edges.push(Edge::Close);
+        }
+        update_library(library, self.item_id, &self.shape_prototype, edges);
     }
 
     fn next_edge(
@@ -335,7 +339,7 @@ impl ShapeScratchPad {
         if self.close_path {
             edges.push(Edge::Close);
         }
-        update_library(library, self.item_id, &self.shape_prototype, edges);
+        self.update_library(library);
     }
 
     fn update_preview_edge(
@@ -347,12 +351,7 @@ impl ShapeScratchPad {
             self.edges.pop();
         }
         self.edges.push(Edge::Line(temp_position));
-        let mut edges = self.edges.clone();
-        // add close after clone to keep end of list what is currently being edited
-        if self.close_path {
-            edges.push(Edge::Close);
-        }
-        update_library(library, self.item_id, &self.shape_prototype, edges);
+        self.update_library(library);
     }
 
     fn complete_path(

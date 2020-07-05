@@ -56,7 +56,6 @@ pub enum Easing {
     None,
 }
 
-//TODO: BUG: Back and Elastic are just wrong
 impl Easing {
     pub fn ease(self, percent: f32) -> f32 {
         let percent = util::clamp_0_1(percent);
@@ -175,7 +174,7 @@ impl Easing {
                 } else if (1.0 - percent).abs() < EPSILON {
                     return 1.0;
                 }
-                2f32.powf(percent * 10.0) * ((percent - 0.1) * 5.0 * PI).sin() + 1.0
+                2f32.powf(percent * -10.0) * ((percent - 0.1) * 5.0 * PI).sin() + 1.0
             }
             Easing::ElasticInOut => {
                 if percent.abs() < EPSILON {
@@ -187,14 +186,14 @@ impl Easing {
                 if percent < 1.0 {
                     2f32.powf((percent - 1.0) * 10.0) * ((percent - 1.1) * 5.0 * PI).sin() * -0.5
                 } else {
-                    2f32.powf((percent - 1.0) * 10.0) * ((percent - 1.1) * 5.0 * PI).sin() * 0.5
+                    2f32.powf((percent - 1.0) * -10.0) * ((percent - 1.1) * 5.0 * PI).sin() * 0.5
                         + 1.0
                 }
             }
             Easing::BackIn => percent * percent * ((BACK_SCALE + 1.0) * percent - BACK_SCALE),
             Easing::BackOut => {
                 let percent = percent - 1.0;
-                percent * percent * ((BACK_SCALE + 1.0) * percent - BACK_SCALE) + 1.0
+                percent * percent * ((BACK_SCALE + 1.0) * percent + BACK_SCALE) + 1.0
             }
             Easing::BackInOut => {
                 let percent = percent * 2.0;
@@ -205,8 +204,8 @@ impl Easing {
                         * 0.5
                 } else {
                     let percent = percent - 2.0;
-                    (percent * percent * ((IN_OUT_BACK_SCALE + 1.0) * percent - IN_OUT_BACK_SCALE)
-                        + 1.0)
+                    (percent * percent * ((IN_OUT_BACK_SCALE + 1.0) * percent + IN_OUT_BACK_SCALE)
+                        + 2.0)
                         * 0.5
                 }
             }
