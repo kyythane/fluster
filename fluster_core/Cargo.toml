@@ -18,7 +18,8 @@ serde_bytes = "0.11"
 streaming-iterator = "0.1"
 uuid = { version = "0.8", features = ["serde"] }
 reduce = "0.1"
+specs= { version = "0.16", features =["specs-derive"] }
 
 [dev-dependencies]
 iobuffer = "0.2.0"
-mockall = "0.6"
+mockall = "0.7"

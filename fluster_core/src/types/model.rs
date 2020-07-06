@@ -15,6 +15,7 @@ use pathfinder_geometry::{transform2d::Transform2F, vector::Vector2F};
 use reduce::Reduce;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum DisplayLibraryItem {
     Vector(Shape),
