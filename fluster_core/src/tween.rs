@@ -283,7 +283,7 @@ impl TweenElapsed {
 }
 
 #[derive(Clone, Debug)]
-enum PropertyTweenData {
+pub enum PropertyTweenData {
     Color {
         start: ColorF,
         end: ColorF,
@@ -310,14 +310,8 @@ enum PropertyTweenData {
     },
 }
 
+// TODO: color and coloring twwen in sRGB. Investigate if using palette could help
 impl PropertyTween {
-    fn construct_elapsed(duration: TweenDuration) -> TweenElapsed {
-        match duration {
-            TweenDuration::Time(max) => TweenElapsed::Time(Duration::from_millis(0), max),
-            TweenDuration::Frame(max) => TweenElapsed::Frame(0, max),
-        }
-    }
-
     pub fn new_color(
         start: ColorU,
         end: ColorU,
@@ -403,6 +397,17 @@ impl PropertyTween {
             elapsed: Self::construct_elapsed(duration),
             easing,
         }
+    }
+
+    fn construct_elapsed(duration: TweenDuration) -> TweenElapsed {
+        match duration {
+            TweenDuration::Time(max) => TweenElapsed::Time(Duration::from_millis(0), max),
+            TweenDuration::Frame(max) => TweenElapsed::Frame(0, max),
+        }
+    }
+
+    pub fn tween_data(&self) -> &PropertyTweenData {
+        &self.data
     }
 }
 
