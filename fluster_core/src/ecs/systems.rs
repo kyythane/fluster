@@ -1,17 +1,9 @@
 use super::{
-    components::{Morph, Tweens},
-    resources::FrameTime,
+    components::{Bounds, Morph, Transform, Tweens},
+    resources::{FrameTime, SceneGraph},
 };
 use crate::tween::{PropertyTweenData, PropertyTweenUpdate, Tween};
-use pathfinder_geometry::transform2d::Transform2F;
-use specs::{prelude::*, storage::VecStorage, Component};
-#[derive(Component, Debug)]
-#[storage(VecStorage)]
-struct Transform {
-    local: Transform2F,
-    world: Transform2F,
-    touched: bool,
-}
+use specs::prelude::*;
 
 struct ApplyTransformTweens;
 
@@ -70,6 +62,26 @@ impl<'a> System<'a> for ApplyMorphTweens {
         }
     }
 }
+
+struct UpdateWorldTransform;
+
+impl<'a> System<'a> for UpdateWorldTransform {
+    type SystemData = (WriteStorage<'a, Transform>, ReadExpect<'a, SceneGraph>);
+
+    fn run(&mut self, (mut transform_storage, scene_graph): Self::SystemData) {
+        // update tweens
+    }
+}
+
+/*struct UpdateBounds;
+
+impl<'a> System<'a> for UpdateBounds {
+    type SystemData = (WriteStorage<'a, Bounds>);
+
+    fn run(&mut self, (mut transform_storage): Self::SystemData) {
+        // update tweens
+    }
+}*/
 
 struct UpdateTweens;
 

@@ -20,6 +20,7 @@ pub struct Transform {
 #[derive(Component, Debug)]
 #[storage(VecStorage)]
 pub struct Bounds {
+    pub bounds: RectF,
     pub source: BoundsSource,
 }
 
