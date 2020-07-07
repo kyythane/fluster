@@ -172,7 +172,7 @@ impl Part {
         part_update: &PartUpdateDefinition,
         duration_seconds: f32,
     ) -> Result<(), String> {
-        let tween = match part_update.payload() {
+        /*let tween = match part_update.payload() {
             PartUpdatePayload::Transform(end_transform) => PropertyTween::new_transform(
                 ScaleRotationTranslation::from_transform(&self.transform),
                 *end_transform,
@@ -239,12 +239,12 @@ impl Part {
                 }
             }
         };
-        self.tweens.push(tween);
+        self.tweens.push(tween);*/
         Ok(())
     }
 
     pub fn update_tweens(&mut self, elapsed: f32) -> Result<bool, String> {
-        let mut update_bounds = false;
+        /*let mut update_bounds = false;
         if let Some((new_transform, new_color, new_coloring, new_view_rect)) = self
             .tweens
             .iter_mut()
@@ -313,8 +313,8 @@ impl Part {
                     return Err("Applied Vector update to Raster part".to_owned());
                 };
             };
-        };
-        Ok(update_bounds)
+        };*/
+        Ok(false) //update_bounds)
     }
 }
 
@@ -493,7 +493,7 @@ impl Entity {
         duration_seconds: f32,
         library: &HashMap<Uuid, DisplayLibraryItem>,
     ) -> Result<(), String> {
-        for entity_update in entity_update_definition.entity_updates() {
+        /*for entity_update in entity_update_definition.entity_updates() {
             match entity_update {
                 EntityUpdatePayload::Transform { easing, transform } => {
                     let tween = PropertyTween::new_transform(
@@ -524,13 +524,13 @@ impl Entity {
                     part.add_tween(library_item, part_update, duration_seconds)?;
                 }
             }
-        }
+        }*/
         Ok(())
     }
 
     // TODO: Research frames per elapsed time for tweens
     pub fn update_tweens(&mut self, elapsed: f32) -> Result<(), String> {
-        if !self.tweens.is_empty() {
+        /* if !self.tweens.is_empty() {
             let mut transform_update = Transform2F::default();
             let mut morph_update = 0.0;
             let mut morph_updates_accumulated = 0.0;
@@ -565,7 +565,7 @@ impl Entity {
         }
         if update_bounds {
             self.mark_dirty();
-        }
+        }*/
         Ok(())
     }
 }

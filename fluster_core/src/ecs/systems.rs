@@ -1,9 +1,11 @@
 use super::{
-    components::{Bounds, Morph, Transform, Tweens},
+    components::{Bounds, Morph, RasterDisplay, Transform, Tweens, VectorDisplay},
     resources::{FrameTime, SceneGraph},
 };
 use crate::tween::{PropertyTweenData, PropertyTweenUpdate, Tween};
+use pathfinder_geometry::transform2d::Transform2F;
 use specs::prelude::*;
+use std::collections::{HashSet, VecDeque};
 
 struct ApplyTransformTweens;
 
@@ -66,22 +68,74 @@ impl<'a> System<'a> for ApplyMorphTweens {
 struct UpdateWorldTransform;
 
 impl<'a> System<'a> for UpdateWorldTransform {
-    type SystemData = (WriteStorage<'a, Transform>, ReadExpect<'a, SceneGraph>);
+    type SystemData = (
+        Entities<'a>,
+        WriteStorage<'a, Transform>,
+        ReadExpect<'a, SceneGraph>,
+    );
 
-    fn run(&mut self, (mut transform_storage, scene_graph): Self::SystemData) {
-        // update tweens
+    fn run(&mut self, (entities, mut transform_storage, scene_graph): Self::SystemData) {
+        let dirty_roots = entities
+            .join()
+            .filter(|entity| {
+                if let Some(transform) = transform_storage.get(*entity) {
+                    transform.touched
+                } else {
+                    false
+                }
+            })
+            .map(|entity| {
+                let mut maximal_id = &entity;
+                for parent in scene_graph.get_parent_iter(&entity) {
+                    if let Some(transform) = transform_storage.get(*parent) {
+                        maximal_id = parent;
+                    }
+                }
+                maximal_id
+            })
+            .collect::<HashSet<&Entity>>();
+        let mut queue = VecDeque::new();
+        for dirty_root in dirty_roots {
+            let mut current_world_transform =
+                if let Some(root_transform) = transform_storage.get(*dirty_root) {
+                    let mut parent_transform = Transform2F::default();
+                    for parent in scene_graph.get_parent_iter(dirty_root) {
+                        if let Some(transform) = transform_storage.get(*parent) {
+                            parent_transform = transform.world;
+                            break;
+                        }
+                    }
+                    parent_transform
+                } else {
+                    Transform2F::default()
+                };
+            queue.push_back(dirty_root);
+            while let Some(next) = queue.pop_front() {
+                for child in scene_graph.get_children(next).unwrap() {
+                    queue.push_back(child);
+                }
+                if let Some(transform) = transform_storage.get_mut(*next) {
+                    transform.world = current_world_transform * transform.local;
+                    current_world_transform = transform.world;
+                }
+            }
+        }
     }
 }
 
-/*struct UpdateBounds;
+struct UpdateBounds;
 
 impl<'a> System<'a> for UpdateBounds {
-    type SystemData = (WriteStorage<'a, Bounds>);
+    type SystemData = (
+        WriteStorage<'a, Bounds>,
+        ReadStorage<'a, VectorDisplay>,
+        ReadStorage<'a, RasterDisplay>,
+    );
 
-    fn run(&mut self, (mut transform_storage): Self::SystemData) {
+    fn run(&mut self, (mut transform_storage, vector_storage, raster_storage): Self::SystemData) {
         // update tweens
     }
-}*/
+}
 
 struct UpdateTweens;
 

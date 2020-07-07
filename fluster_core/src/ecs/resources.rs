@@ -51,4 +51,33 @@ impl SceneGraph {
     pub fn get_children(&self, entity: &Entity) -> Option<&Vec<Entity>> {
         self.tree.get(entity)
     }
+
+    pub fn root(&self) -> &Entity {
+        &self.root
+    }
+
+    pub fn get_parent_iter<'a>(&'a self, entity: &'a Entity) -> ParentIterator<'a> {
+        ParentIterator {
+            graph: self,
+            current: entity,
+        }
+    }
+}
+
+pub struct ParentIterator<'a> {
+    graph: &'a SceneGraph,
+    current: &'a Entity,
+}
+
+impl<'a> Iterator for ParentIterator<'a> {
+    type Item = &'a Entity;
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self.graph.parents.get(self.current);
+        if let Some(next) = next {
+            self.current = next;
+            Some(self.current)
+        } else {
+            None
+        }
+    }
 }

@@ -1,6 +1,7 @@
 #![deny(clippy::all)]
 #![feature(div_duration)]
 #![feature(clamp)]
+// #![feature(generators, generator_trait)]
 
 #[macro_use]
 extern crate nom;
