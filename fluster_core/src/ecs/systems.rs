@@ -4,18 +4,20 @@ use super::{
 };
 use crate::tween::{PropertyTweenData, PropertyTweenUpdate, Tween};
 use pathfinder_geometry::transform2d::Transform2F;
-use specs::prelude::*;
+use specs::Join;
+use specs::{Entities, Entity, Read, ReadExpect, ReadStorage, System, WriteStorage};
 use std::collections::{HashSet, VecDeque};
 
-struct ApplyTransformTweens;
+pub struct ApplyTransformTweens;
 
 impl<'a> System<'a> for ApplyTransformTweens {
     type SystemData = (WriteStorage<'a, Transform>, ReadStorage<'a, Tweens>);
 
     fn run(&mut self, (mut transform_storage, tweens_storage): Self::SystemData) {
-        for (transform, Tweens(tweens)) in (&mut transform_storage, &tweens_storage).join() {
+        for (transform, tweens) in (&mut transform_storage, &tweens_storage).join() {
             let before_update = transform.local;
             transform.local = tweens
+                .0
                 .iter()
                 .filter(|tween| {
                     if let PropertyTweenData::Transform { .. } = tween.tween_data() {
@@ -38,14 +40,15 @@ impl<'a> System<'a> for ApplyTransformTweens {
     }
 }
 
-struct ApplyMorphTweens;
+pub struct ApplyMorphTweens;
 
 impl<'a> System<'a> for ApplyMorphTweens {
     type SystemData = (WriteStorage<'a, Morph>, ReadStorage<'a, Tweens>);
 
     fn run(&mut self, (mut morph_storage, tweens_storage): Self::SystemData) {
-        for (morph, Tweens(tweens)) in (&mut morph_storage, &tweens_storage).join() {
+        for (morph, tweens) in (&mut morph_storage, &tweens_storage).join() {
             morph.0 = tweens
+                .0
                 .iter()
                 .filter(|tween| {
                     if let PropertyTweenData::MorphIndex { .. } = tween.tween_data() {
@@ -65,7 +68,7 @@ impl<'a> System<'a> for ApplyMorphTweens {
     }
 }
 
-struct UpdateWorldTransform;
+pub struct UpdateWorldTransform;
 
 impl<'a> System<'a> for UpdateWorldTransform {
     type SystemData = (
@@ -87,34 +90,28 @@ impl<'a> System<'a> for UpdateWorldTransform {
             .map(|entity| {
                 let mut maximal_id = &entity;
                 for parent in scene_graph.get_parent_iter(&entity) {
-                    if let Some(transform) = transform_storage.get(*parent) {
+                    if let Some(..) = transform_storage.get(*parent) {
                         maximal_id = parent;
                     }
                 }
-                maximal_id
+                *maximal_id
             })
-            .collect::<HashSet<&Entity>>();
+            .collect::<HashSet<Entity>>();
         let mut queue = VecDeque::new();
         for dirty_root in dirty_roots {
-            let mut current_world_transform =
-                if let Some(root_transform) = transform_storage.get(*dirty_root) {
-                    let mut parent_transform = Transform2F::default();
-                    for parent in scene_graph.get_parent_iter(dirty_root) {
-                        if let Some(transform) = transform_storage.get(*parent) {
-                            parent_transform = transform.world;
-                            break;
-                        }
-                    }
-                    parent_transform
-                } else {
-                    Transform2F::default()
-                };
+            let mut current_world_transform = Transform2F::default();
+            for parent in scene_graph.get_parent_iter(&dirty_root) {
+                if let Some(transform) = transform_storage.get(*parent) {
+                    current_world_transform = transform.world;
+                    break;
+                }
+            }
             queue.push_back(dirty_root);
             while let Some(next) = queue.pop_front() {
-                for child in scene_graph.get_children(next).unwrap() {
-                    queue.push_back(child);
+                for child in scene_graph.get_children(&next).unwrap() {
+                    queue.push_back(*child);
                 }
-                if let Some(transform) = transform_storage.get_mut(*next) {
+                if let Some(transform) = transform_storage.get_mut(next) {
                     transform.world = current_world_transform * transform.local;
                     current_world_transform = transform.world;
                 }
@@ -123,7 +120,7 @@ impl<'a> System<'a> for UpdateWorldTransform {
     }
 }
 
-struct UpdateBounds;
+pub struct UpdateBounds;
 
 impl<'a> System<'a> for UpdateBounds {
     type SystemData = (
@@ -137,17 +134,19 @@ impl<'a> System<'a> for UpdateBounds {
     }
 }
 
-struct UpdateTweens;
+pub struct UpdateTweens;
 
 impl<'a> System<'a> for UpdateTweens {
     type SystemData = (WriteStorage<'a, Tweens>, Read<'a, FrameTime>);
 
     fn run(&mut self, (mut tweens_storage, frame_time): Self::SystemData) {
         // update tweens
-        (&mut tweens_storage)
-            .join()
-            .flat_map(|tweens| tweens.0)
-            .for_each(|tween| tween.update(frame_time.delta_frame, frame_time.delta_time));
+        (&mut tweens_storage).join().for_each(|tweens| {
+            tweens
+                .0
+                .iter_mut()
+                .for_each(|tween| tween.update(frame_time.delta_frame, frame_time.delta_time))
+        });
         // filter out complete tweens
         for tweens in (&mut tweens_storage).join() {
             tweens.0.retain(|tween| !tween.is_complete());

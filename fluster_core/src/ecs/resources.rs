@@ -29,14 +29,23 @@ impl SceneGraph {
         }
     }
 
-    pub fn add_entity(&mut self, parent: &Entity, entity: &Entity) {}
+    pub fn add_entity(&mut self, parent: &Entity, entity: &Entity) {
+        if let Some(old_parent) = self.parents.insert(*entity, *parent) {
+            self.tree
+                .entry(old_parent)
+                .and_modify(|children| children.retain(|child| child != entity));
+        }
+        self.tree
+            .entry(*parent)
+            .and_modify(|children| children.push(*entity));
+    }
 
     pub fn remove_entity(&mut self, entity: &Entity) {
         let parent = self.parents.remove(entity);
         if let Some(children) = self.tree.remove(entity) {
             let parent = parent.unwrap();
-            for child in children {
-                self.parents.insert(child, parent);
+            for child in children.iter() {
+                self.parents.insert(*child, parent);
             }
             self.tree
                 .entry(parent)

@@ -9,7 +9,7 @@ use specs::{
 };
 use std::collections::HashSet;
 use uuid::Uuid;
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Default)]
 #[storage(VecStorage)]
 pub struct Transform {
     pub local: Transform2F,
