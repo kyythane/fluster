@@ -14,7 +14,7 @@ use uuid::Uuid;
 pub struct Transform {
     pub local: Transform2F,
     pub world: Transform2F,
-    pub touched: bool,
+    pub dirty: bool,
 }
 
 #[derive(Component, Debug)]
@@ -22,6 +22,7 @@ pub struct Transform {
 pub struct Bounds {
     pub bounds: RectF,
     pub source: BoundsSource,
+    pub dirty: bool,
 }
 
 #[derive(Debug)]
@@ -31,7 +32,7 @@ pub enum BoundsSource {
 }
 
 #[derive(Component, Debug)]
-#[storage(VecStorage)]
+#[storage(BTreeStorage)]
 pub struct Layer {
     pub quad_trees: HashSet<QuadTreeLayer>,
 }

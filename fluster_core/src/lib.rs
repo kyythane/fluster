@@ -8,6 +8,7 @@ extern crate nom;
 
 pub mod actions;
 pub mod ecs;
+pub mod engine;
 pub mod rendering;
 pub mod runner;
 pub mod serialization;

@@ -1,6 +1,77 @@
+use crate::{
+    runner::{QuadTreeLayer, QuadTreeLayerOptions},
+    types::shapes::Shape,
+};
+use aabb_quadtree_pathfinder::{QuadTree, RectF};
+use pathfinder_content::pattern::Pattern;
 use specs::Entity;
-use std::collections::HashMap;
+use std::collections::{hash_map::RandomState, HashMap};
 use std::time::Duration;
+use uuid::Uuid;
+
+#[derive(Default, Debug)]
+pub struct Library {
+    shapes: HashMap<Uuid, Shape>,
+    textures: HashMap<Uuid, Pattern>,
+}
+
+impl Library {
+    pub fn add_shape(&mut self, uuid: Uuid, shape: Shape) {
+        self.shapes.insert(uuid, shape);
+    }
+
+    pub fn add_texture(&mut self, uuid: Uuid, pattern: Pattern) {
+        self.textures.insert(uuid, pattern);
+    }
+
+    pub fn get_shape(&self, uuid: &Uuid) -> Option<&Shape> {
+        self.shapes.get(uuid)
+    }
+
+    pub fn get_texture(&self, uuid: &Uuid) -> Option<&Pattern> {
+        self.textures.get(uuid)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct ContainerMapping {
+    container_to_entity: HashMap<Uuid, Entity>,
+    entity_to_container: HashMap<Entity, Uuid>,
+}
+
+impl ContainerMapping {
+    pub fn add_container(&mut self, container_id: Uuid, entity: Entity) {
+        self.container_to_entity.insert(container_id, entity);
+        self.entity_to_container.insert(entity, container_id);
+    }
+
+    pub fn remove_container(&mut self, container_id: &Uuid) {
+        self.container_to_entity
+            .remove(container_id)
+            .and_then(|removed_entity| self.entity_to_container.remove(&removed_entity));
+    }
+
+    pub fn remove_entity(&mut self, entity: &Entity) {
+        self.entity_to_container
+            .remove(entity)
+            .and_then(|removed_container| self.container_to_entity.remove(&removed_container));
+    }
+
+    pub fn get_container(&self, entity: &Entity) -> Option<&Uuid> {
+        self.entity_to_container.get(entity)
+    }
+
+    pub fn get_entity(&self, container_id: &Uuid) -> Option<&Entity> {
+        self.container_to_entity.get(container_id)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct QuadTrees(HashMap<QuadTreeLayer, (QuadTree<Entity, RandomState>, QuadTreeLayerOptions)>);
+
+impl QuadTrees {
+    pub fn update(&mut self, entity: Entity, layer: QuadTreeLayer, aabb: RectF) {}
+}
 
 #[derive(Default, Copy, Clone, Debug)]
 pub struct FrameTime {
