@@ -7,12 +7,11 @@
 extern crate nom;
 
 pub mod actions;
-pub mod ecs;
+mod ecs;
 pub mod engine;
 pub mod rendering;
 pub mod runner;
 pub mod serialization;
 pub mod tween;
 pub mod types;
-pub mod util;
-mod quad_tree;
+mod util;

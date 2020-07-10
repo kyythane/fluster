@@ -1,9 +1,10 @@
 #![deny(clippy::all)]
 use super::types::{
-    model::{DisplayLibraryItem, Entity, PartMetaData},
-    shapes::{Coloring, Shape},
+    coloring::Coloring,
+    model::{Entity, PartMetaData},
+    shapes::Shape,
 };
-use crate::runner::SceneData;
+use crate::ecs::resources::Library;
 use pathfinder_color::ColorU;
 use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::rect::RectF;
@@ -80,7 +81,7 @@ pub fn compute_render_data<'a, S: BuildHasher>(
 
 pub fn paint<S: BuildHasher>(
     renderer: &mut impl Renderer,
-    library: &HashMap<Uuid, DisplayLibraryItem, S>,
+    library: &Library,
     paint_data: PaintData,
     scene_data: &SceneData,
 ) {

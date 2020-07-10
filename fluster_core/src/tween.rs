@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 
 use super::actions::RectPoints;
-use super::types::{basic::ScaleRotationTranslation, shapes::Coloring};
+use super::types::{basic::ScaleRotationTranslation, coloring::Coloring};
 use super::util;
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::rect::RectF;

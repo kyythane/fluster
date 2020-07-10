@@ -1,11 +1,8 @@
-use crate::{
-    runner::{QuadTreeLayer, QuadTreeLayerOptions},
-    types::shapes::Shape,
-};
+use crate::types::shapes::Shape;
 use aabb_quadtree_pathfinder::{QuadTree, RectF};
 use pathfinder_content::pattern::Pattern;
 use specs::Entity;
-use std::collections::{hash_map::RandomState, HashMap};
+use std::collections::{hash_map::RandomState, HashMap, VecDeque};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -30,6 +27,14 @@ impl Library {
 
     pub fn get_texture(&self, uuid: &Uuid) -> Option<&Pattern> {
         self.textures.get(uuid)
+    }
+
+    pub fn contains_shape(&self, uuid: &Uuid) -> bool {
+        self.shapes.contains_key(uuid)
+    }
+
+    pub fn contains_texture(&self, uuid: &Uuid) -> bool {
+        self.textures.contains_key(uuid)
     }
 }
 
@@ -66,11 +71,63 @@ impl ContainerMapping {
     }
 }
 
+pub type QuadTreeLayer = u32;
+
+#[derive(Debug, Default)]
+pub struct QuadTreeLayerOptions {
+    dilation: f32,
+}
+
+impl QuadTreeLayerOptions {
+    pub fn new(dilation: f32) -> Self {
+        Self { dilation }
+    }
+
+    pub fn dilation(&self) -> f32 {
+        self.dilation
+    }
+}
+
 #[derive(Default, Debug)]
 pub struct QuadTrees(HashMap<QuadTreeLayer, (QuadTree<Entity, RandomState>, QuadTreeLayerOptions)>);
 
 impl QuadTrees {
-    pub fn update(&mut self, entity: Entity, layer: QuadTreeLayer, aabb: RectF) {}
+    pub fn create_quad_tree(
+        &mut self,
+        layer: QuadTreeLayer,
+        bounds: RectF,
+        options: QuadTreeLayerOptions,
+    ) {
+        self.0.insert(
+            layer,
+            (QuadTree::default(bounds, RandomState::new()), options),
+        );
+    }
+
+    pub fn remove_quad_tree(&mut self, layer: &QuadTreeLayer) {
+        self.0.remove(layer);
+    }
+
+    pub fn update(&mut self, entity: Entity, layer: QuadTreeLayer, aabb: RectF) {
+        self.0.get_mut(&layer).and_then(|(tree, options)| {
+            let dialated = aabb.dilate(options.dilation());
+            tree.remove(&entity);
+            tree.insert(entity, dialated);
+            Some(())
+        });
+    }
+
+    pub fn remove_from_layer(&mut self, layer: &QuadTreeLayer, entity: Entity) {
+        self.0
+            .get_mut(&layer)
+            .and_then(|(tree, _)| tree.remove(&entity));
+    }
+
+    pub fn remove_all_layers(&mut self, entity: Entity) {
+        self.0.iter_mut().for_each(|(_, (tree, _))| {
+            tree.remove(&entity);
+        });
+    }
 }
 
 #[derive(Default, Copy, Clone, Debug)]
@@ -122,6 +179,25 @@ impl SceneGraph {
                 .entry(parent)
                 .and_modify(|existing_children| existing_children.extend(children));
         }
+    }
+
+    pub fn remove_entity_and_children(&mut self, entity: &Entity) -> Vec<Entity> {
+        let mut queue = VecDeque::new();
+        let mut removed = vec![];
+        queue.push_back(*entity);
+        removed.push(*entity);
+        while let Some(next) = queue.pop_front() {
+            self.tree
+                .remove(&next)
+                .unwrap_or_default()
+                .into_iter()
+                .for_each(|entity| {
+                    removed.push(entity);
+                    queue.push_back(entity);
+                });
+            self.parents.remove(&next);
+        }
+        removed
     }
 
     pub fn get_parent(&self, entity: &Entity) -> Option<&Entity> {

@@ -2,12 +2,12 @@
 
 use super::tween::Easing;
 use super::types::{
-    basic::{
-        transform_des, transform_ser, Bitmap, ColorUDef, ScaleRotationTranslation, Vector2FDef,
-    },
-    shapes::{Coloring, Shape},
+    basic::{transform_des, transform_ser, Bitmap, ScaleRotationTranslation, Vector2FDef},
+    coloring::Coloring,
+    shapes::Shape,
 };
 use core::cmp::min;
+use palette::LinSrgba;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
@@ -146,7 +146,6 @@ pub struct PartDefinition {
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum PartDefinitionPayload {
     Coloring(Coloring),
-    Tint(#[serde(with = "ColorUDef")] ColorU),
     ViewRect(RectPoints),
 }
 
@@ -197,7 +196,6 @@ pub struct PartUpdateDefinition {
 pub enum PartUpdatePayload {
     Transform(ScaleRotationTranslation),
     Coloring(Coloring),
-    Tint(#[serde(with = "ColorUDef")] ColorU),
     ViewRect(RectPoints),
 }
 
@@ -343,36 +341,40 @@ impl EntityUpdatePayload {
         }
     }
 }
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct ContainerCreationDefintition {
+    id: Uuid,
+    parent: Uuid,
+    properties: Vec<ContainerPropertyDefinition>,
+}
 
-//TODO: additional actions: Text, Scripts, Fonts, AddPart, RemovePart
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct ContainerUpdateDefintition {
+    id: Uuid,
+    properties: Vec<ContainerPropertyDefinition>,
+    easing: Easing,
+}
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub enum ContainerPropertyDefinition {
+    Transform(ScaleRotationTranslation),
+    MorphIndex(f32),
+    Coloring(Coloring),
+    ViewRect(RectPoints),
+    Display(Uuid),
+}
+
+//TODO: additional actions: Text, Scripts, Fonts
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Action {
     CreateRoot(Uuid),
-    SetBackground {
-        #[serde(with = "ColorUDef")]
-        color: ColorU,
-    },
+    SetBackground { color: LinSrgba },
     EndInitialization,
     Label(String),
-    DefineShape {
-        id: Uuid,
-        shape: Shape,
-    },
-    LoadBitmap {
-        id: Uuid,
-        bitmap: Bitmap,
-    },
-    AddEntity(EntityDefinition),
-    UpdateEntity(EntityUpdateDefinition),
-    RemoveEntity(Uuid),
-    AddPart {
-        entity_id: Uuid,
-        part_definition: PartDefinition,
-    },
-    RemovePart {
-        entity_id: Uuid,
-        part_id: Uuid,
-    },
+    DefineShape { id: Uuid, shape: Shape },
+    LoadBitmap { id: Uuid, bitmap: Bitmap },
+    CreateContainer(ContainerCreationDefintition),
+    UpdateContainer(ContainerUpdateDefintition),
+    RemoveContainer(Uuid, bool),
     PresentFrame(u32, u32), //TODO: if frames have set indexes, then how would it be possible to load in additional frames? Clip ID?
     Quit,
 }

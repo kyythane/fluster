@@ -1,11 +1,13 @@
 use super::{
     components::{
-        Bounds, BoundsSource, Layer, Morph, RasterDisplay, Transform, Tweens, VectorDisplay,
+        Bounds, BoundsSource, Coloring, Display, DisplayKind, Layer, Morph, Transform, Tweens,
+        ViewRect,
     },
     resources::{FrameTime, Library, QuadTrees, SceneGraph},
 };
 use crate::tween::{PropertyTweenData, PropertyTweenUpdate, Tween};
 use pathfinder_geometry::{rect::RectF, transform2d::Transform2F, vector::Vector2F};
+use reduce::Reduce;
 use specs::Join;
 use specs::{Entities, Entity, Read, ReadExpect, ReadStorage, System, Write, WriteStorage};
 use std::collections::{HashSet, VecDeque};
@@ -28,7 +30,7 @@ impl<'a> System<'a> for ApplyTransformTweens {
                         false
                     }
                 })
-                .fold(transform.local, |transform, tween| {
+                .fold(Transform2F::default(), |transform, tween| {
                     if let PropertyTweenUpdate::Transform(end_transfom) = tween.compute() {
                         transform * end_transfom
                     } else {
@@ -59,7 +61,7 @@ impl<'a> System<'a> for ApplyMorphTweens {
                         false
                     }
                 })
-                .fold(morph.0, |morph, tween| {
+                .fold(1.0, |morph, tween| {
                     if let PropertyTweenUpdate::Morph(end_morph) = tween.compute() {
                         morph * end_morph
                     } else {
@@ -68,6 +70,57 @@ impl<'a> System<'a> for ApplyMorphTweens {
                 });
         }
     }
+}
+
+pub struct ApplyViewRectTweens;
+
+impl<'a> System<'a> for ApplyViewRectTweens {
+    type SystemData = (WriteStorage<'a, ViewRect>, ReadStorage<'a, Tweens>);
+
+    fn run(&mut self, (mut view_storage, tweens_storage): Self::SystemData) {
+        for (view_rect, tweens) in (&mut view_storage, &tweens_storage).join() {
+            let (count, sum_rect) = tweens
+                .0
+                .iter()
+                .filter(|tween| {
+                    if let PropertyTweenData::ViewRect { .. } = tween.tween_data() {
+                        true
+                    } else {
+                        false
+                    }
+                })
+                .map(|tween| {
+                    if let PropertyTweenUpdate::ViewRect(end_rect) = tween.compute() {
+                        end_rect
+                    } else {
+                        panic!();
+                    }
+                })
+                .enumerate()
+                .reduce(|(_, sum_rect), (index, rect)| {
+                    (
+                        index + 1,
+                        RectF::from_points(
+                            sum_rect.origin() + rect.origin(),
+                            sum_rect.lower_right() + rect.lower_right(),
+                        ),
+                    )
+                })
+                .unwrap_or_else(|| (1, view_rect.0));
+            view_rect.0 = RectF::from_points(
+                sum_rect.origin() / count as f32,
+                sum_rect.lower_right() / count as f32,
+            );
+        }
+    }
+}
+
+pub struct ApplyColoringTweens;
+
+impl<'a> System<'a> for ApplyColoringTweens {
+    type SystemData = (WriteStorage<'a, Coloring>, ReadStorage<'a, Tweens>);
+
+    fn run(&mut self, (mut coloring_storage, tweens_storage): Self::SystemData) {}
 }
 
 pub struct UpdateWorldTransform;
@@ -80,6 +133,7 @@ impl<'a> System<'a> for UpdateWorldTransform {
     );
 
     fn run(&mut self, (entities, mut transform_storage, scene_graph): Self::SystemData) {
+        // First pass algorithm. O(m log n), where m is # dirty nodes and n is # total nodes.
         let dirty_roots = entities
             .join()
             .filter(|entity| {
@@ -133,8 +187,8 @@ impl<'a> System<'a> for UpdateBounds {
         WriteStorage<'a, Bounds>,
         ReadStorage<'a, Transform>,
         ReadStorage<'a, Morph>,
-        ReadStorage<'a, VectorDisplay>,
-        ReadStorage<'a, RasterDisplay>,
+        ReadStorage<'a, Display>,
+        ReadStorage<'a, ViewRect>,
         Read<'a, Library>,
     );
 
@@ -144,34 +198,36 @@ impl<'a> System<'a> for UpdateBounds {
             mut bounds_storage,
             transform_storage,
             morph_storage,
-            vector_storage,
-            raster_storage,
+            display_storage,
+            view_rect_storage,
             library,
         ): Self::SystemData,
     ) {
-        // update tweens
-        for (bounds, transform, morph, vector_display, raster_display) in (
+        for (bounds, transform, morph, display, view_rect) in (
             &mut bounds_storage,
             &transform_storage,
             (&morph_storage).maybe(),
-            (&vector_storage).maybe(),
-            (&raster_storage).maybe(),
+            (&display_storage).maybe(),
+            (&view_rect_storage).maybe(),
         )
             .join()
         {
             if transform.dirty {
                 bounds.bounds = match bounds.source {
                     BoundsSource::Display => {
-                        if let Some(vector_display) = vector_display {
-                            let shape = library.get_shape(&vector_display.target).unwrap();
-                            shape.compute_bounding(&transform.world, morph.unwrap_or(&Morph(0.0)).0)
-                        } else if let Some(raster_display) = raster_display {
-                            let pattern = library.get_texture(&raster_display.target).unwrap();
-                            let o = transform.world * Vector2F::default();
-                            let lr = transform.world * pattern.size().to_f32();
-                            RectF::from_points(o.min(lr), o.max(lr))
-                        } else {
-                            panic!("Attmpting to compute the bounds of an entity without an attachd display");
+                        match display {
+                            Some(Display(uuid, DisplayKind::Vector)) => {
+                                let shape = library.get_shape(uuid).unwrap();
+                                shape.compute_bounding(&transform.world, morph.unwrap_or(&Morph(0.0)).0)
+                            }
+                            Some(Display(uuid, DisplayKind::Raster)) => {
+                                let pattern = library.get_texture(uuid).unwrap();
+                                let (o, lr) = view_rect.and_then(|ViewRect(rect)| Some((rect.origin(), rect.lower_right()))).unwrap_or_else(|| (Vector2F::zero(), pattern.size().to_f32()));
+                                let o = transform.world * o;
+                                let lr = transform.world * lr;
+                                RectF::from_points(o.min(lr), o.max(lr))
+                            }
+                            None => panic!("Attmpting to compute the bounds of an entity without an attachd display")
                         }
                     }
                     BoundsSource::Defined(rect) => {

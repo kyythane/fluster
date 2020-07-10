@@ -1,7 +1,10 @@
-use super::basic::{transform_des, transform_ser, ColorUDef, Vector2FDef};
+use super::{
+    basic::{transform_des, transform_ser, Vector2FDef},
+    coloring::Coloring,
+};
 use crate::util;
+use palette::LinSrgb;
 use pathfinder_canvas::Path2D;
-use pathfinder_color::ColorU;
 use pathfinder_content::{
     outline::ArcDirection,
     stroke::{LineCap, LineJoin, StrokeStyle},
@@ -512,27 +515,23 @@ impl MorphEdge {
 pub enum Shape {
     Path {
         edges: Vec<Edge>,
-        #[serde(with = "ColorUDef")]
-        color: ColorU,
+        color: LinSrgb,
         #[serde(with = "StrokeStyleDef")]
         stroke_style: StrokeStyle,
     },
     Fill {
         edges: Vec<Edge>,
-        #[serde(with = "ColorUDef")]
-        color: ColorU,
+        color: LinSrgb,
     },
     MorphPath {
         edges: Vec<MorphEdge>,
-        #[serde(with = "ColorUDef")]
-        color: ColorU,
+        color: LinSrgb,
         #[serde(with = "StrokeStyleDef")]
         stroke_style: StrokeStyle,
     },
     MorphFill {
         edges: Vec<MorphEdge>,
-        #[serde(with = "ColorUDef")]
-        color: ColorU,
+        color: LinSrgb,
     },
     Clip {
         edges: Vec<Edge>,
@@ -639,54 +638,6 @@ impl Shape {
                 .map(|s| s.len())
                 .reduce(|l, acc| l + acc)
                 .unwrap_or_else(|| 0),
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum Coloring {
-    Color(#[serde(with = "ColorUDef")] ColorU),
-    Colorings(Vec<Coloring>),
-    //TODO: Gradient(Vector2F, Vec<ColorU>) ???
-    //TODO: Patterns ???
-    None,
-}
-
-impl Coloring {
-    #[inline]
-    //TODO: evaluate if tweens should operate using a proper linear space from palette?
-    //If the Colorings don't match return None. In effect this means we'll return to the default Coloring of the shape.
-    pub fn lerp(&self, end: &Coloring, percent: f32) -> Coloring {
-        match self {
-            Coloring::Color(start_color) => {
-                if let Coloring::Color(end_color) = end {
-                    Coloring::Color(
-                        start_color
-                            .to_f32()
-                            .lerp(end_color.to_f32(), percent)
-                            .to_u8(),
-                    )
-                } else {
-                    Coloring::None
-                }
-            }
-            Coloring::Colorings(start_colorings) => {
-                if let Coloring::Colorings(end_colorings) = end {
-                    if start_colorings.len() != end_colorings.len() {
-                        Coloring::None
-                    } else {
-                        let mut new_colorings: Vec<Coloring> =
-                            vec![Coloring::None; start_colorings.len()];
-                        for i in 0..start_colorings.len() {
-                            new_colorings[i] = start_colorings[i].lerp(&end_colorings[i], percent);
-                        }
-                        Coloring::Colorings(new_colorings)
-                    }
-                } else {
-                    Coloring::None
-                }
-            }
-            Coloring::None => Coloring::None,
         }
     }
 }

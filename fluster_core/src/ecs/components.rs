@@ -1,6 +1,6 @@
-use crate::types::shapes::Coloring;
-use crate::{runner::QuadTreeLayer, tween::PropertyTween};
-use pathfinder_color::ColorU;
+use super::resources::QuadTreeLayer;
+use crate::tween::PropertyTween;
+use crate::types::shapes::Coloring as ColoringData;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use specs::{
@@ -39,18 +39,21 @@ pub struct Layer {
 
 #[derive(Component, Debug)]
 #[storage(DenseVecStorage)]
-pub struct VectorDisplay {
-    pub target: Uuid,
-    pub coloring: Option<Coloring>,
+pub struct Display(pub Uuid, pub DisplayKind);
+
+#[derive(Clone, Copy, Debug)]
+pub enum DisplayKind {
+    Raster,
+    Vector,
 }
 
 #[derive(Component, Debug)]
-#[storage(DenseVecStorage)]
-pub struct RasterDisplay {
-    pub target: Uuid,
-    pub view_rect: RectF,
-    pub tint: Option<ColorU>,
-}
+#[storage(BTreeStorage)]
+pub struct ViewRect(pub RectF);
+
+#[derive(Component, Debug)]
+#[storage(BTreeStorage)]
+pub struct Coloring(pub ColoringData);
 
 #[derive(Component, Debug)]
 #[storage(VecStorage)]

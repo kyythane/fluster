@@ -4,10 +4,7 @@ use crate::actions::{
     EntityUpdateDefinition, EntityUpdatePayload, PartUpdateDefinition, PartUpdatePayload,
     RectPoints,
 };
-use crate::{
-    runner::QuadTreeLayer,
-    tween::{PropertyTween, PropertyTweenUpdate, Tween},
-};
+use crate::tween::{PropertyTween, PropertyTweenUpdate, Tween};
 use pathfinder_color::ColorU;
 use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::rect::RectF;
@@ -15,26 +12,6 @@ use pathfinder_geometry::{transform2d::Transform2F, vector::Vector2F};
 use reduce::Reduce;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
-
-#[derive(Clone, PartialEq, Debug)]
-pub enum DisplayLibraryItem {
-    Vector(Shape),
-    Raster(Pattern),
-}
-
-impl DisplayLibraryItem {
-    pub fn compute_bounding(&self, transform: &Transform2F, morph_percent: f32) -> RectF {
-        match self {
-            Self::Vector(shape) => shape.compute_bounding(transform, morph_percent),
-            Self::Raster(pattern) => {
-                let transform = *transform;
-                let o = transform * Vector2F::default();
-                let lr = transform * pattern.size().to_f32();
-                RectF::from_points(o.min(lr), o.max(lr))
-            }
-        }
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct Part {
@@ -61,49 +38,6 @@ pub enum PartMetaData {
 }
 
 impl Part {
-    pub fn new_vector(item_id: Uuid, transform: Transform2F, color: Option<Coloring>) -> Self {
-        Self {
-            item_id,
-            transform,
-            bounding_box: RectF::default(),
-            dirty: true,
-            active: true,
-            tweens: vec![],
-            meta_data: PartMetaData::Vector { color },
-            collision_layers: HashSet::new(),
-        }
-    }
-
-    pub fn new_raster(
-        item_id: Uuid,
-        view_rect: RectF,
-        transform: Transform2F,
-        tint: Option<ColorU>,
-    ) -> Part {
-        Self {
-            item_id,
-            transform,
-            bounding_box: RectF::default(),
-            dirty: true,
-            active: true,
-            tweens: vec![],
-            meta_data: PartMetaData::Raster { view_rect, tint },
-            collision_layers: HashSet::new(),
-        }
-    }
-
-    pub fn add_to_collision_layer(&mut self, layer: QuadTreeLayer) -> bool {
-        self.collision_layers.insert(layer)
-    }
-
-    pub fn remove_from_layer(&mut self, layer: &QuadTreeLayer) -> bool {
-        self.collision_layers.remove(layer)
-    }
-
-    pub fn collision_layers(&self) -> impl Iterator<Item = &QuadTreeLayer> {
-        self.collision_layers.iter()
-    }
-
     pub fn recompute_bounds(
         &mut self,
         world_transform: &Transform2F,
@@ -124,46 +58,6 @@ impl Part {
         };
         self.mark_clean();
         self.bounding_box
-    }
-
-    pub fn bounds(&self) -> &RectF {
-        &self.bounding_box
-    }
-
-    pub fn item_id(&self) -> &Uuid {
-        &self.item_id
-    }
-
-    pub fn dirty(&self) -> bool {
-        self.dirty
-    }
-
-    pub fn mark_clean(&mut self) {
-        self.dirty = false;
-    }
-
-    pub fn mark_dirty(&mut self) {
-        self.dirty = true;
-    }
-
-    pub fn active(&self) -> bool {
-        self.active
-    }
-
-    pub fn activate(&mut self) {
-        self.active = true;
-    }
-
-    pub fn deactivate(&mut self) {
-        self.active = false;
-    }
-
-    pub fn meta_data(&self) -> &PartMetaData {
-        &self.meta_data
-    }
-
-    pub fn transform(&self) -> &Transform2F {
-        &self.transform
     }
 
     pub fn add_tween(
@@ -335,31 +229,6 @@ pub struct Entity {
 }
 
 impl Entity {
-    pub fn new(
-        id: Uuid,
-        depth: u32,
-        name: &str,
-        parent: Uuid,
-        parts: HashMap<Uuid, Part>,
-        transform: Transform2F,
-        morph_index: f32,
-    ) -> Self {
-        Self {
-            active: true,
-            dirty: true,
-            children: vec![],
-            depth,
-            id,
-            name: name.to_owned(),
-            parent,
-            parts,
-            transform,
-            tweens: vec![],
-            morph_index,
-            bounding_box: RectF::default(),
-        }
-    }
-
     pub fn create_root(id: Uuid) -> Self {
         Self::new(
             id,

@@ -5,28 +5,26 @@ use super::actions::{
     PartDefinitionPayload,
 };
 use super::rendering::{compute_render_data, paint, Renderer};
-use super::types::{
-    basic::Bitmap,
-    model::{DisplayLibraryItem, Entity, Part},
-    shapes::Shape,
+use super::types::model::{Entity, Part};
+use crate::{
+    ecs::resources::{FrameTime, Library},
+    engine::Engine,
 };
-use crate::quad_tree::QuadTree;
 use pathfinder_color::ColorU;
-use pathfinder_geometry::{rect::RectF, transform2d::Transform2F, vector::Vector2F};
+use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use std::{
-    collections::{hash_map::RandomState, HashMap, HashSet, VecDeque},
+    collections::HashMap,
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
 
 pub struct State {
-    seconds_per_frame: f32,
+    frame_duration: Duration,
+    delta_time: Duration,
     frame: u32,
-    delta_time: f32,
-    frame_end_time: f64,
-    root_entity_id: Uuid,
+    frame_end_time: Instant,
     background_color: ColorU,
     running: bool,
     stage_size: Vector2F,
@@ -34,21 +32,14 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(
-        root_entity_id: Uuid,
-        background_color: ColorU,
-        seconds_per_frame: f32,
-        stage_size: Vector2F,
-        current_time: f64,
-    ) -> State {
+    pub fn new(background_color: ColorU, frame_duration: Duration, stage_size: Vector2F) -> State {
         State {
             frame: 0,
-            delta_time: 0.0,
-            frame_end_time: current_time,
-            root_entity_id,
+            frame_end_time: Instant::now(),
+            delta_time: Duration::from_millis(0),
+            frame_duration,
             background_color,
             running: true,
-            seconds_per_frame,
             stage_size,
         }
     }
@@ -62,188 +53,21 @@ impl State {
     }
 }
 
-pub type QuadTreeLayer = u32;
-
-#[derive(Debug, Default)]
-pub struct QuadTreeLayerOptions {
-    dilation: f32,
-}
-
-impl QuadTreeLayerOptions {
-    pub fn new(dilation: f32) -> Self {
-        Self { dilation }
-    }
-}
-
-#[derive(Debug)]
-pub struct SceneData {
-    quad_trees: HashMap<QuadTreeLayer, (QuadTree<(Uuid, Uuid), RandomState>, QuadTreeLayerOptions)>,
-    // TODO: should the entity track it's own world space transform instead? Or should we convert to an ECS?
-    world_space_transforms: HashMap<Uuid, Transform2F>,
-}
-
-impl SceneData {
-    pub fn new() -> Self {
-        SceneData {
-            quad_trees: HashMap::new(),
-            world_space_transforms: HashMap::new(),
-        }
-    }
-
-    pub fn add_layer(
-        &mut self,
-        layer: QuadTreeLayer,
-        bounds: RectF,
-        options: QuadTreeLayerOptions,
-    ) -> bool {
-        if !self.quad_trees.contains_key(&layer) {
-            self.quad_trees.insert(
-                layer,
-                (QuadTree::default(bounds, RandomState::new()), options),
-            );
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn remove_layer(&mut self, layer: &QuadTreeLayer) {
-        self.quad_trees.remove(layer);
-    }
-
-    pub fn remove(&mut self, entity_id: Uuid, part_id: Uuid) {
-        let key = (entity_id, part_id);
-        self.quad_trees.iter_mut().for_each(|(_, (tree, _))| {
-            tree.remove(&key);
-        });
-        self.world_space_transforms.remove(&entity_id);
-    }
-
-    pub fn world_space_transforms(&self) -> &HashMap<Uuid, Transform2F> {
-        &self.world_space_transforms
-    }
-
-    pub fn quad_tree(
-        &self,
-        layer: &QuadTreeLayer,
-    ) -> Option<&(QuadTree<(Uuid, Uuid), RandomState>, QuadTreeLayerOptions)> {
-        self.quad_trees.get(layer)
-    }
-
-    pub fn world_space_transforms_mut(&mut self) -> &mut HashMap<Uuid, Transform2F> {
-        &mut self.world_space_transforms
-    }
-
-    pub fn quad_tree_mut(
-        &mut self,
-        layer: &QuadTreeLayer,
-    ) -> Option<&mut (QuadTree<(Uuid, Uuid), RandomState>, QuadTreeLayerOptions)> {
-        self.quad_trees.get_mut(layer)
-    }
-
-    pub fn recompute(
-        &mut self,
-        root_entity_id: &Uuid,
-        display_list: &mut HashMap<Uuid, Entity>,
-        library: &HashMap<Uuid, DisplayLibraryItem>,
-    ) {
-        /* TODO: right now this will recommpute entities and parts that haven't changed.
-        Infrastructure entities and parts have a conception of if they need an update locally.
-        Need to properly merge that with the global knowlege of a needed update.
-        Diff world_space_transform before forced update. Careful of connasence.*/
-        // First pass algorithm. O(m log n), where m is # dirty nodes and n is # total nodes.
-        let dirty_roots = display_list
-            .iter()
-            .filter(|(_, entity)| entity.dirty())
-            .map(|(id, entity)| {
-                let mut entity = entity;
-                let mut maximal_id = id;
-                let mut query_id = id;
-                while query_id != root_entity_id {
-                    query_id = entity.parent();
-                    entity = display_list.get(query_id).unwrap();
-                    if entity.dirty() {
-                        maximal_id = query_id;
-                    }
-                }
-                *maximal_id
-            })
-            .collect::<HashSet<Uuid>>();
-        let mut queue = VecDeque::with_capacity(dirty_roots.len());
-        for dirty_root in dirty_roots {
-            queue.push_back(dirty_root);
-            while let Some(next_node) = queue.pop_front() {
-                if let Some(next_entity) = display_list.get_mut(&next_node) {
-                    for child_id in next_entity.children() {
-                        queue.push_back(*child_id);
-                    }
-                    // Update world_space transform for entity
-                    // Even if an entity is inactive, it's worldspace transform may change if that entity's parent updated.
-                    if &next_node == root_entity_id {
-                        self.world_space_transforms
-                            .insert(*next_entity.id(), *next_entity.transform());
-                    } else {
-                        // Since we are starting from the highest dirty nodes in our tree, we can always trust that the parent transform is valid
-                        let parent_transform = *self
-                            .world_space_transforms
-                            .get(next_entity.parent())
-                            .unwrap();
-                        self.world_space_transforms.insert(
-                            *next_entity.id(),
-                            parent_transform * *next_entity.transform(),
-                        );
-                    }
-                    // Inactive entities are not in any quadtrees
-                    if next_entity.active() {
-                        let next_world_space_transform =
-                            self.world_space_transforms.get(next_entity.id()).unwrap();
-                        next_entity.recompute_bounds(next_world_space_transform, library);
-                        next_entity.parts_with_id().for_each(|(part_id, part)| {
-                            let key = (next_node, *part_id);
-                            let bounds = *part.bounds();
-                            for layer in part.collision_layers() {
-                                self.quad_trees.entry(*layer).and_modify(|(tree, options)| {
-                                    tree.remove(&key);
-                                    tree.insert(key, bounds.dilate(options.dilation));
-                                });
-                            }
-                        });
-                    }
-                    next_entity.mark_clean();
-                }
-            }
-        }
-    }
-}
-
 pub fn play(
     renderer: &mut impl Renderer,
     actions: &mut ActionList,
     on_frame_complete: &mut dyn FnMut(State) -> State,
-    seconds_per_frame: f32,
+    frame_duration: Duration,
     stage_size: Vector2F,
 ) -> Result<(), String> {
-    let mut display_list: HashMap<Uuid, Entity> = HashMap::new();
-    let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
-    let mut scene_data = SceneData::new();
-    let mut state = initialize(
-        actions,
-        &mut display_list,
-        &mut library,
-        seconds_per_frame,
-        stage_size,
-    )?;
+    let (root_container_id, mut state, library) = initialize(actions, frame_duration, stage_size)?;
+    let mut engine = Engine::new(root_container_id, library);
+
     while let Some(_) = actions.get() {
         if !state.running {
             break;
         }
-        state = execute_actions(
-            state,
-            actions,
-            &mut display_list,
-            &mut library,
-            &mut scene_data,
-        )?;
+        state = execute_actions(state, actions, &mut engine)?;
         if let Some(Action::PresentFrame(start, count)) = actions.get() {
             if *count == 0 {
                 continue; //Treat PresentFrame(_, 0) as a no-op
@@ -253,34 +77,17 @@ pub fn play(
                 let start = state.frame - *start;
                 for frame in 0..(*count - start) {
                     //TODO: skip updates/paints to catch up to frame rate if we are lagging
-                    //TODO: handle input
-                    //TODO: scripts
-                    //TODO: tweens should update consistently w/ frame index instead of via timer
-                    update_tweens(state.delta_time, &mut display_list)?;
-                    scene_data.recompute(&state.root_entity_id, &mut display_list, &library);
+                    let frame_time = FrameTime {
+                        delta_frame: 1,
+                        delta_time: state.delta_time,
+                    };
+                    engine.update(frame_time);
                     draw_frame(renderer, &state, &display_list, &library, &scene_data)?;
                     state = on_frame_complete(state);
                     if !state.running {
                         break;
                     }
-                    let frame_end_time = time_seconds();
-                    let frame_time_left =
-                        state.seconds_per_frame - (frame_end_time - state.frame_end_time) as f32;
-                    println!(
-                        "frame {:?} time {:?}% of target ",
-                        state.frame,
-                        (frame_end_time - state.frame_end_time) as f32 / state.seconds_per_frame
-                            * 100.0
-                    );
-                    let frame_end_time = if frame_time_left > 0.0 {
-                        thread::sleep(Duration::from_secs_f32(frame_time_left));
-                        time_seconds()
-                    } else {
-                        frame_end_time
-                    };
-                    state.delta_time = (frame_end_time - state.frame_end_time) as f32;
-                    state.frame_end_time = frame_end_time;
-                    state.frame = start + frame + 1;
+                    handle_frame_delta(&mut state);
                 }
             }
         }
@@ -289,12 +96,24 @@ pub fn play(
     Ok(())
 }
 
-#[inline]
-fn time_seconds() -> f64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs_f64()
+fn handle_frame_delta(state: &mut State) {
+    let frame_end_time = Instant::now();
+    let frame_time_left = state.frame_duration - (frame_end_time - state.frame_end_time);
+    println!(
+        "frame {:?} time {:?}, {:?}% of target ",
+        state.frame,
+        (frame_end_time - state.frame_end_time),
+        (frame_end_time - state.frame_end_time).div_duration_f32(state.frame_duration) * 100.0
+    );
+    let frame_end_time = if frame_time_left.as_millis() > 0 {
+        thread::sleep(frame_time_left);
+        Instant::now()
+    } else {
+        frame_end_time
+    };
+    state.delta_time = frame_end_time - state.frame_end_time;
+    state.frame_end_time = frame_end_time;
+    state.frame = state.frame + 1;
 }
 
 fn update_tweens(elapsed: f32, display_list: &mut HashMap<Uuid, Entity>) -> Result<(), String> {
@@ -304,53 +123,29 @@ fn update_tweens(elapsed: f32, display_list: &mut HashMap<Uuid, Entity>) -> Resu
     Ok(())
 }
 
-fn define_shape(id: &Uuid, shape: &Shape, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
-    if !library.contains_key(id) {
-        let item = DisplayLibraryItem::Vector(shape.clone());
-        library.insert(*id, item);
-    }
-}
-
-// Note: this is destructive to the source bitmap. Bitmaps can be very large, and library loads are idempotent
-fn load_bitmap(id: &Uuid, bitmap: &mut Bitmap, library: &mut HashMap<Uuid, DisplayLibraryItem>) {
-    if !library.contains_key(id) {
-        let item = DisplayLibraryItem::Raster(bitmap.release_contents());
-        library.insert(*id, item);
-    }
-}
-
 fn initialize(
     actions: &mut ActionList,
-    display_list: &mut HashMap<Uuid, Entity>,
-    library: &mut HashMap<Uuid, DisplayLibraryItem>,
-    seconds_per_frame: f32,
+    frame_duration: Duration,
     stage_size: Vector2F,
-) -> Result<State, String> {
+) -> Result<(Uuid, State, Library), String> {
+    let mut library: Library = Library::default();
     let mut root_entity_id: Option<Uuid> = None;
     let mut background_color = ColorU::white();
     while let Some(action) = actions.get_mut() {
         match action {
             Action::CreateRoot(id) => {
                 root_entity_id = Some(*id);
-                if !display_list.is_empty() {
-                    return Err("Attempted to create root in non-empty display list".to_string());
-                }
-                let root = Entity::new(
-                    *id,
-                    0,
-                    "root",
-                    *id,
-                    HashMap::new(),
-                    Transform2F::default(),
-                    0.0,
-                );
-                display_list.insert(*id, root);
             }
             Action::DefineShape { id, shape } => {
-                define_shape(id, shape, library);
+                if !library.contains_shape(id) {
+                    library.add_shape(*id, shape.clone());
+                }
             }
             Action::LoadBitmap { id, ref mut bitmap } => {
-                load_bitmap(id, bitmap, library);
+                // Note: this is destructive to the source bitmap. Bitmaps can be very large, and library loads are idempotent
+                if !library.contains_texture(id) {
+                    library.add_texture(*id, bitmap.release_contents());
+                }
             }
             Action::SetBackground { color } => background_color = *color,
             Action::EndInitialization => break,
@@ -360,51 +155,20 @@ fn initialize(
     }
 
     if let Some(root_entity_id) = root_entity_id {
-        Ok(State::new(
+        Ok((
             root_entity_id,
-            background_color,
-            seconds_per_frame,
-            stage_size,
-            time_seconds(),
+            State::new(background_color, frame_duration, stage_size),
+            library,
         ))
     } else {
         Err("Action list did not define a root element".to_string())
     }
 }
 
-fn remove_entity(id: &Uuid, display_list: &mut HashMap<Uuid, Entity>, scene_data: &mut SceneData) {
-    //Removing an entity also removes it's children
-    if let Some(old) = display_list.remove(id) {
-        let parent = display_list.get_mut(old.parent()).unwrap();
-        parent.remove_child(id);
-        let mut to_remove = VecDeque::new();
-        for c_id in old.children() {
-            to_remove.push_back(*c_id);
-        }
-        // Remove all parts from the quad_tree
-        for (part_id, _) in old.parts_with_id() {
-            scene_data.remove(*id, *part_id);
-        }
-        while let Some(next_to_remove) = to_remove.pop_front() {
-            if let Some(old) = display_list.remove(&next_to_remove) {
-                for c_id in old.children() {
-                    to_remove.push_back(*c_id)
-                }
-                // Remove all parts from the quad_tree
-                for (part_id, _) in old.parts_with_id() {
-                    scene_data.remove(next_to_remove, *part_id);
-                }
-            }
-        }
-    }
-}
-
 fn execute_actions(
     state: State,
     actions: &mut ActionList,
-    display_list: &mut HashMap<Uuid, Entity>,
-    library: &mut HashMap<Uuid, DisplayLibraryItem>,
-    scene_data: &mut SceneData,
+    engine: &mut Engine,
 ) -> Result<State, String> {
     let mut state = state;
     while let Some(action) = actions.get_mut() {
@@ -421,27 +185,11 @@ fn execute_actions(
             Action::UpdateEntity(entity_update_definition) => {
                 add_tweens(&state, entity_update_definition, display_list, library)?;
             }
-            Action::RemoveEntity(id) => remove_entity(id, display_list, scene_data),
-            Action::AddPart {
-                entity_id,
-                part_definition,
-            } => {
-                if let Some(entity) = display_list.get_mut(entity_id) {
-                    if let Some((part_id, part)) = build_part(part_definition, library) {
-                        entity.add_part(&part_id, part)
-                    };
-                }
-            }
-            Action::RemovePart { entity_id, part_id } => {
-                if let Some(entity) = display_list.get_mut(entity_id) {
-                    if let Some(part) = entity.remove_part(part_id) {
-                        let key = (*entity_id, *part_id);
-                        for layer in part.collision_layers() {
-                            if let Some((quad_tree, _)) = scene_data.quad_tree_mut(layer) {
-                                quad_tree.remove(&key);
-                            }
-                        }
-                    }
+            Action::RemoveContainer(id, recursive) => {
+                if *recursive {
+                    engine.remove_container(id)
+                } else {
+                    engine.remove_container_and_children(id)
                 }
             }
             Action::SetBackground { color } => state.background_color = *color,
@@ -600,7 +348,8 @@ mod tests {
     };
     use crate::tween::Easing;
     use crate::types::basic::ScaleRotationTranslation;
-    use crate::types::shapes::{Coloring, Edge};
+    use crate::types::coloring::Coloring;
+    use crate::types::shapes::Edge;
     use mockall::predicate::*;
     use mockall::*;
     use pathfinder_content::{pattern::Pattern, stroke::StrokeStyle};
@@ -709,7 +458,7 @@ mod tests {
         let mut library: HashMap<Uuid, DisplayLibraryItem> = HashMap::new();
         let mut state = State {
             frame: 0,
-            delta_time: 0.0,
+            delta_time: Duration::from_millis(16.0),
             frame_end_time: time_seconds(),
             root_entity_id: root_id,
             background_color: ColorU::white(),
