@@ -146,7 +146,6 @@ impl StageState {
             .recompute(&self.root_entity_id, &mut self.display_list, &self.library)
     }
 
-    #[inline]
     pub fn scale(&self) -> f32 {
         self.scale
     }

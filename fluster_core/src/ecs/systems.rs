@@ -1,11 +1,13 @@
 use super::{
     components::{
-        Bounds, BoundsSource, Coloring, Display, DisplayKind, Layer, Morph, Transform, Tweens,
-        ViewRect,
+        Bounds, BoundsSource, Display, DisplayKind, Layer, Morph, Transform, Tweens, ViewRect,
     },
     resources::{FrameTime, Library, QuadTrees, SceneGraph},
 };
-use crate::tween::{PropertyTweenData, PropertyTweenUpdate, Tween};
+use crate::{
+    tween::{PropertyTweenData, PropertyTweenUpdate, Tween},
+    types::coloring::Coloring,
+};
 use pathfinder_geometry::{rect::RectF, transform2d::Transform2F, vector::Vector2F};
 use reduce::Reduce;
 use specs::Join;
@@ -120,7 +122,33 @@ pub struct ApplyColoringTweens;
 impl<'a> System<'a> for ApplyColoringTweens {
     type SystemData = (WriteStorage<'a, Coloring>, ReadStorage<'a, Tweens>);
 
-    fn run(&mut self, (mut coloring_storage, tweens_storage): Self::SystemData) {}
+    fn run(&mut self, (mut coloring_storage, tweens_storage): Self::SystemData) {
+        for (coloring, tweens) in (&mut coloring_storage, &tweens_storage).join() {
+            let (count, sum_denormalized) = tweens
+                .0
+                .iter()
+                .filter(|tween| {
+                    if let PropertyTweenData::Coloring { .. } = tween.tween_data() {
+                        true
+                    } else {
+                        false
+                    }
+                })
+                .map(|tween| {
+                    if let PropertyTweenUpdate::Coloring(end_coloring) = tween.compute() {
+                        end_coloring.into_denormalized()
+                    } else {
+                        panic!();
+                    }
+                })
+                .enumerate()
+                .reduce(|(_, sum_denormalized), (index, denormalized)| {
+                    (index + 1, sum_denormalized + denormalized)
+                })
+                .unwrap_or_else(|| (1, coloring.into_denormalized()));
+            *coloring = (sum_denormalized / count as f32).into_coloring();
+        }
+    }
 }
 
 pub struct UpdateWorldTransform;

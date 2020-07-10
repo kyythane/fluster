@@ -224,10 +224,6 @@ impl PartUpdatePayload {
             lower_right: rect.lower_right(),
         })
     }
-
-    pub fn from_tint(tint: ColorU) -> Self {
-        Self::Tint(tint)
-    }
 }
 
 impl PartUpdateDefinition {

@@ -1,9 +1,5 @@
 #![deny(clippy::all)]
-use super::types::{
-    coloring::Coloring,
-    model::{Entity, PartMetaData},
-    shapes::Shape,
-};
+use super::types::{coloring::Coloring, shapes::Shape};
 use crate::ecs::resources::Library;
 use pathfinder_color::ColorU;
 use pathfinder_content::pattern::Pattern;

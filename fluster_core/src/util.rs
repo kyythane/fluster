@@ -2,12 +2,10 @@
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use std::mem;
 
-#[inline]
 pub fn clamp_0_1(n: f32) -> f32 {
     n.clamp(0.0, 1.0)
 }
 
-#[inline]
 pub fn lerp(s: f32, e: f32, p: f32) -> f32 {
     (e - s) * p + s
 }

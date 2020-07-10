@@ -3,7 +3,7 @@ use super::{
     coloring::Coloring,
 };
 use crate::util;
-use palette::LinSrgb;
+use palette::LinSrgba;
 use pathfinder_canvas::Path2D;
 use pathfinder_content::{
     outline::ArcDirection,
@@ -515,23 +515,23 @@ impl MorphEdge {
 pub enum Shape {
     Path {
         edges: Vec<Edge>,
-        color: LinSrgb,
+        color: LinSrgba,
         #[serde(with = "StrokeStyleDef")]
         stroke_style: StrokeStyle,
     },
     Fill {
         edges: Vec<Edge>,
-        color: LinSrgb,
+        color: LinSrgba,
     },
     MorphPath {
         edges: Vec<MorphEdge>,
-        color: LinSrgb,
+        color: LinSrgba,
         #[serde(with = "StrokeStyleDef")]
         stroke_style: StrokeStyle,
     },
     MorphFill {
         edges: Vec<MorphEdge>,
-        color: LinSrgb,
+        color: LinSrgba,
     },
     Clip {
         edges: Vec<Edge>,

@@ -1,9 +1,11 @@
 #![deny(clippy::all)]
 
 use super::actions::RectPoints;
-use super::types::{basic::ScaleRotationTranslation, coloring::Coloring};
+use super::types::{
+    basic::ScaleRotationTranslation,
+    coloring::{ColorSpace, Coloring},
+};
 use super::util;
-use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
@@ -284,13 +286,10 @@ impl TweenElapsed {
 
 #[derive(Clone, Debug)]
 pub enum PropertyTweenData {
-    Color {
-        start: ColorF,
-        end: ColorF,
-    },
     Coloring {
         start: Coloring,
         end: Coloring,
+        color_space: ColorSpace,
     },
     Transform {
         start_scale: Vector2F,
@@ -310,32 +309,20 @@ pub enum PropertyTweenData {
     },
 }
 
-// TODO: color and coloring twwen in sRGB. Investigate if using palette could help
 impl PropertyTween {
-    pub fn new_color(
-        start: ColorU,
-        end: ColorU,
-        duration: TweenDuration,
-        easing: Easing,
-    ) -> PropertyTween {
-        PropertyTween {
-            data: PropertyTweenData::Color {
-                start: start.to_f32(),
-                end: end.to_f32(),
-            },
-            elapsed: Self::construct_elapsed(duration),
-            easing,
-        }
-    }
-
     pub fn new_coloring(
         start: Coloring,
         end: Coloring,
+        color_space: ColorSpace,
         duration: TweenDuration,
         easing: Easing,
     ) -> PropertyTween {
         PropertyTween {
-            data: PropertyTweenData::Coloring { start, end },
+            data: PropertyTweenData::Coloring {
+                start,
+                end,
+                color_space,
+            },
             elapsed: Self::construct_elapsed(duration),
             easing,
         }
@@ -413,7 +400,6 @@ impl PropertyTween {
 
 #[derive(Clone, Debug)]
 pub enum PropertyTweenUpdate {
-    Color(ColorU),
     Coloring(Coloring),
     Transform(Transform2F),
     ViewRect(RectF),
@@ -442,13 +428,13 @@ impl Tween for PropertyTween {
 
     fn compute(&self) -> Self::Item {
         match &self.data {
-            PropertyTweenData::Color { start, end } => {
+            PropertyTweenData::Coloring {
+                start,
+                end,
+                color_space,
+            } => {
                 let value = self.easing.ease(self.elapsed.as_percent());
-                PropertyTweenUpdate::Color(start.lerp(*end, value).to_u8())
-            }
-            PropertyTweenData::Coloring { start, end } => {
-                let value = self.easing.ease(self.elapsed.as_percent());
-                PropertyTweenUpdate::Coloring(start.lerp(end, value))
+                PropertyTweenUpdate::Coloring(start.lerp(end, value, *color_space))
             }
             PropertyTweenData::Transform {
                 start_scale,

@@ -1,6 +1,6 @@
 use super::resources::QuadTreeLayer;
 use crate::tween::PropertyTween;
-use crate::types::shapes::Coloring as ColoringData;
+use crate::types::coloring::Coloring;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use specs::{
@@ -51,9 +51,9 @@ pub enum DisplayKind {
 #[storage(BTreeStorage)]
 pub struct ViewRect(pub RectF);
 
-#[derive(Component, Debug)]
-#[storage(BTreeStorage)]
-pub struct Coloring(pub ColoringData);
+impl Component for Coloring {
+    type Storage = BTreeStorage<Self>;
+}
 
 #[derive(Component, Debug)]
 #[storage(VecStorage)]

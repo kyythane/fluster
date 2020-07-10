@@ -5,12 +5,11 @@ use super::actions::{
     PartDefinitionPayload,
 };
 use super::rendering::{compute_render_data, paint, Renderer};
-use super::types::model::{Entity, Part};
 use crate::{
     ecs::resources::{FrameTime, Library},
     engine::Engine,
 };
-use pathfinder_color::ColorU;
+use palette::LinSrgba;
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use std::{
     collections::HashMap,
@@ -116,13 +115,6 @@ fn handle_frame_delta(state: &mut State) {
     state.frame = state.frame + 1;
 }
 
-fn update_tweens(elapsed: f32, display_list: &mut HashMap<Uuid, Entity>) -> Result<(), String> {
-    for (_, entity) in display_list.iter_mut() {
-        entity.update_tweens(elapsed)?;
-    }
-    Ok(())
-}
-
 fn initialize(
     actions: &mut ActionList,
     frame_duration: Duration,
@@ -130,7 +122,7 @@ fn initialize(
 ) -> Result<(Uuid, State, Library), String> {
     let mut library: Library = Library::default();
     let mut root_entity_id: Option<Uuid> = None;
-    let mut background_color = ColorU::white();
+    let mut background_color = LinSrgba::white();
     while let Some(action) = actions.get_mut() {
         match action {
             Action::CreateRoot(id) => {
@@ -207,51 +199,6 @@ fn execute_actions(
         actions.advance();
     }
     Ok(state)
-}
-
-fn build_part(
-    definition: &PartDefinition,
-    library: &HashMap<Uuid, DisplayLibraryItem>,
-) -> Option<(Uuid, Part)> {
-    let mut color = None;
-    let mut tint = None;
-    let mut view_rect = None;
-    for definition_payload in definition.payload() {
-        match definition_payload {
-            PartDefinitionPayload::ViewRect(rect) => {
-                view_rect = Some(*rect);
-            }
-            PartDefinitionPayload::Coloring(coloring) => {
-                color = Some(coloring.clone());
-            }
-            PartDefinitionPayload::Tint(new_tint) => {
-                tint = Some(*new_tint);
-            }
-        }
-    }
-    match library.get(definition.item_id()) {
-        Some(DisplayLibraryItem::Vector(..)) => Some((
-            *definition.part_id(),
-            Part::new_vector(*definition.item_id(), definition.transform(), color),
-        )),
-        Some(DisplayLibraryItem::Raster(pattern)) => {
-            let view_rect = if let Some(points) = view_rect {
-                RectF::from_points(points.origin, points.lower_right)
-            } else {
-                RectF::from_points(Vector2F::zero(), pattern.size().to_f32())
-            };
-            Some((
-                *definition.part_id(),
-                Part::new_raster(
-                    *definition.item_id(),
-                    view_rect,
-                    definition.transform(),
-                    tint,
-                ),
-            ))
-        }
-        None => None,
-    }
 }
 
 fn add_entity(

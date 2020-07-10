@@ -1,10 +1,13 @@
-use crate::ecs::{
-    components::{Bounds, Coloring, Display, Layer, Morph, Order, Transform, Tweens, ViewRect},
-    resources::{ContainerMapping, FrameTime, Library, QuadTrees, SceneGraph},
-    systems::{
-        ApplyMorphTweens, ApplyTransformTweens, ApplyViewRectTweens, UpdateBounds, UpdateQuadTree,
-        UpdateTweens, UpdateWorldTransform,
+use crate::{
+    ecs::{
+        components::{Bounds, Display, Layer, Morph, Order, Transform, Tweens, ViewRect},
+        resources::{ContainerMapping, FrameTime, Library, QuadTrees, SceneGraph},
+        systems::{
+            ApplyColoringTweens, ApplyMorphTweens, ApplyTransformTweens, ApplyViewRectTweens,
+            UpdateBounds, UpdateQuadTree, UpdateTweens, UpdateWorldTransform,
+        },
     },
+    types::coloring::Coloring,
 };
 use specs::{shred::Fetch, Builder, Dispatcher, DispatcherBuilder, World, WorldExt};
 use uuid::Uuid;
@@ -42,6 +45,7 @@ impl<'a, 'b> Engine<'a, 'b> {
             .with(ApplyTransformTweens, "apply_transform_tweens", &[])
             .with(ApplyMorphTweens, "apply_morph_tweens", &[])
             .with(ApplyViewRectTweens, "apply_view_rect_tweens", &[])
+            .with(ApplyColoringTweens, "apply_coloring_tweens", &[])
             .with(
                 UpdateWorldTransform,
                 "update_world_transform",
