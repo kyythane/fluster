@@ -80,7 +80,7 @@ where
         &mut self,
         shape: &Shape,
         transform: Transform2F,
-        mut color_override: Option<Coloring>,
+        color_override: Option<Coloring>,
         morph_index: f32,
     ) {
         if let Some(canvas) = &mut self.canvas {

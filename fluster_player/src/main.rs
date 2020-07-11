@@ -6,7 +6,8 @@ use fluster_core::runner;
 use fluster_core::tween::Easing;
 use fluster_core::types::{
     basic::ScaleRotationTranslation,
-    shapes::{AugmentedShape, Coloring, Edge, MorphEdge, Shape},
+    coloring::Coloring,
+    shapes::{AugmentedShape, Edge, MorphEdge, Shape},
 };
 use fluster_graphics::FlusterRendererImpl;
 use pathfinder_canvas::CanvasFontContext;

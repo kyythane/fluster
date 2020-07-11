@@ -6,6 +6,7 @@ use super::types::{
     coloring::Coloring,
     shapes::Shape,
 };
+use crate::ecs::resources::{QuadTreeLayer, QuadTreeLayerOptions};
 use core::cmp::min;
 use palette::LinSrgb;
 use pathfinder_geometry::rect::RectF;
@@ -340,28 +341,76 @@ impl EntityUpdatePayload {
 pub struct ContainerCreationDefintition {
     id: Uuid,
     parent: Uuid,
-    properties: Vec<ContainerPropertyDefinition>,
+    properties: Vec<ContainerCreationProperty>,
+}
+
+impl ContainerCreationDefintition {
+    pub fn id(&self) -> &Uuid {
+        &self.id
+    }
+
+    pub fn parent(&self) -> &Uuid {
+        &self.parent
+    }
+
+    pub fn properties(&self) -> &Vec<ContainerCreationProperty> {
+        &self.properties
+    }
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct ContainerUpdateDefintition {
-    id: Uuid,
-    properties: Vec<ContainerPropertyDefinition>,
-    easing: Easing,
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum ContainerPropertyDefinition {
+pub enum ContainerCreationProperty {
     Transform(ScaleRotationTranslation),
     MorphIndex(f32),
     Coloring(Coloring),
     ViewRect(RectPoints),
     Display(Uuid),
+    Layer(QuadTreeLayer),
+    Order(i8),
+    Bounds(BoundsKindDefinition),
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct ContainerUpdateDefintition {
+    id: Uuid,
+    properties: Vec<ContainerUpdateProperty>,
+}
+
+impl ContainerUpdateDefintition {
+    pub fn id(&self) -> &Uuid {
+        &self.id
+    }
+
+    pub fn properties(&self) -> &Vec<ContainerUpdateProperty> {
+        &self.properties
+    }
+}
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub enum ContainerUpdateProperty {
+    Transform(ScaleRotationTranslation, Easing),
+    MorphIndex(f32, Easing),
+    Coloring(Coloring, Easing),
+    ViewRect(RectPoints, Easing),
+    Order(i8, Easing),
+    Display(Uuid),
+    RemoveDisplay(),
+    Parent(Uuid),
+    AddToLayer(QuadTreeLayer),
+    RemoveFromLayer(QuadTreeLayer),
+    Bounds(BoundsKindDefinition),
+    RemoveBounds(),
+}
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+pub enum BoundsKindDefinition {
+    Display,
+    Defined(RectPoints),
 }
 
 //TODO: additional actions: Text, Scripts, Fonts
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Action {
     CreateRoot(Uuid),
+    AddQuadTreeLayer(QuadTreeLayer, RectPoints, QuadTreeLayerOptions),
     SetBackground { color: LinSrgb },
     EndInitialization,
     Label(String),

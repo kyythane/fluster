@@ -1,6 +1,7 @@
 use crate::types::shapes::Shape;
 use aabb_quadtree_pathfinder::{QuadTree, RectF};
 use pathfinder_content::pattern::Pattern;
+use serde::{Deserialize, Serialize};
 use specs::Entity;
 use std::collections::{hash_map::RandomState, HashMap, VecDeque};
 use std::sync::Arc;
@@ -70,11 +71,19 @@ impl ContainerMapping {
     pub fn get_entity(&self, container_id: &Uuid) -> Option<&Entity> {
         self.container_to_entity.get(container_id)
     }
+
+    pub fn contains_container(&self, container_id: &Uuid) -> bool {
+        self.container_to_entity.contains_key(container_id)
+    }
+
+    pub fn contains_entity(&self, entity: &Entity) -> bool {
+        self.entity_to_container.contains_key(entity)
+    }
 }
 
 pub type QuadTreeLayer = u32;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct QuadTreeLayerOptions {
     dilation: f32,
 }

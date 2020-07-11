@@ -1,10 +1,14 @@
 use crate::{
-    actions::{ContainerCreationDefintition, ContainerUpdateDefintition},
+    actions::{
+        BoundsKindDefinition, ContainerCreationDefintition, ContainerCreationProperty,
+        ContainerUpdateDefintition,
+    },
     ecs::{
         components::{
-            Bounds, Display, DisplayKind, Layer, Morph, Order, Transform, Tweens, ViewRect,
+            Bounds, BoundsSource, Display, DisplayKind, Layer, Morph, Order, Transform, Tweens,
+            ViewRect,
         },
-        resources::{ContainerMapping, FrameTime, Library, QuadTrees, SceneGraph},
+        resources::{ContainerMapping, FrameTime, Library, QuadTreeLayer, QuadTrees, SceneGraph},
         systems::{
             ApplyColoringTweens, ApplyMorphTweens, ApplyTransformTweens, ApplyViewRectTweens,
             UpdateBounds, UpdateQuadTree, UpdateTweens, UpdateWorldTransform,
@@ -15,11 +19,12 @@ use crate::{
 use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::{rect::RectF, transform2d::Transform2F};
 use specs::{
+    error::WrongGeneration,
     shred::{Fetch, FetchMut},
-    Builder, Dispatcher, DispatcherBuilder, Entity, Join, World, WorldExt,
+    Builder, Dispatcher, DispatcherBuilder, Entity, EntityBuilder, Join, World, WorldExt,
 };
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
 };
 use uuid::Uuid;
@@ -30,7 +35,7 @@ pub struct Engine<'a, 'b> {
 }
 
 impl<'a, 'b> Engine<'a, 'b> {
-    pub fn new(root_container_id: Uuid, library: Library) -> Self {
+    pub fn new(root_container_id: Uuid, library: Library, quad_trees: QuadTrees) -> Self {
         let mut world = World::new();
         //Register components
         world.register::<Transform>();
@@ -46,7 +51,7 @@ impl<'a, 'b> Engine<'a, 'b> {
         // Setup resources
         let root = world.create_entity().with(Transform::default()).build();
         world.insert(SceneGraph::new(root));
-        world.write_resource::<QuadTrees>();
+        world.insert(quad_trees);
         let mut container_mapping = ContainerMapping::default();
         container_mapping.add_container(root_container_id, root);
         world.insert(container_mapping);
@@ -84,8 +89,16 @@ impl<'a, 'b> Engine<'a, 'b> {
         self.world.read_resource::<SceneGraph>()
     }
 
+    pub fn get_scene_graph_mut(&mut self) -> FetchMut<SceneGraph> {
+        self.world.write_resource::<SceneGraph>()
+    }
+
     pub fn get_container_mapping(&self) -> Fetch<ContainerMapping> {
         self.world.read_resource::<ContainerMapping>()
+    }
+
+    pub fn get_container_mapping_mut(&mut self) -> FetchMut<ContainerMapping> {
+        self.world.write_resource::<ContainerMapping>()
     }
 
     pub fn get_library(&self) -> Fetch<Library> {
@@ -96,52 +109,170 @@ impl<'a, 'b> Engine<'a, 'b> {
         self.world.write_resource::<Library>()
     }
 
+    pub fn get_quad_trees(&self) -> Fetch<QuadTrees> {
+        self.world.read_resource::<QuadTrees>()
+    }
+
+    pub fn get_quad_trees_mut(&mut self) -> FetchMut<QuadTrees> {
+        self.world.write_resource::<QuadTrees>()
+    }
+
     pub fn get_root_container_id(&self) -> Uuid {
         let scene_graph = self.get_scene_graph();
         let container_mapping = self.get_container_mapping();
         *container_mapping.get_container(scene_graph.root()).unwrap()
     }
 
-    pub fn create_container(
-        &mut self,
-        container_creation_definition: &ContainerCreationDefintition,
-    ) {
-        let mut scene_graph = self.world.write_resource::<SceneGraph>();
-        let mut container_mapping = self.world.write_resource::<ContainerMapping>();
-        unimplemented!();
+    pub fn create_container(&mut self, definition: &ContainerCreationDefintition) {
+        let container_mapping = self.world.read_resource::<ContainerMapping>();
+        if container_mapping.contains_container(definition.id()) {
+            // TODO: errors
+            return;
+        } else if !container_mapping.contains_container(definition.parent()) {
+            return;
+        } else {
+            let entities = self.world.entities_mut();
+            let mut entity_builder = entities.build_entity();
+            let library = self.world.read_resource::<Library>();
+            let parent_entity = *container_mapping.get_entity(definition.parent()).unwrap();
+            for property in definition.properties() {
+                match property {
+                    ContainerCreationProperty::Transform(srt) => {
+                        let transform = Transform {
+                            local: Transform2F::from_scale_rotation_translation(
+                                srt.scale,
+                                srt.theta,
+                                srt.translation,
+                            ),
+                            // NOTE: not definining world transform since that will get computed in first frame after entity is added
+                            world: Transform2F::default(),
+                            dirty: true,
+                        };
+                        entity_builder = entity_builder
+                            .with(transform, &mut self.world.write_storage::<Transform>());
+                    }
+                    ContainerCreationProperty::MorphIndex(morph) => {
+                        entity_builder = entity_builder
+                            .with(Morph(*morph), &mut self.world.write_storage::<Morph>());
+                    }
+                    ContainerCreationProperty::Coloring(coloring) => {
+                        entity_builder = entity_builder.with(
+                            coloring.clone(),
+                            &mut self.world.write_storage::<Coloring>(),
+                        );
+                    }
+                    ContainerCreationProperty::ViewRect(rect_points) => {
+                        entity_builder = entity_builder.with(
+                            ViewRect(RectF::from_points(
+                                rect_points.origin,
+                                rect_points.lower_right,
+                            )),
+                            &mut self.world.write_storage::<ViewRect>(),
+                        );
+                    }
+                    ContainerCreationProperty::Display(display) => {
+                        let display_item = if library.contains_shape(display) {
+                            Display(*display, DisplayKind::Vector)
+                        } else if library.contains_texture(display) {
+                            Display(*display, DisplayKind::Raster)
+                        } else {
+                            // TODO: errors
+                            panic!()
+                        };
+                        entity_builder = entity_builder
+                            .with(display_item, &mut self.world.write_storage::<Display>());
+                    }
+                    ContainerCreationProperty::Order(order) => {
+                        entity_builder = entity_builder
+                            .with(Order(*order), &mut self.world.write_storage::<Order>());
+                    }
+                    ContainerCreationProperty::Bounds(bounds_definition) => {
+                        let bounds = match bounds_definition {
+                            BoundsKindDefinition::Display => Bounds {
+                                bounds: RectF::default(),
+                                source: BoundsSource::Display,
+                                dirty: true,
+                            },
+                            BoundsKindDefinition::Defined(rect_points) => Bounds {
+                                // NOTE: not definining bounds since that will get computed in first frame after entity is added
+                                bounds: RectF::default(),
+                                source: BoundsSource::Defined(RectF::from_points(
+                                    rect_points.origin,
+                                    rect_points.lower_right,
+                                )),
+                                dirty: true,
+                            },
+                        };
+                        entity_builder =
+                            entity_builder.with(bounds, &mut self.world.write_storage::<Bounds>());
+                    }
+                    ContainerCreationProperty::Layer(..) => {}
+                }
+            }
+            // Layers work a little differently since there could be multiple provided
+            let layers = definition
+                .properties()
+                .iter()
+                .filter_map(|property| {
+                    if let ContainerCreationProperty::Layer(layer) = property {
+                        Some(*layer)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<HashSet<QuadTreeLayer>>();
+            if layers.len() > 0 {
+                entity_builder = entity_builder.with(
+                    Layer { quad_trees: layers },
+                    &mut self.world.write_storage::<Layer>(),
+                );
+            }
+            let entity = entity_builder.build();
+            let mut container_mapping = self.world.write_resource::<ContainerMapping>();
+            container_mapping.add_container(*definition.id(), entity);
+            let mut scene_graph = self.world.write_resource::<SceneGraph>();
+            scene_graph.add_entity(&parent_entity, &entity);
+            // NOTE: not inserting into quad tree since that will get handled during the first frame this entity exists in
+        }
     }
 
-    pub fn update_container(&mut self, container_update_definition: &ContainerUpdateDefintition) {
+    pub fn update_container(&mut self, definition: &ContainerUpdateDefintition) {
         let mut scene_graph = self.world.write_resource::<SceneGraph>();
         let mut container_mapping = self.world.read_resource::<ContainerMapping>();
         unimplemented!();
     }
 
-    pub fn remove_container(&mut self, container_id: &Uuid) {
+    pub fn remove_container(&mut self, container_id: &Uuid) -> Result<(), WrongGeneration> {
         let mut scene_graph = self.world.write_resource::<SceneGraph>();
         let mut container_mapping = self.world.write_resource::<ContainerMapping>();
+        let mut quad_trees = self.world.write_resource::<QuadTrees>();
         let entities = self.world.entities_mut();
         let entity = container_mapping.get_entity(container_id).copied();
         if let Some(entity) = entity {
             container_mapping.remove_container(container_id);
             scene_graph.remove_entity(&entity);
-            entities.delete(entity);
+            quad_trees.remove_all_layers(entity);
+            entities.delete(entity)?;
         }
+        Ok(())
     }
 
-    pub fn remove_container_and_children(&mut self, container_id: &Uuid) {
+    pub fn remove_container_and_children(
+        &mut self,
+        container_id: &Uuid,
+    ) -> Result<(), WrongGeneration> {
         let mut scene_graph = self.world.write_resource::<SceneGraph>();
         let mut container_mapping = self.world.write_resource::<ContainerMapping>();
         let entities = self.world.entities_mut();
+        let mut quad_trees = self.world.write_resource::<QuadTrees>();
         if let Some(entity) = container_mapping.get_entity(container_id) {
-            scene_graph
-                .remove_entity_and_children(entity)
-                .into_iter()
-                .for_each(|entity| {
-                    container_mapping.remove_entity(&entity);
-                    entities.delete(entity);
-                });
+            for entity in scene_graph.remove_entity_and_children(entity).into_iter() {
+                container_mapping.remove_entity(&entity);
+                quad_trees.remove_all_layers(entity);
+                entities.delete(entity)?;
+            }
         }
+        Ok(())
     }
 
     pub fn get_drawable_items(&self) -> Vec<DrawableItem> {

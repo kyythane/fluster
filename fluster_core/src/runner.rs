@@ -3,10 +3,11 @@
 use super::actions::{Action, ActionList};
 use super::rendering::{lin_srgb_to_coloru, paint, Renderer};
 use crate::{
-    ecs::resources::{FrameTime, Library},
+    ecs::resources::{FrameTime, Library, QuadTrees},
     engine::Engine,
     types::{basic::Bitmap, shapes::Shape},
 };
+use aabb_quadtree_pathfinder::RectF;
 use palette::{named, LinSrgb, Srgb};
 use pathfinder_geometry::vector::Vector2F;
 use std::{
@@ -56,8 +57,9 @@ pub fn play(
     frame_duration: Duration,
     stage_size: Vector2F,
 ) -> Result<(), String> {
-    let (root_container_id, mut state, library) = initialize(actions, frame_duration, stage_size)?;
-    let mut engine = Engine::new(root_container_id, library);
+    let (root_container_id, mut state, library, quad_trees) =
+        initialize(actions, frame_duration, stage_size)?;
+    let mut engine = Engine::new(root_container_id, library, quad_trees);
 
     while let Some(_) = actions.get() {
         if !state.running {
@@ -71,7 +73,7 @@ pub fn play(
                 return Err("Attempting to play incorrect frame. Frame counter and action list have gotten desynced".to_string());
             } else {
                 let start = state.frame - *start;
-                for frame in 0..(*count - start) {
+                for _ in 0..(*count - start) {
                     //TODO: skip updates/paints to catch up to frame rate if we are lagging
                     let frame_time = FrameTime {
                         delta_frame: 1,
@@ -129,8 +131,9 @@ fn initialize(
     actions: &mut ActionList,
     frame_duration: Duration,
     stage_size: Vector2F,
-) -> Result<(Uuid, State, Library), String> {
-    let mut library: Library = Library::default();
+) -> Result<(Uuid, State, Library, QuadTrees), String> {
+    let mut library = Library::default();
+    let mut quad_trees = QuadTrees::default();
     let mut root_entity_id: Option<Uuid> = None;
     let mut background_color = Srgb::<f32>::from_format(named::OLIVE).into_linear();
     while let Some(action) = actions.get_mut() {
@@ -146,6 +149,13 @@ fn initialize(
             }
             Action::SetBackground { color } => background_color = *color,
             Action::EndInitialization => break,
+            Action::AddQuadTreeLayer(layer, bounds, options) => {
+                quad_trees.create_quad_tree(
+                    *layer,
+                    RectF::from_points(bounds.origin, bounds.lower_right),
+                    options.clone(),
+                );
+            }
             _ => return Err("Unexpected action in initialization".to_string()),
         }
         actions.advance();
@@ -156,6 +166,7 @@ fn initialize(
             root_entity_id,
             State::new(background_color, frame_duration, stage_size),
             library,
+            quad_trees,
         ))
     } else {
         Err("Action list did not define a root element".to_string())
@@ -190,6 +201,13 @@ fn execute_actions(
                 } else {
                     engine.remove_container_and_children(id);
                 }
+            }
+            Action::AddQuadTreeLayer(layer, bounds, options) => {
+                engine.get_quad_trees_mut().create_quad_tree(
+                    *layer,
+                    RectF::from_points(bounds.origin, bounds.lower_right),
+                    options.clone(),
+                );
             }
             Action::SetBackground { color } => state.background_color = *color,
             Action::PresentFrame(_, _) => break,
