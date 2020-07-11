@@ -15,7 +15,7 @@ use pathfinder_geometry::vector::Vector2F;
 use pathfinder_gpu::Device;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::{RendererLevel, RendererOptions};
+use pathfinder_renderer::gpu::options::RendererLevel;
 use pathfinder_renderer::gpu::renderer::Renderer as PathfinderRenderer;
 use pathfinder_renderer::options::BuildOptions;
 use std::{mem, sync::Arc};
@@ -80,7 +80,7 @@ where
         &mut self,
         shape: &Shape,
         transform: Transform2F,
-        color_override: Option<Coloring>,
+        mut color_override: Option<Coloring>,
         morph_index: f32,
     ) {
         if let Some(canvas) = &mut self.canvas {
@@ -161,28 +161,24 @@ where
                     }
                 }
                 Shape::Group { shapes } => {
-                    if let Some(Coloring::Colorings(color_override)) = color_override {
-                        if color_override.len() == shapes.len() {
-                            for i in 0..shapes.len() {
-                                let shape = &shapes[i];
-                                let color_override = Some(color_override[i]);
-                                self.handle_draw_shape(
-                                    &shape.shape,
-                                    transform * shape.transform,
-                                    color_override,
-                                    morph_index,
-                                )
-                            }
-                            return;
+                    if let Some(Coloring::Colorings(mut color_overrides)) = color_override {
+                        for (color, shape) in color_overrides.drain(..).zip(shapes) {
+                            self.handle_draw_shape(
+                                &shape.shape,
+                                transform * shape.transform,
+                                Some(color),
+                                morph_index,
+                            )
                         }
-                    }
-                    for shape in shapes {
-                        self.handle_draw_shape(
-                            &shape.shape,
-                            transform * shape.transform,
-                            color_override,
-                            morph_index,
-                        )
+                    } else {
+                        for shape in shapes {
+                            self.handle_draw_shape(
+                                &shape.shape,
+                                transform * shape.transform,
+                                None,
+                                morph_index,
+                            )
+                        }
                     }
                 }
             }
@@ -199,10 +195,7 @@ where
         self.canvas = Some(Canvas::new(stage_size).get_context_2d(self.font_context.clone()))
     }
     fn set_background(&mut self, color: ColorU) {
-        self.renderer.set_options(RendererOptions {
-            background_color: Some(color.to_f32()),
-            no_compute: false,
-        });
+        self.renderer.options_mut().background_color = Some(color.to_f32());
     }
 
     fn draw_shape(
@@ -231,7 +224,7 @@ where
         if let Some(canvas) = &mut self.canvas {
             canvas.set_transform(&transform);
             canvas.draw_subimage(
-                *pattern,
+                (*pattern).clone(),
                 view_rect,
                 RectF::new(Vector2F::zero(), view_rect.size()),
             );
