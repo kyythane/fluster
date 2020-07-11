@@ -6,7 +6,10 @@ use super::types::{
     coloring::Coloring,
     shapes::Shape,
 };
-use crate::ecs::resources::{QuadTreeLayer, QuadTreeLayerOptions};
+use crate::{
+    ecs::resources::{QuadTreeLayer, QuadTreeLayerOptions},
+    types::coloring::ColorSpace,
+};
 use core::cmp::min;
 use palette::LinSrgb;
 use pathfinder_geometry::rect::RectF;
@@ -389,7 +392,7 @@ impl ContainerUpdateDefintition {
 pub enum ContainerUpdateProperty {
     Transform(ScaleRotationTranslation, Easing, u32),
     MorphIndex(f32, Easing, u32),
-    Coloring(Coloring, Easing, u32),
+    Coloring(Coloring, ColorSpace, Easing, u32),
     ViewRect(RectPoints, Easing, u32),
     Order(i8, Easing, u32),
     Display(Uuid),

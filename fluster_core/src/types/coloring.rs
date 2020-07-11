@@ -83,7 +83,7 @@ impl DenormalizedColoring {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub enum ColorSpace {
     Linear,
     Hsv,

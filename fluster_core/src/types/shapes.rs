@@ -14,7 +14,6 @@ use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use reduce::Reduce;
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
-use std::mem;
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Edge {
