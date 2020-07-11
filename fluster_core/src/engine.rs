@@ -151,6 +151,7 @@ impl<'a, 'b> Engine<'a, 'b> {
                             world: Transform2F::default(),
                             dirty: true,
                         };
+                        println!("fuck");
                         entity_builder = entity_builder
                             .with(transform, &mut self.world.write_storage::<Transform>());
                     }

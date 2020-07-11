@@ -22,4 +22,4 @@ uuid = { version = "0.8", features = ["v4"] }
 iced = { version = "0.1", features = ["image"] }
 iced_native = "0.2"
 iced_wgpu = "0.2"
-palette="0.5"
+palette = { git = "https://github.com/Ogeon/palette.git" }

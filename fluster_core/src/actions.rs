@@ -348,6 +348,14 @@ pub struct ContainerCreationDefintition {
 }
 
 impl ContainerCreationDefintition {
+    pub fn new(parent: Uuid, id: Uuid, properties: Vec<ContainerCreationProperty>) -> Self {
+        Self {
+            id,
+            parent,
+            properties,
+        }
+    }
+
     pub fn id(&self) -> &Uuid {
         &self.id
     }
@@ -380,6 +388,10 @@ pub struct ContainerUpdateDefintition {
 }
 
 impl ContainerUpdateDefintition {
+    pub fn new(id: Uuid, properties: Vec<ContainerUpdateProperty>) -> Self {
+        Self { id, properties }
+    }
+
     pub fn id(&self) -> &Uuid {
         &self.id
     }
