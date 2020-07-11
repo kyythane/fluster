@@ -1,7 +1,6 @@
-use palette::{Hsva, Laba, Lcha, LinSrgba, Mix};
+use palette::{FromColor, Hsva, Laba, Lcha, LinSrgba, Mix};
 use pathfinder_geometry::vector::Vector4F;
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, Div};
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Coloring {
@@ -40,16 +39,12 @@ impl DenormalizedColoring {
     pub fn from_coloring(coloring: Coloring) -> DenormalizedColoring {
         coloring.into_denormalized()
     }
-}
 
-impl Add for DenormalizedColoring {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
+    pub fn add(&self, other: &Self) -> Self {
         match self {
             Self::Color(self_deno) => {
                 if let Self::Color(other_deno) = other {
-                    Self::Color(self_deno + other_deno)
+                    Self::Color(*self_deno + *other_deno)
                 } else {
                     Self::None
                 }
@@ -62,7 +57,7 @@ impl Add for DenormalizedColoring {
                         let mut new_colorings: Vec<DenormalizedColoring> =
                             vec![DenormalizedColoring::None; self_denos.len()];
                         for i in 0..self_denos.len() {
-                            new_colorings[i] = self_denos[i] + other_denos[i];
+                            new_colorings[i] = self_denos[i].add(&other_denos[i]);
                         }
                         Self::Colorings(new_colorings)
                     }
@@ -73,18 +68,14 @@ impl Add for DenormalizedColoring {
             Self::None => Self::None,
         }
     }
-}
 
-impl Div<f32> for DenormalizedColoring {
-    type Output = Self;
-
-    fn div(self, rhs: f32) -> Self {
+    pub fn div(&self, rhs: f32) -> Self {
         match self {
-            Self::Color(self_deno) => Self::Color(self_deno / rhs),
+            Self::Color(self_deno) => Self::Color(*self_deno * Vector4F::splat(1.0 / rhs)),
             Self::Colorings(self_denos) => Self::Colorings(
                 self_denos
-                    .into_iter()
-                    .map(|denormalized| denormalized / rhs)
+                    .iter()
+                    .map(|denormalized| denormalized.div(rhs))
                     .collect(),
             ),
             Self::None => Self::None,
@@ -133,19 +124,19 @@ impl Coloring {
                 if let Self::Color(end_color) = end {
                     let result_color = match color_space {
                         ColorSpace::Hsv => {
-                            let start_color = Hsva::from(*start_color);
-                            let end_color = Hsva::from(*end_color);
-                            LinSrgba::from(start_color.mix(&end_color, percent))
+                            let start_color = Hsva::from_color(*start_color);
+                            let end_color = Hsva::from_color(*end_color);
+                            LinSrgba::from_color(start_color.mix(&end_color, percent))
                         }
                         ColorSpace::Lab => {
-                            let start_color = Laba::from(*start_color);
-                            let end_color = Laba::from(*end_color);
-                            LinSrgba::from(start_color.mix(&end_color, percent))
+                            let start_color = Laba::from_color(*start_color);
+                            let end_color = Laba::from_color(*end_color);
+                            LinSrgba::from_color(start_color.mix(&end_color, percent))
                         }
                         ColorSpace::Lch => {
-                            let start_color = Lcha::from(*start_color);
-                            let end_color = Lcha::from(*end_color);
-                            LinSrgba::from(start_color.mix(&end_color, percent))
+                            let start_color = Lcha::from_color(*start_color);
+                            let end_color = Lcha::from_color(*end_color);
+                            LinSrgba::from_color(start_color.mix(&end_color, percent))
                         }
                         ColorSpace::Linear => start_color.mix(end_color, percent),
                     };

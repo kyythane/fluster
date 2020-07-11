@@ -1,13 +1,13 @@
 #![deny(clippy::all)]
 
 use super::actions::{Action, ActionList};
-use super::rendering::{lin_srgba_to_coloru, paint, Renderer};
+use super::rendering::{lin_srgb_to_coloru, paint, Renderer};
 use crate::{
     ecs::resources::{FrameTime, Library},
     engine::Engine,
     types::{basic::Bitmap, shapes::Shape},
 };
-use palette::LinSrgba;
+use palette::{named, LinSrgb, Srgb};
 use pathfinder_geometry::vector::Vector2F;
 use std::{
     thread,
@@ -21,18 +21,14 @@ pub struct State {
     delta_time: Duration,
     frame: u32,
     frame_end_time: Instant,
-    background_color: LinSrgba,
+    background_color: LinSrgb,
     running: bool,
     stage_size: Vector2F,
     //TODO: pause
 }
 
 impl State {
-    pub fn new(
-        background_color: LinSrgba,
-        frame_duration: Duration,
-        stage_size: Vector2F,
-    ) -> State {
+    pub fn new(background_color: LinSrgb, frame_duration: Duration, stage_size: Vector2F) -> State {
         State {
             frame: 0,
             frame_end_time: Instant::now(),
@@ -136,7 +132,7 @@ fn initialize(
 ) -> Result<(Uuid, State, Library), String> {
     let mut library: Library = Library::default();
     let mut root_entity_id: Option<Uuid> = None;
-    let mut background_color = LinSrgba::white();
+    let mut background_color = Srgb::<f32>::from_format(named::OLIVE).into_linear();
     while let Some(action) = actions.get_mut() {
         match action {
             Action::CreateRoot(id) => {
@@ -214,13 +210,13 @@ fn execute_actions(
 
 fn draw_frame(renderer: &mut impl Renderer, state: &State, engine: &Engine) -> Result<(), String> {
     renderer.start_frame(state.stage_size);
-    renderer.set_background(lin_srgba_to_coloru(state.background_color));
+    renderer.set_background(lin_srgb_to_coloru(state.background_color));
     paint(renderer, engine);
     renderer.end_frame();
     Ok(())
 }
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod tests {
     use super::*;
     use crate::actions::{
@@ -566,4 +562,4 @@ mod tests {
         )
         .unwrap();
     }
-}
+}*/

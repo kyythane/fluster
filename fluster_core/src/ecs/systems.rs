@@ -143,10 +143,10 @@ impl<'a> System<'a> for ApplyColoringTweens {
                 })
                 .enumerate()
                 .reduce(|(_, sum_denormalized), (index, denormalized)| {
-                    (index + 1, sum_denormalized + denormalized)
+                    (index + 1, sum_denormalized.add(&denormalized))
                 })
                 .unwrap_or_else(|| (1, coloring.into_denormalized()));
-            *coloring = (sum_denormalized / count as f32).into_coloring();
+            *coloring = (sum_denormalized.div(count as f32)).into_coloring();
         }
     }
 }

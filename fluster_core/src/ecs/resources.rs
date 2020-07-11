@@ -3,30 +3,31 @@ use aabb_quadtree_pathfinder::{QuadTree, RectF};
 use pathfinder_content::pattern::Pattern;
 use specs::Entity;
 use std::collections::{hash_map::RandomState, HashMap, VecDeque};
+use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
 #[derive(Default, Debug)]
 pub struct Library {
-    shapes: HashMap<Uuid, Shape>,
-    textures: HashMap<Uuid, Pattern>,
+    shapes: HashMap<Uuid, Arc<Shape>>,
+    textures: HashMap<Uuid, Arc<Pattern>>,
 }
 
 impl Library {
     pub fn add_shape(&mut self, uuid: Uuid, shape: Shape) {
-        self.shapes.insert(uuid, shape);
+        self.shapes.insert(uuid, Arc::new(shape));
     }
 
     pub fn add_texture(&mut self, uuid: Uuid, pattern: Pattern) {
-        self.textures.insert(uuid, pattern);
+        self.textures.insert(uuid, Arc::new(pattern));
     }
 
-    pub fn get_shape(&self, uuid: &Uuid) -> Option<&Shape> {
-        self.shapes.get(uuid)
+    pub fn get_shape(&self, uuid: &Uuid) -> Option<Arc<Shape>> {
+        self.shapes.get(uuid).cloned()
     }
 
-    pub fn get_texture(&self, uuid: &Uuid) -> Option<&Pattern> {
-        self.textures.get(uuid)
+    pub fn get_texture(&self, uuid: &Uuid) -> Option<Arc<Pattern>> {
+        self.textures.get(uuid).cloned()
     }
 
     pub fn contains_shape(&self, uuid: &Uuid) -> bool {

@@ -18,7 +18,10 @@ use specs::{
     shred::{Fetch, FetchMut},
     Builder, Dispatcher, DispatcherBuilder, Entity, Join, World, WorldExt,
 };
-use std::collections::{HashMap, VecDeque};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 use uuid::Uuid;
 
 pub struct Engine<'a, 'b> {
@@ -117,23 +120,26 @@ impl<'a, 'b> Engine<'a, 'b> {
     pub fn remove_container(&mut self, container_id: &Uuid) {
         let mut scene_graph = self.world.write_resource::<SceneGraph>();
         let mut container_mapping = self.world.write_resource::<ContainerMapping>();
-        if let Some(entity) = container_mapping.get_entity(container_id) {
+        let entities = self.world.entities_mut();
+        let entity = container_mapping.get_entity(container_id).copied();
+        if let Some(entity) = entity {
             container_mapping.remove_container(container_id);
-            scene_graph.remove_entity(entity);
-            self.world.delete_entity(*entity);
+            scene_graph.remove_entity(&entity);
+            entities.delete(entity);
         }
     }
 
     pub fn remove_container_and_children(&mut self, container_id: &Uuid) {
         let mut scene_graph = self.world.write_resource::<SceneGraph>();
         let mut container_mapping = self.world.write_resource::<ContainerMapping>();
+        let entities = self.world.entities_mut();
         if let Some(entity) = container_mapping.get_entity(container_id) {
             scene_graph
                 .remove_entity_and_children(entity)
                 .into_iter()
                 .for_each(|entity| {
                     container_mapping.remove_entity(&entity);
-                    self.world.delete_entity(entity);
+                    entities.delete(entity);
                 });
         }
     }
@@ -190,9 +196,9 @@ impl<'a, 'b> Engine<'a, 'b> {
             .collect::<HashMap<Entity, (i8, DrawableItem)>>();
         let mut sorted = vec![];
         let mut queue = VecDeque::new();
-        queue.push_back(scene_graph.root());
+        queue.push_back(*scene_graph.root());
         while let Some(next) = queue.pop_front() {
-            let mut children = scene_graph.get_children(next).clone().unwrap();
+            let mut children = scene_graph.get_children(&next).cloned().unwrap();
             children.sort_by(|a, b| {
                 let order_a = unordered
                     .get(&a)
@@ -206,7 +212,7 @@ impl<'a, 'b> Engine<'a, 'b> {
             });
             for child in children {
                 queue.push_back(child);
-                if let Some((_, display_item)) = unordered.remove(child) {
+                if let Some((_, display_item)) = unordered.remove(&child) {
                     sorted.push(display_item)
                 };
             }
@@ -216,14 +222,14 @@ impl<'a, 'b> Engine<'a, 'b> {
 }
 
 #[derive(Debug)]
-pub enum LibraryItem<'a> {
-    Vector(&'a Shape),
-    Raster(&'a Pattern),
+pub enum LibraryItem {
+    Vector(Arc<Shape>),
+    Raster(Arc<Pattern>),
 }
 
 #[derive(Debug)]
-pub struct DrawableItem<'a> {
-    pub library_item: LibraryItem<'a>,
+pub struct DrawableItem {
+    pub library_item: LibraryItem,
     pub transform: Transform2F,
     pub coloring: Option<Coloring>,
     pub view_rect: Option<RectF>,

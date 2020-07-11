@@ -1,5 +1,5 @@
 #![deny(clippy::all)]
-use fluster_core::rendering::Renderer;
+use fluster_core::rendering::{lin_srgba_to_coloru, Renderer};
 use fluster_core::types::{
     coloring::Coloring,
     shapes::{Edge, Shape},
@@ -18,7 +18,7 @@ use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::options::{RendererLevel, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer as PathfinderRenderer;
 use pathfinder_renderer::options::BuildOptions;
-use std::mem;
+use std::{mem, sync::Arc};
 
 fn patch_line_join(j: StrokeLineJoin) -> LineJoin {
     match j {
@@ -72,22 +72,15 @@ where
     }
 }
 
-impl<D> Renderer for FlusterRendererImpl<D>
+impl<D> FlusterRendererImpl<D>
 where
     D: Device,
 {
-    //TODO: handle stage_size changing
-    fn start_frame(&mut self, stage_size: Vector2F) {
-        self.canvas = Some(Canvas::new(stage_size).get_context_2d(self.font_context.clone()))
-    }
-    fn set_background(&mut self, color: ColorU) {
-        self.renderer.options_mut().background_color = Some(color.to_f32());
-    }
-    fn draw_shape(
+    fn handle_draw_shape(
         &mut self,
         shape: &Shape,
         transform: Transform2F,
-        color_override: &Option<Coloring>,
+        color_override: Option<Coloring>,
         morph_index: f32,
     ) {
         if let Some(canvas) = &mut self.canvas {
@@ -101,14 +94,14 @@ where
                         let color = if let Some(Coloring::Color(color_override)) = color_override {
                             color_override
                         } else {
-                            color
+                            *color
                         };
                         stroke_path(
                             canvas,
                             edges.iter().map(|e| *e),
                             stroke_style,
                             &transform,
-                            *color,
+                            lin_srgba_to_coloru(color),
                         );
                     }
                 }
@@ -117,11 +110,11 @@ where
                         let color = if let Some(Coloring::Color(color_override)) = color_override {
                             color_override
                         } else {
-                            color
+                            *color
                         };
                         let path = Edge::edges_to_path(edges.iter().map(|e| *e));
                         canvas.set_transform(&transform);
-                        canvas.set_fill_style(FillStyle::Color(*color));
+                        canvas.set_fill_style(FillStyle::Color(lin_srgba_to_coloru(color)));
                         canvas.fill_path(path, FillRule::Winding);
                     }
                 }
@@ -134,10 +127,16 @@ where
                         let color = if let Some(Coloring::Color(color_override)) = color_override {
                             color_override
                         } else {
-                            color
+                            *color
                         };
                         let edges = edges.iter().map(|mp| mp.to_edge(morph_index));
-                        stroke_path(canvas, edges, stroke_style, &transform, *color);
+                        stroke_path(
+                            canvas,
+                            edges,
+                            stroke_style,
+                            &transform,
+                            lin_srgba_to_coloru(color),
+                        );
                     }
                 }
                 Shape::MorphFill { edges, color } => {
@@ -145,12 +144,12 @@ where
                         let color = if let Some(Coloring::Color(color_override)) = color_override {
                             color_override
                         } else {
-                            color
+                            *color
                         };
                         let edges = edges.iter().map(|mp| mp.to_edge(morph_index));
                         let path = Edge::edges_to_path(edges);
                         canvas.set_transform(&transform);
-                        canvas.set_fill_style(FillStyle::Color(*color));
+                        canvas.set_fill_style(FillStyle::Color(lin_srgba_to_coloru(color)));
                         canvas.fill_path(path, FillRule::Winding);
                     }
                 }
@@ -166,8 +165,8 @@ where
                         if color_override.len() == shapes.len() {
                             for i in 0..shapes.len() {
                                 let shape = &shapes[i];
-                                let color_override = &Some(color_override[i].clone());
-                                self.draw_shape(
+                                let color_override = Some(color_override[i]);
+                                self.handle_draw_shape(
                                     &shape.shape,
                                     transform * shape.transform,
                                     color_override,
@@ -178,7 +177,7 @@ where
                         }
                     }
                     for shape in shapes {
-                        self.draw_shape(
+                        self.handle_draw_shape(
                             &shape.shape,
                             transform * shape.transform,
                             color_override,
@@ -189,18 +188,50 @@ where
             }
         }
     }
+}
+
+impl<D> Renderer for FlusterRendererImpl<D>
+where
+    D: Device,
+{
+    //TODO: handle stage_size changing
+    fn start_frame(&mut self, stage_size: Vector2F) {
+        self.canvas = Some(Canvas::new(stage_size).get_context_2d(self.font_context.clone()))
+    }
+    fn set_background(&mut self, color: ColorU) {
+        self.renderer.set_options(RendererOptions {
+            background_color: Some(color.to_f32()),
+            no_compute: false,
+        });
+    }
+
+    fn draw_shape(
+        &mut self,
+        shape: Arc<Shape>,
+        transform: Transform2F,
+        color_override: Option<Coloring>,
+        morph_index: f32,
+    ) {
+        self.handle_draw_shape(&*shape, transform, color_override, morph_index);
+    }
 
     fn draw_raster(
         &mut self,
-        pattern: &Pattern,
-        view_rect: RectF,
+        pattern: Arc<Pattern>,
+        view_rect: Option<RectF>,
         transform: Transform2F,
-        _tint: Option<ColorU>, //TODO: tinting?
+        _tint: Option<Coloring>, //TODO: tinting
     ) {
+        let view_rect = view_rect
+            .and_then(|rect| Some(rect))
+            .unwrap_or(RectF::from_points(
+                Vector2F::zero(),
+                pattern.size().to_f32(),
+            ));
         if let Some(canvas) = &mut self.canvas {
             canvas.set_transform(&transform);
             canvas.draw_subimage(
-                pattern.clone(),
+                *pattern,
                 view_rect,
                 RectF::new(Vector2F::zero(), view_rect.size()),
             );
