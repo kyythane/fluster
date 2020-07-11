@@ -42,7 +42,7 @@ pub enum BoundsSource {
     Defined(RectF),
 }
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Default)]
 #[storage(BTreeStorage)]
 pub struct Layer {
     pub quad_trees: HashSet<QuadTreeLayer>,

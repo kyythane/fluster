@@ -432,8 +432,27 @@ impl<'a, 'b> Engine<'a, 'b> {
                     ContainerUpdateProperty::RemoveBounds => {
                         self.world.write_storage::<Bounds>().remove(entity);
                     }
-                    ContainerUpdateProperty::AddToLayer(layer) => {}
-                    ContainerUpdateProperty::RemoveFromLayer(layer) => {}
+                    ContainerUpdateProperty::AddToLayer(layer) => {
+                        let mut layer_store = self.world.write_storage::<Layer>();
+                        let mut bounds_store = self.world.write_storage::<Bounds>();
+                        if let Some(bounds) = bounds_store.get_mut(entity) {
+                            let layers = layer_store.entry(entity)?.or_insert(Layer::default());
+                            if !layers.quad_trees.contains(layer) {
+                                layers.quad_trees.insert(*layer);
+                                bounds.dirty = true;
+                                // NOTE: not inserting into quad tree since that will get handled during the first frame after updating
+                            }
+                        }
+                    }
+                    ContainerUpdateProperty::RemoveFromLayer(layer) => {
+                        let mut layer_store = self.world.write_storage::<Layer>();
+                        if let Some(layers) = layer_store.get_mut(entity) {
+                            if layers.quad_trees.remove(layer) {
+                                let mut quad_trees = self.world.write_resource::<QuadTrees>();
+                                quad_trees.remove_from_layer(layer, entity);
+                            }
+                        };
+                    }
                     ContainerUpdateProperty::Parent(new_parent) => {
                         let mut scene_graph = self.world.write_resource::<SceneGraph>();
                         if let Some(new_parent) = container_mapping.get_entity(new_parent) {
