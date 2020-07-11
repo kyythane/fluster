@@ -1,6 +1,5 @@
 #![deny(clippy::all)]
 use fluster_core::rendering::{paint, PaintData, Renderer as FlusterRenderer};
-use fluster_core::{runner::SceneData, types::model::DisplayLibraryItem};
 use fluster_graphics::FlusterRendererImpl;
 use gl::{ReadPixels, BGRA, UNSIGNED_BYTE};
 use iced::image::Handle as ImageHandle;

@@ -1,18 +1,15 @@
 #![deny(clippy::all)]
 
-use super::actions::{
-    Action, ActionList, EntityDefinition, EntityUpdateDefinition, PartDefinition,
-    PartDefinitionPayload,
-};
-use super::rendering::{compute_render_data, paint, Renderer};
+use super::actions::{Action, ActionList};
+use super::rendering::{lin_srgba_to_coloru, paint, Renderer};
 use crate::{
     ecs::resources::{FrameTime, Library},
     engine::Engine,
+    types::{basic::Bitmap, shapes::Shape},
 };
 use palette::LinSrgba;
-use pathfinder_geometry::{rect::RectF, vector::Vector2F};
+use pathfinder_geometry::vector::Vector2F;
 use std::{
-    collections::HashMap,
     thread,
     time::{Duration, Instant},
 };
@@ -24,14 +21,18 @@ pub struct State {
     delta_time: Duration,
     frame: u32,
     frame_end_time: Instant,
-    background_color: ColorU,
+    background_color: LinSrgba,
     running: bool,
     stage_size: Vector2F,
     //TODO: pause
 }
 
 impl State {
-    pub fn new(background_color: ColorU, frame_duration: Duration, stage_size: Vector2F) -> State {
+    pub fn new(
+        background_color: LinSrgba,
+        frame_duration: Duration,
+        stage_size: Vector2F,
+    ) -> State {
         State {
             frame: 0,
             frame_end_time: Instant::now(),
@@ -81,7 +82,7 @@ pub fn play(
                         delta_time: state.delta_time,
                     };
                     engine.update(frame_time);
-                    draw_frame(renderer, &state, &display_list, &library, &scene_data)?;
+                    draw_frame(renderer, &state, &engine)?;
                     state = on_frame_complete(state);
                     if !state.running {
                         break;
@@ -115,6 +116,19 @@ fn handle_frame_delta(state: &mut State) {
     state.frame = state.frame + 1;
 }
 
+fn define_shape(id: &Uuid, shape: &Shape, library: &mut Library) {
+    if !library.contains_shape(id) {
+        library.add_shape(*id, shape.clone());
+    }
+}
+
+// Note: this is destructive to the source bitmap. Bitmaps can be very large, and library loads are idempotent
+fn load_bitmap(id: &Uuid, bitmap: &mut Bitmap, library: &mut Library) {
+    if !library.contains_texture(id) {
+        library.add_texture(*id, bitmap.release_contents());
+    }
+}
+
 fn initialize(
     actions: &mut ActionList,
     frame_duration: Duration,
@@ -129,15 +143,10 @@ fn initialize(
                 root_entity_id = Some(*id);
             }
             Action::DefineShape { id, shape } => {
-                if !library.contains_shape(id) {
-                    library.add_shape(*id, shape.clone());
-                }
+                define_shape(id, shape, &mut library);
             }
             Action::LoadBitmap { id, ref mut bitmap } => {
-                // Note: this is destructive to the source bitmap. Bitmaps can be very large, and library loads are idempotent
-                if !library.contains_texture(id) {
-                    library.add_texture(*id, bitmap.release_contents());
-                }
+                load_bitmap(id, bitmap, &mut library);
             }
             Action::SetBackground { color } => background_color = *color,
             Action::EndInitialization => break,
@@ -166,22 +175,24 @@ fn execute_actions(
     while let Some(action) = actions.get_mut() {
         match action {
             Action::DefineShape { id, shape } => {
+                let library = &mut *engine.get_library_mut();
                 define_shape(id, shape, library);
             }
             Action::LoadBitmap { id, ref mut bitmap } => {
+                let library = &mut *engine.get_library_mut();
                 load_bitmap(id, bitmap, library);
             }
-            Action::AddEntity(entity_definition) => {
-                add_entity(&state, entity_definition, display_list, library)?;
+            Action::CreateContainer(container_create_defintiion) => {
+                engine.create_container(container_create_defintiion);
             }
-            Action::UpdateEntity(entity_update_definition) => {
-                add_tweens(&state, entity_update_definition, display_list, library)?;
+            Action::UpdateContainer(container_update_definition) => {
+                engine.update_container(container_update_definition);
             }
             Action::RemoveContainer(id, recursive) => {
                 if *recursive {
-                    engine.remove_container(id)
+                    engine.remove_container(id);
                 } else {
-                    engine.remove_container_and_children(id)
+                    engine.remove_container_and_children(id);
                 }
             }
             Action::SetBackground { color } => state.background_color = *color,
@@ -201,88 +212,10 @@ fn execute_actions(
     Ok(state)
 }
 
-fn add_entity(
-    state: &State,
-    entity_definition: &EntityDefinition,
-    display_list: &mut HashMap<Uuid, Entity>,
-    library: &HashMap<Uuid, DisplayLibraryItem>,
-) -> Result<(), String> {
-    let (id, name, transform, depth, morph_index, parts, parent) = match entity_definition {
-        EntityDefinition {
-            id,
-            name,
-            transform,
-            depth,
-            morph_index,
-            parts,
-            parent,
-        } => (*id, name, transform, *depth, *morph_index, parts, *parent),
-    };
-
-    let parent = match parent {
-        Some(id) => id,
-        None => state.root_entity_id,
-    };
-    match display_list.get_mut(&parent) {
-        Some(parent_entity) => {
-            let parts = {
-                let constructed = parts
-                    .iter()
-                    .map(|definition| build_part(definition, library))
-                    .filter(|e| e.is_some())
-                    .map(|e| e.unwrap())
-                    .collect::<HashMap<Uuid, Part>>();
-                if constructed.len() < parts.len() {
-                    return Err(format!("Some parts on {} could not be processed", id));
-                }
-                constructed
-            };
-            let entity = Entity::new(id, depth, &name, parent, parts, *transform, morph_index);
-            parent_entity.add_child(id);
-            if let Some(old) = display_list.insert(id, entity) {
-                // If we replace this entitiy, clear the old children out of the display list.
-                for c in old.children() {
-                    display_list.remove(&c);
-                }
-                if old.parent() != &parent {
-                    let parent = display_list.get_mut(old.parent()).unwrap();
-                    parent.remove_child(&id);
-                }
-            }
-            Ok(())
-        }
-        None => Err(format!(
-            "Attempted to attach child {} to non-existant parent {}",
-            id, parent
-        )),
-    }
-}
-
-fn add_tweens(
-    state: &State,
-    entity_update_definition: &EntityUpdateDefinition,
-    display_list: &mut HashMap<Uuid, Entity>,
-    library: &HashMap<Uuid, DisplayLibraryItem>,
-) -> Result<(), String> {
-    let duration_seconds =
-        state.seconds_per_frame * (entity_update_definition.duration_frames() as f32);
-    if let Some(entity) = display_list.get_mut(&entity_update_definition.id()) {
-        entity.add_tweens(entity_update_definition, duration_seconds, library)?;
-    }
-    Ok(()) //Updating a removed entity or part is a no-op, since a script or event could remove an entity in a way the editor can't account for.
-}
-
-fn draw_frame(
-    renderer: &mut impl Renderer,
-    state: &State,
-    display_list: &HashMap<Uuid, Entity>,
-    library: &HashMap<Uuid, DisplayLibraryItem>,
-    scene_data: &SceneData,
-) -> Result<(), String> {
+fn draw_frame(renderer: &mut impl Renderer, state: &State, engine: &Engine) -> Result<(), String> {
     renderer.start_frame(state.stage_size);
-    renderer.set_background(state.background_color);
-    let render_data = compute_render_data(&state.root_entity_id, display_list)?;
-    paint(renderer, library, render_data, scene_data);
+    renderer.set_background(lin_srgba_to_coloru(state.background_color));
+    paint(renderer, engine);
     renderer.end_frame();
     Ok(())
 }

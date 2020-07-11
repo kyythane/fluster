@@ -55,7 +55,7 @@ impl Component for Coloring {
     type Storage = BTreeStorage<Self>;
 }
 
-#[derive(Component, Debug)]
+#[derive(Component, Clone, Copy, Default, Debug)]
 #[storage(VecStorage)]
 pub struct Order(pub i8);
 
