@@ -191,6 +191,16 @@ impl SceneGraph {
         }
     }
 
+    pub fn reparent(&mut self, new_parent: &Entity, entity: Entity) {
+        if let Some(old_parent) = self.parents.get(&entity) {
+            self.tree
+                .entry(*old_parent)
+                .and_modify(|children| children.retain(|child| child != &entity));
+        }
+        self.parents.insert(entity, *new_parent);
+        self.tree.entry(*new_parent).or_default().push(entity);
+    }
+
     pub fn remove_entity_and_children(&mut self, entity: &Entity) -> Vec<Entity> {
         let mut queue = VecDeque::new();
         let mut removed = vec![];

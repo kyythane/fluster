@@ -9,12 +9,23 @@ use specs::{
 };
 use std::collections::HashSet;
 use uuid::Uuid;
-#[derive(Component, Debug, Default)]
+#[derive(Component, Debug)]
 #[storage(VecStorage)]
 pub struct Transform {
     pub local: Transform2F,
     pub world: Transform2F,
     pub dirty: bool,
+}
+
+// Default dirty true
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            local: Transform2F::default(),
+            world: Transform2F::default(),
+            dirty: true,
+        }
+    }
 }
 
 #[derive(Component, Debug)]
@@ -59,7 +70,7 @@ impl Component for Coloring {
 #[storage(VecStorage)]
 pub struct Order(pub i8);
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Default)]
 #[storage(VecStorage)]
 pub struct Morph(pub f32);
 

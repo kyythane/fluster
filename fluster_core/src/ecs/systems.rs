@@ -1,6 +1,7 @@
 use super::{
     components::{
-        Bounds, BoundsSource, Display, DisplayKind, Layer, Morph, Transform, Tweens, ViewRect,
+        Bounds, BoundsSource, Display, DisplayKind, Layer, Morph, Order, Transform, Tweens,
+        ViewRect,
     },
     resources::{FrameTime, Library, QuadTrees, SceneGraph},
 };
@@ -147,6 +148,33 @@ impl<'a> System<'a> for ApplyColoringTweens {
                 })
                 .unwrap_or_else(|| (1, coloring.into_denormalized()));
             *coloring = (sum_denormalized.div(count as f32)).into_coloring();
+        }
+    }
+}
+
+pub struct ApplyOrderTweens;
+
+impl<'a> System<'a> for ApplyOrderTweens {
+    type SystemData = (WriteStorage<'a, Order>, ReadStorage<'a, Tweens>);
+
+    fn run(&mut self, (mut order_storage, tweens_storage): Self::SystemData) {
+        for (order, tweens) in (&mut order_storage, &tweens_storage).join() {
+            order.0 = tweens
+                .0
+                .iter()
+                .filter_map(|tween| {
+                    if let PropertyTweenData::Order { .. } = tween.tween_data() {
+                        if let PropertyTweenUpdate::Order(order) = tween.compute() {
+                            Some(order)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .reduce(|max, order| max.max(order))
+                .unwrap_or(order.0);
         }
     }
 }

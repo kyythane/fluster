@@ -8,13 +8,11 @@ use super::types::{
 use super::util;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::Vector2F;
 use serde::{Deserialize, Serialize};
 use std::f32::{
     consts::{FRAC_PI_2, PI},
     EPSILON,
 };
-use std::mem;
 use std::time::Duration;
 
 pub trait Tween {
@@ -262,6 +260,16 @@ pub enum TweenDuration {
     Frame(u32),
 }
 
+impl TweenDuration {
+    pub fn new_time(duration: Duration) -> Self {
+        Self::Time(duration)
+    }
+
+    pub fn new_frame(duration: u32) -> Self {
+        Self::Frame(duration)
+    }
+}
+
 #[derive(Clone, Debug)]
 enum TweenElapsed {
     Time(Duration, Duration),
@@ -292,12 +300,8 @@ pub enum PropertyTweenData {
         color_space: ColorSpace,
     },
     Transform {
-        start_scale: Vector2F,
-        end_scale: Vector2F,
-        start_translation: Vector2F,
-        end_translation: Vector2F,
-        start_theta: f32,
-        end_theta: f32,
+        start: ScaleRotationTranslation,
+        end: ScaleRotationTranslation,
     },
     ViewRect {
         start: RectPoints,
@@ -306,6 +310,10 @@ pub enum PropertyTweenData {
     MorphIndex {
         start: f32,
         end: f32,
+    },
+    Order {
+        start: i8,
+        end: i8,
     },
 }
 
@@ -316,8 +324,8 @@ impl PropertyTween {
         color_space: ColorSpace,
         duration: TweenDuration,
         easing: Easing,
-    ) -> PropertyTween {
-        PropertyTween {
+    ) -> Self {
+        Self {
             data: PropertyTweenData::Coloring {
                 start,
                 end,
@@ -329,29 +337,22 @@ impl PropertyTween {
     }
 
     pub fn new_transform(
-        start: ScaleRotationTranslation,
+        mut start: ScaleRotationTranslation,
         end: ScaleRotationTranslation,
         duration: TweenDuration,
         easing: Easing,
-    ) -> PropertyTween {
-        PropertyTween {
-            data: PropertyTweenData::Transform {
-                start_scale: start.scale,
-                end_scale: end.scale,
-                start_translation: start.translation,
-                end_translation: end.translation,
-                start_theta: {
-                    let delta = end.theta - start.theta;
-                    if delta > PI {
-                        start.theta + PI * 2.0
-                    } else if delta < -PI {
-                        start.theta - PI * 2.0
-                    } else {
-                        start.theta
-                    }
-                },
-                end_theta: end.theta,
-            },
+    ) -> Self {
+        let delta = end.theta - start.theta;
+        // Adapt start theta so it tweens properly
+        start.theta = if delta > PI {
+            start.theta + PI * 2.0
+        } else if delta < -PI {
+            start.theta - PI * 2.0
+        } else {
+            start.theta
+        };
+        Self {
+            data: PropertyTweenData::Transform { start, end },
             elapsed: Self::construct_elapsed(duration),
             easing,
         }
@@ -362,25 +363,28 @@ impl PropertyTween {
         end: RectPoints,
         duration: TweenDuration,
         easing: Easing,
-    ) -> PropertyTween {
-        PropertyTween {
+    ) -> Self {
+        Self {
             data: PropertyTweenData::ViewRect { start, end },
             elapsed: Self::construct_elapsed(duration),
             easing,
         }
     }
 
-    pub fn new_morph_index(
-        start: f32,
-        end: f32,
-        duration: TweenDuration,
-        easing: Easing,
-    ) -> PropertyTween {
-        PropertyTween {
+    pub fn new_morph_index(start: f32, end: f32, duration: TweenDuration, easing: Easing) -> Self {
+        Self {
             data: PropertyTweenData::MorphIndex {
                 start: util::clamp_0_1(start),
                 end: util::clamp_0_1(end),
             },
+            elapsed: Self::construct_elapsed(duration),
+            easing,
+        }
+    }
+
+    pub fn new_order(start: i8, end: i8, duration: TweenDuration, easing: Easing) -> Self {
+        Self {
+            data: PropertyTweenData::Order { start, end },
             elapsed: Self::construct_elapsed(duration),
             easing,
         }
@@ -404,6 +408,7 @@ pub enum PropertyTweenUpdate {
     Transform(Transform2F),
     ViewRect(RectF),
     Morph(f32),
+    Order(i8),
 }
 
 impl Tween for PropertyTween {
@@ -423,44 +428,35 @@ impl Tween for PropertyTween {
                 TweenElapsed::Frame(elapsed_frame + delta_frames, *max_frame)
             }
         };
-        mem::replace(&mut self.elapsed, elapsed);
+        self.elapsed = elapsed;
     }
 
     fn compute(&self) -> Self::Item {
+        let value = self.easing.ease(self.elapsed.as_percent());
         match &self.data {
             PropertyTweenData::Coloring {
                 start,
                 end,
                 color_space,
-            } => {
-                let value = self.easing.ease(self.elapsed.as_percent());
-                PropertyTweenUpdate::Coloring(start.lerp(end, value, *color_space))
-            }
-            PropertyTweenData::Transform {
-                start_scale,
-                end_scale,
-                start_translation,
-                end_translation,
-                start_theta,
-                end_theta,
-            } => {
-                let value = self.easing.ease(self.elapsed.as_percent());
+            } => PropertyTweenUpdate::Coloring(start.lerp(end, value, *color_space)),
+            PropertyTweenData::Transform { start, end } => {
                 PropertyTweenUpdate::Transform(Transform2F::from_scale_rotation_translation(
-                    start_scale.lerp(*end_scale, value),
-                    (end_theta - start_theta) * value + start_theta,
-                    start_translation.lerp(*end_translation, value),
+                    start.scale.lerp(end.scale, value),
+                    (end.theta - start.theta) * value + start.theta,
+                    start.translation.lerp(end.translation, value),
                 ))
             }
             PropertyTweenData::ViewRect { start, end } => {
-                let value = self.easing.ease(self.elapsed.as_percent());
                 PropertyTweenUpdate::ViewRect(RectF::from_points(
                     start.origin.lerp(end.origin, value),
                     start.lower_right.lerp(end.lower_right, value),
                 ))
             }
             PropertyTweenData::MorphIndex { start, end } => {
-                let value = self.easing.ease(self.elapsed.as_percent());
                 PropertyTweenUpdate::Morph(util::lerp(*start, *end, value))
+            }
+            PropertyTweenData::Order { start, end } => {
+                PropertyTweenUpdate::Order(util::lerp(*start as f32, *end as f32, value) as i8)
             }
         }
     }

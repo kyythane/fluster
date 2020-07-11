@@ -308,7 +308,7 @@ impl Edge {
             Self::Arc { .. } => todo!(),
             Self::Close => Self::Close,
         };
-        mem::replace(self, updated);
+        *self = updated;
     }
 
     fn compute_bounding(edges: impl Iterator<Item = Edge>, transform: &Transform2F) -> RectF {

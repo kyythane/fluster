@@ -1,7 +1,7 @@
 use crate::{
     actions::{
         BoundsKindDefinition, ContainerCreationDefintition, ContainerCreationProperty,
-        ContainerUpdateDefintition,
+        ContainerUpdateDefintition, ContainerUpdateProperty,
     },
     ecs::{
         components::{
@@ -10,18 +10,19 @@ use crate::{
         },
         resources::{ContainerMapping, FrameTime, Library, QuadTreeLayer, QuadTrees, SceneGraph},
         systems::{
-            ApplyColoringTweens, ApplyMorphTweens, ApplyTransformTweens, ApplyViewRectTweens,
-            UpdateBounds, UpdateQuadTree, UpdateTweens, UpdateWorldTransform,
+            ApplyColoringTweens, ApplyMorphTweens, ApplyOrderTweens, ApplyTransformTweens,
+            ApplyViewRectTweens, UpdateBounds, UpdateQuadTree, UpdateTweens, UpdateWorldTransform,
         },
     },
-    types::{coloring::Coloring, shapes::Shape},
+    tween::{PropertyTween, TweenDuration},
+    types::{basic::ScaleRotationTranslation, coloring::Coloring, shapes::Shape},
 };
 use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::{rect::RectF, transform2d::Transform2F};
 use specs::{
     error::WrongGeneration,
     shred::{Fetch, FetchMut},
-    Builder, Dispatcher, DispatcherBuilder, Entity, EntityBuilder, Join, World, WorldExt,
+    Builder, Dispatcher, DispatcherBuilder, Entity, Join, World, WorldExt,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -63,6 +64,7 @@ impl<'a, 'b> Engine<'a, 'b> {
             .with(ApplyMorphTweens, "apply_morph_tweens", &[])
             .with(ApplyViewRectTweens, "apply_view_rect_tweens", &[])
             .with(ApplyColoringTweens, "apply_coloring_tweens", &[])
+            .with(ApplyOrderTweens, "apply_order_tweens", &[])
             .with(
                 UpdateWorldTransform,
                 "update_world_transform",
@@ -127,9 +129,10 @@ impl<'a, 'b> Engine<'a, 'b> {
         let container_mapping = self.world.read_resource::<ContainerMapping>();
         if container_mapping.contains_container(definition.id()) {
             // TODO: errors
-            return;
+            todo!();
         } else if !container_mapping.contains_container(definition.parent()) {
-            return;
+            // TODO: errors
+            todo!();
         } else {
             let entities = self.world.entities_mut();
             let mut entity_builder = entities.build_entity();
@@ -236,10 +239,89 @@ impl<'a, 'b> Engine<'a, 'b> {
         }
     }
 
-    pub fn update_container(&mut self, definition: &ContainerUpdateDefintition) {
-        let mut scene_graph = self.world.write_resource::<SceneGraph>();
-        let mut container_mapping = self.world.read_resource::<ContainerMapping>();
-        unimplemented!();
+    pub fn update_container(
+        &mut self,
+        definition: &ContainerUpdateDefintition,
+    ) -> Result<(), WrongGeneration> {
+        let container_mapping = self.world.read_resource::<ContainerMapping>();
+        if let Some(entity) = container_mapping.get_entity(definition.id()) {
+            let entity = *entity;
+            for property in definition.properties() {
+                match property {
+                    ContainerUpdateProperty::Transform(srt, easing, duration_frames) => {
+                        let start = self
+                            .world
+                            .write_storage::<Transform>()
+                            .entry(entity)?
+                            .or_insert(Transform::default())
+                            .local;
+                        let tween = PropertyTween::new_transform(
+                            ScaleRotationTranslation::from_transform(&start),
+                            *srt,
+                            TweenDuration::new_frame(*duration_frames),
+                            *easing,
+                        );
+                        self.world
+                            .write_storage::<Tweens>()
+                            .entry(entity)?
+                            .or_insert(Tweens(vec![]))
+                            .0
+                            .push(tween);
+                    }
+                    ContainerUpdateProperty::MorphIndex(morph, easing, duration_frames) => {
+                        let start = self
+                            .world
+                            .write_storage::<Morph>()
+                            .entry(entity)?
+                            .or_insert(Morph::default())
+                            .0;
+                        let tween = PropertyTween::new_morph_index(
+                            start,
+                            *morph,
+                            TweenDuration::new_frame(*duration_frames),
+                            *easing,
+                        );
+                        self.world
+                            .write_storage::<Tweens>()
+                            .entry(entity)?
+                            .or_insert(Tweens(vec![]))
+                            .0
+                            .push(tween);
+                    }
+                    ContainerUpdateProperty::Coloring(coloring, easing, duration_frames) => {}
+                    ContainerUpdateProperty::ViewRect(rect_points, easing, duration_frames) => {}
+                    ContainerUpdateProperty::Order(order, easing, duration_frames) => {}
+                    ContainerUpdateProperty::Display(display) => {}
+                    ContainerUpdateProperty::RemoveDisplay => {
+                        self.world.write_storage::<Display>().remove(entity);
+                    }
+                    ContainerUpdateProperty::Bounds(bounds_definition) => {}
+                    ContainerUpdateProperty::RemoveBounds => {
+                        self.world.write_storage::<Bounds>().remove(entity);
+                    }
+                    ContainerUpdateProperty::AddToLayer(layer) => {}
+                    ContainerUpdateProperty::RemoveFromLayer(layer) => {}
+                    ContainerUpdateProperty::Parent(new_parent) => {
+                        let mut scene_graph = self.world.write_resource::<SceneGraph>();
+                        if let Some(new_parent) = container_mapping.get_entity(new_parent) {
+                            scene_graph.reparent(new_parent, entity);
+                            if let Some(transfom) =
+                                self.world.write_storage::<Transform>().get_mut(entity)
+                            {
+                                transfom.dirty = true;
+                            }
+                        } else {
+                            // Todo: errors
+                            todo!();
+                        }
+                    }
+                }
+            }
+        } else {
+            //TODO: errors
+            todo!();
+        }
+        Ok(())
     }
 
     pub fn remove_container(&mut self, container_id: &Uuid) -> Result<(), WrongGeneration> {

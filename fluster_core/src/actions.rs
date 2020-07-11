@@ -387,18 +387,18 @@ impl ContainerUpdateDefintition {
 }
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum ContainerUpdateProperty {
-    Transform(ScaleRotationTranslation, Easing),
-    MorphIndex(f32, Easing),
-    Coloring(Coloring, Easing),
-    ViewRect(RectPoints, Easing),
-    Order(i8, Easing),
+    Transform(ScaleRotationTranslation, Easing, u32),
+    MorphIndex(f32, Easing, u32),
+    Coloring(Coloring, Easing, u32),
+    ViewRect(RectPoints, Easing, u32),
+    Order(i8, Easing, u32),
     Display(Uuid),
-    RemoveDisplay(),
+    RemoveDisplay,
     Parent(Uuid),
     AddToLayer(QuadTreeLayer),
     RemoveFromLayer(QuadTreeLayer),
     Bounds(BoundsKindDefinition),
-    RemoveBounds(),
+    RemoveBounds,
 }
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub enum BoundsKindDefinition {
