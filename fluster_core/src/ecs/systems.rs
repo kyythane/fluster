@@ -3,17 +3,162 @@ use super::{
         Bounds, BoundsSource, Display, DisplayKind, Layer, Morph, Order, Transform, Tweens,
         ViewRect,
     },
-    resources::{FrameTime, Library, QuadTrees, SceneGraph},
+    resources::{
+        ContainerCreationQueue, ContainerMapping, FrameTime, Library, QuadTreeLayer, QuadTrees,
+        SceneGraph,
+    },
 };
 use crate::{
+    actions::{BoundsKindDefinition, ContainerCreationProperty},
     tween::{PropertyTweenData, PropertyTweenUpdate, Tween},
     types::coloring::Coloring,
 };
 use pathfinder_geometry::{rect::RectF, transform2d::Transform2F, vector::Vector2F};
 use reduce::Reduce;
-use specs::Join;
-use specs::{Entities, Entity, Read, ReadExpect, ReadStorage, System, Write, WriteStorage};
+use specs::{
+    shred::ResourceId, Entities, Entity, Join, Read, ReadExpect, ReadStorage, System, SystemData,
+    World, Write, WriteExpect, WriteStorage,
+};
 use std::collections::{HashSet, VecDeque};
+
+#[derive(SystemData)]
+pub struct ContainerCreationSystemData<'a> {
+    container_mapping: Write<'a, ContainerMapping>,
+    container_creation_queue: Write<'a, ContainerCreationQueue>,
+    scene_graph: WriteExpect<'a, SceneGraph>,
+    library: Read<'a, Library>,
+    entities: Entities<'a>,
+    transform_storage: WriteStorage<'a, Transform>,
+    order_storage: WriteStorage<'a, Order>,
+    morph_storage: WriteStorage<'a, Morph>,
+    bounds_storage: WriteStorage<'a, Bounds>,
+    layer_storage: WriteStorage<'a, Layer>,
+    view_rect_storage: WriteStorage<'a, ViewRect>,
+    coloring_storage: WriteStorage<'a, Coloring>,
+    display_storage: WriteStorage<'a, Display>,
+}
+
+pub struct ContainerCreation;
+
+impl<'a> System<'a> for ContainerCreation {
+    type SystemData = ContainerCreationSystemData<'a>;
+
+    fn run(&mut self, mut data: ContainerCreationSystemData) {
+        while let Some(definition) = data.container_creation_queue.dequeue() {
+            if data.container_mapping.contains_container(definition.id()) {
+                // TODO: errors
+                todo!();
+            } else if !data
+                .container_mapping
+                .contains_container(definition.parent())
+            {
+                // TODO: errors
+                todo!();
+            } else {
+                let mut entity_builder = data.entities.build_entity();
+
+                let parent_entity = *data
+                    .container_mapping
+                    .get_entity(definition.parent())
+                    .unwrap();
+                for property in definition.properties() {
+                    match property {
+                        ContainerCreationProperty::Transform(srt) => {
+                            let transform = Transform {
+                                local: Transform2F::from_scale_rotation_translation(
+                                    srt.scale,
+                                    srt.theta,
+                                    srt.translation,
+                                ),
+                                // NOTE: not definining world transform since that will get computed in first frame after entity is added
+                                world: Transform2F::default(),
+                                dirty: true,
+                            };
+                            entity_builder =
+                                entity_builder.with(transform, &mut data.transform_storage);
+                        }
+                        ContainerCreationProperty::MorphIndex(morph) => {
+                            entity_builder =
+                                entity_builder.with(Morph(*morph), &mut data.morph_storage);
+                        }
+                        ContainerCreationProperty::Coloring(coloring) => {
+                            entity_builder =
+                                entity_builder.with(coloring.clone(), &mut data.coloring_storage);
+                        }
+                        ContainerCreationProperty::ViewRect(rect_points) => {
+                            entity_builder = entity_builder.with(
+                                ViewRect(RectF::from_points(
+                                    rect_points.origin,
+                                    rect_points.lower_right,
+                                )),
+                                &mut data.view_rect_storage,
+                            );
+                        }
+                        ContainerCreationProperty::Display(display) => {
+                            let display_item = if data.library.contains_shape(display) {
+                                Display(*display, DisplayKind::Vector)
+                            } else if data.library.contains_texture(display) {
+                                Display(*display, DisplayKind::Raster)
+                            } else {
+                                // TODO: errors
+                                panic!()
+                            };
+                            entity_builder =
+                                entity_builder.with(display_item, &mut data.display_storage);
+                        }
+                        ContainerCreationProperty::Order(order) => {
+                            entity_builder =
+                                entity_builder.with(Order(*order), &mut data.order_storage);
+                        }
+                        ContainerCreationProperty::Bounds(bounds_definition) => {
+                            let bounds = match bounds_definition {
+                                BoundsKindDefinition::Display => Bounds {
+                                    bounds: RectF::default(),
+                                    source: BoundsSource::Display,
+                                    dirty: true,
+                                },
+                                BoundsKindDefinition::Defined(rect_points) => Bounds {
+                                    // NOTE: not definining bounds since that will get computed in first frame after entity is added
+                                    bounds: RectF::default(),
+                                    source: BoundsSource::Defined(RectF::from_points(
+                                        rect_points.origin,
+                                        rect_points.lower_right,
+                                    )),
+                                    dirty: true,
+                                },
+                            };
+                            entity_builder = entity_builder.with(bounds, &mut data.bounds_storage);
+                        }
+                        ContainerCreationProperty::Layer(..) => {}
+                    }
+                }
+                // Layers work a little differently since there could be multiple provided
+                let layers = definition
+                    .properties()
+                    .iter()
+                    .filter_map(|property| {
+                        if let ContainerCreationProperty::Layer(layer) = property {
+                            Some(*layer)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashSet<QuadTreeLayer>>();
+                if layers.len() > 0 {
+                    entity_builder =
+                        entity_builder.with(Layer { quad_trees: layers }, &mut data.layer_storage);
+                }
+                let entity = entity_builder.build();
+                data.container_mapping
+                    .add_container(*definition.id(), entity);
+                data.scene_graph.add_entity(&parent_entity, &entity);
+                // NOTE: not inserting into quad tree since that will get handled during the first frame this entity exists in
+            }
+        }
+    }
+}
+
+pub struct UpdateContainers;
 
 pub struct ApplyTransformTweens;
 

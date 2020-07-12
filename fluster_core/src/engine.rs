@@ -1,17 +1,20 @@
 use crate::{
     actions::{
-        BoundsKindDefinition, ContainerCreationDefintition, ContainerCreationProperty,
-        ContainerUpdateDefintition, ContainerUpdateProperty, RectPoints,
+        BoundsKindDefinition, ContainerCreationDefintition, ContainerUpdateDefintition,
+        ContainerUpdateProperty, RectPoints,
     },
     ecs::{
         components::{
             Bounds, BoundsSource, Display, DisplayKind, Layer, Morph, Order, Transform, Tweens,
             ViewRect,
         },
-        resources::{ContainerMapping, FrameTime, Library, QuadTreeLayer, QuadTrees, SceneGraph},
+        resources::{
+            ContainerCreationQueue, ContainerMapping, FrameTime, Library, QuadTrees, SceneGraph,
+        },
         systems::{
             ApplyColoringTweens, ApplyMorphTweens, ApplyOrderTweens, ApplyTransformTweens,
-            ApplyViewRectTweens, UpdateBounds, UpdateQuadTree, UpdateTweens, UpdateWorldTransform,
+            ApplyViewRectTweens, ContainerCreation, UpdateBounds, UpdateQuadTree, UpdateTweens,
+            UpdateWorldTransform,
         },
     },
     tween::{PropertyTween, TweenDuration},
@@ -26,7 +29,7 @@ use specs::{
     Builder, Dispatcher, DispatcherBuilder, Entity, Join, World, WorldExt,
 };
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     sync::Arc,
 };
 use uuid::Uuid;
@@ -58,14 +61,36 @@ impl<'a, 'b> Engine<'a, 'b> {
         container_mapping.add_container(root_container_id, root);
         world.insert(container_mapping);
         world.insert(library);
+        world.insert(ContainerCreationQueue::default());
 
         // Setup systems
-        let dispatcher = DispatcherBuilder::new()
-            .with(ApplyTransformTweens, "apply_transform_tweens", &[])
-            .with(ApplyMorphTweens, "apply_morph_tweens", &[])
-            .with(ApplyViewRectTweens, "apply_view_rect_tweens", &[])
-            .with(ApplyColoringTweens, "apply_coloring_tweens", &[])
-            .with(ApplyOrderTweens, "apply_order_tweens", &[])
+        let mut dispatcher = DispatcherBuilder::new()
+            .with(ContainerCreation, "container_creation", &[])
+            .with(
+                ApplyTransformTweens,
+                "apply_transform_tweens",
+                &["container_creation"],
+            )
+            .with(
+                ApplyMorphTweens,
+                "apply_morph_tweens",
+                &["container_creation"],
+            )
+            .with(
+                ApplyViewRectTweens,
+                "apply_view_rect_tweens",
+                &["container_creation"],
+            )
+            .with(
+                ApplyColoringTweens,
+                "apply_coloring_tweens",
+                &["container_creation"],
+            )
+            .with(
+                ApplyOrderTweens,
+                "apply_order_tweens",
+                &["container_creation"],
+            )
             .with(
                 UpdateWorldTransform,
                 "update_world_transform",
@@ -79,6 +104,7 @@ impl<'a, 'b> Engine<'a, 'b> {
                 &["apply_transform_tweens", "apply_morph_tweens"],
             )
             .build();
+        dispatcher.setup(&mut world);
         Engine { world, dispatcher }
     }
 
@@ -127,118 +153,8 @@ impl<'a, 'b> Engine<'a, 'b> {
     }
 
     pub fn create_container(&mut self, definition: &ContainerCreationDefintition) {
-        let container_mapping = self.world.read_resource::<ContainerMapping>();
-        if container_mapping.contains_container(definition.id()) {
-            // TODO: errors
-            todo!();
-        } else if !container_mapping.contains_container(definition.parent()) {
-            // TODO: errors
-            todo!();
-        } else {
-            let entities = self.world.entities_mut();
-            let mut entity_builder = entities.build_entity();
-            let parent_entity = *container_mapping.get_entity(definition.parent()).unwrap();
-            for property in definition.properties() {
-                match property {
-                    ContainerCreationProperty::Transform(srt) => {
-                        let transform = Transform {
-                            local: Transform2F::from_scale_rotation_translation(
-                                srt.scale,
-                                srt.theta,
-                                srt.translation,
-                            ),
-                            // NOTE: not definining world transform since that will get computed in first frame after entity is added
-                            world: Transform2F::default(),
-                            dirty: true,
-                        };
-                        println!("fuck");
-                        entity_builder = entity_builder
-                            .with(transform, &mut self.world.write_storage::<Transform>());
-                    }
-                    ContainerCreationProperty::MorphIndex(morph) => {
-                        entity_builder = entity_builder
-                            .with(Morph(*morph), &mut self.world.write_storage::<Morph>());
-                    }
-                    ContainerCreationProperty::Coloring(coloring) => {
-                        entity_builder = entity_builder.with(
-                            coloring.clone(),
-                            &mut self.world.write_storage::<Coloring>(),
-                        );
-                    }
-                    ContainerCreationProperty::ViewRect(rect_points) => {
-                        entity_builder = entity_builder.with(
-                            ViewRect(RectF::from_points(
-                                rect_points.origin,
-                                rect_points.lower_right,
-                            )),
-                            &mut self.world.write_storage::<ViewRect>(),
-                        );
-                    }
-                    ContainerCreationProperty::Display(display) => {
-                        let library = self.world.read_resource::<Library>();
-                        let display_item = if library.contains_shape(display) {
-                            Display(*display, DisplayKind::Vector)
-                        } else if library.contains_texture(display) {
-                            Display(*display, DisplayKind::Raster)
-                        } else {
-                            // TODO: errors
-                            panic!()
-                        };
-                        entity_builder = entity_builder
-                            .with(display_item, &mut self.world.write_storage::<Display>());
-                    }
-                    ContainerCreationProperty::Order(order) => {
-                        entity_builder = entity_builder
-                            .with(Order(*order), &mut self.world.write_storage::<Order>());
-                    }
-                    ContainerCreationProperty::Bounds(bounds_definition) => {
-                        let bounds = match bounds_definition {
-                            BoundsKindDefinition::Display => Bounds {
-                                bounds: RectF::default(),
-                                source: BoundsSource::Display,
-                                dirty: true,
-                            },
-                            BoundsKindDefinition::Defined(rect_points) => Bounds {
-                                // NOTE: not definining bounds since that will get computed in first frame after entity is added
-                                bounds: RectF::default(),
-                                source: BoundsSource::Defined(RectF::from_points(
-                                    rect_points.origin,
-                                    rect_points.lower_right,
-                                )),
-                                dirty: true,
-                            },
-                        };
-                        entity_builder =
-                            entity_builder.with(bounds, &mut self.world.write_storage::<Bounds>());
-                    }
-                    ContainerCreationProperty::Layer(..) => {}
-                }
-            }
-            // Layers work a little differently since there could be multiple provided
-            let layers = definition
-                .properties()
-                .iter()
-                .filter_map(|property| {
-                    if let ContainerCreationProperty::Layer(layer) = property {
-                        Some(*layer)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<HashSet<QuadTreeLayer>>();
-            if layers.len() > 0 {
-                entity_builder = entity_builder.with(
-                    Layer { quad_trees: layers },
-                    &mut self.world.write_storage::<Layer>(),
-                );
-            }
-            let entity = entity_builder.build();
-            let mut container_mapping = self.world.write_resource::<ContainerMapping>();
-            container_mapping.add_container(*definition.id(), entity);
-            let mut scene_graph = self.world.write_resource::<SceneGraph>();
-            scene_graph.add_entity(&parent_entity, &entity);
-            // NOTE: not inserting into quad tree since that will get handled during the first frame this entity exists in
-        }
+        let mut container_creation_queue = self.world.write_resource::<ContainerCreationQueue>();
+        container_creation_queue.enqueue(definition.clone());
     }
 
     pub fn update_container(

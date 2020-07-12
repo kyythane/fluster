@@ -96,15 +96,15 @@ pub fn play(
 
 fn handle_frame_delta(state: &mut State) {
     let frame_end_time = Instant::now();
-    let frame_time_left = state.frame_duration - (frame_end_time - state.frame_end_time);
+    let frame_time_elapsed = frame_end_time - state.frame_end_time;
     println!(
         "frame {:?} time {:?}, {:?}% of target ",
         state.frame,
         (frame_end_time - state.frame_end_time),
         (frame_end_time - state.frame_end_time).div_duration_f32(state.frame_duration) * 100.0
     );
-    let frame_end_time = if frame_time_left.as_millis() > 0 {
-        thread::sleep(frame_time_left);
+    let frame_end_time = if frame_time_elapsed < state.frame_duration {
+        thread::sleep(state.frame_duration - frame_time_elapsed);
         Instant::now()
     } else {
         frame_end_time

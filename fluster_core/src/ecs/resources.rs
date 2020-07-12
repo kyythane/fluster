@@ -1,4 +1,7 @@
-use crate::types::shapes::Shape;
+use crate::{
+    actions::{ContainerCreationDefintition, ContainerUpdateDefintition},
+    types::shapes::Shape,
+};
 use aabb_quadtree_pathfinder::{QuadTree, RectF};
 use pathfinder_content::pattern::Pattern;
 use serde::{Deserialize, Serialize};
@@ -7,6 +10,21 @@ use std::collections::{hash_map::RandomState, HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
+
+#[derive(Default, Debug)]
+pub struct ContainerCreationQueue {
+    container_data: VecDeque<ContainerCreationDefintition>,
+}
+
+impl ContainerCreationQueue {
+    pub fn enqueue(&mut self, definition: ContainerCreationDefintition) {
+        self.container_data.push_back(definition);
+    }
+
+    pub fn dequeue(&mut self) -> Option<ContainerCreationDefintition> {
+        self.container_data.pop_front()
+    }
+}
 
 #[derive(Default, Debug)]
 pub struct Library {
@@ -168,14 +186,11 @@ impl SceneGraph {
     }
 
     pub fn add_entity(&mut self, parent: &Entity, entity: &Entity) {
-        if let Some(old_parent) = self.parents.insert(*entity, *parent) {
-            self.tree
-                .entry(old_parent)
-                .and_modify(|children| children.retain(|child| child != entity));
-        }
         self.tree
             .entry(*parent)
             .and_modify(|children| children.push(*entity));
+        self.parents.insert(*entity, *parent);
+        self.tree.insert(*entity, vec![]);
     }
 
     pub fn remove_entity(&mut self, entity: &Entity) {
@@ -250,8 +265,12 @@ impl<'a> Iterator for ParentIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let next = self.graph.parents.get(self.current);
         if let Some(next) = next {
-            self.current = next;
-            Some(self.current)
+            if next != self.graph.root() {
+                self.current = next;
+                Some(self.current)
+            } else {
+                None
+            }
         } else {
             None
         }
