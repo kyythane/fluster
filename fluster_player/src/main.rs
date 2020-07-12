@@ -10,6 +10,11 @@ use fluster_core::types::{
     shapes::{AugmentedShape, Edge, MorphEdge, Shape},
 };
 use fluster_graphics::FlusterRendererImpl;
+use glutin::dpi::PhysicalSize;
+use glutin::event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent};
+use glutin::event_loop::{ControlFlow, EventLoop};
+use glutin::window::WindowBuilder;
+use glutin::{ContextBuilder, GlProfile, GlRequest};
 use palette::{LinSrgba, Srgb, Srgba};
 use pathfinder_canvas::CanvasFontContext;
 use pathfinder_color::ColorF;
@@ -20,9 +25,7 @@ use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_resources::embedded::EmbeddedResourceLoader;
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
-use sdl2::video::GLProfile;
+use runner::{FrameResult, Runner};
 use std::{f32::consts::PI, time::Duration};
 use uuid::Uuid;
 
@@ -299,80 +302,82 @@ fn build_action_list() -> ActionList {
             )],
         )),
         Action::PresentFrame(240, 600),
-        Action::Quit,
     ];
     ActionList::new(Box::new(|| None), Some(&actions))
 }
 
 fn main() {
-    let sdl_context = sdl2::init().unwrap();
-    let video = sdl_context.video().unwrap();
-    let gl_attributes = video.gl_attr();
-    gl_attributes.set_context_profile(GLProfile::Core);
-    gl_attributes.set_context_version(3, 3);
+    let event_loop = EventLoop::new();
     let window_size = Vector2I::new(800, 600);
-    let window = video
-        .window(
-            "Fluster demo",
-            window_size.x() as u32,
-            window_size.y() as u32,
-        )
-        .opengl()
-        .build()
+    let physical_window_size = PhysicalSize::new(window_size.x() as f64, window_size.y() as f64);
+
+    let window_builder = WindowBuilder::new()
+        .with_title("Minimal example")
+        .with_inner_size(physical_window_size);
+
+    let gl_context = ContextBuilder::new()
+        .with_gl(GlRequest::Latest)
+        .with_gl_profile(GlProfile::Core)
+        .build_windowed(window_builder, &event_loop)
         .unwrap();
 
-    let gl_context = window.gl_create_context().unwrap();
-    gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
-    window.gl_make_current(&gl_context).unwrap();
+    let gl_context = unsafe { gl_context.make_current().unwrap() };
+    gl::load_with(|name| gl_context.get_proc_address(name) as *const _);
+
     let device = GLDevice::new(GLVersion::GL3, 0);
-    let render_mode = RendererMode::default_for_device(&device);
-    let renderer = Renderer::new(
-        device,
-        &EmbeddedResourceLoader,
-        render_mode,
-        RendererOptions {
-            background_color: Some(ColorF::white()),
-            show_debug_ui: false,
-            dest: DestFramebuffer::full_window(window_size),
-        },
-    );
+    let mode = RendererMode::default_for_device(&device);
+    let options = RendererOptions {
+        background_color: Some(ColorF::white()),
+        dest: DestFramebuffer::full_window(window_size),
+        ..RendererOptions::default()
+    };
+    let renderer = Renderer::new(device, &EmbeddedResourceLoader, mode, options);
 
     let font_context = CanvasFontContext::from_system_source();
 
     let mut fluster_renderer = FlusterRendererImpl::new(
         font_context,
         renderer,
-        Box::new(move || window.gl_swap_window()),
+        Box::new(move || gl_context.swap_buffers().unwrap()),
     );
-
-    let mut event_pump = sdl_context.event_pump().unwrap();
-    let mut end_of_frame_callback = move |state: runner::State| {
-        let mut state = state;
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => {
-                    state.set_running(false);
-                }
-                _ => {}
-            }
-        }
-        state
-    };
-
     let mut action_list = build_action_list();
-
-    match runner::play(
-        &mut fluster_renderer,
+    let mut runner = Runner::initialize(
         &mut action_list,
-        &mut end_of_frame_callback,
         Duration::from_secs_f64(1.0 / 60.0),
         window_size.to_f32(),
-    ) {
-        Err(message) => println!("{}", message),
-        _ => {}
-    }
+    )
+    .unwrap();
+    event_loop.run(move |event, _, control_flow| {
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            }
+            | Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                virtual_keycode: Some(VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => {
+                *control_flow = ControlFlow::Exit;
+            }
+            _ => {
+                *control_flow = match runner.next_frame(&mut fluster_renderer, &mut action_list) {
+                    Ok(FrameResult::Wait(until)) => ControlFlow::WaitUntil(until),
+                    Ok(FrameResult::Continue) => ControlFlow::Wait,
+                    Ok(FrameResult::Quit) => ControlFlow::Exit,
+                    Err(error) => {
+                        println!("{}", error);
+                        ControlFlow::Exit
+                    }
+                };
+            }
+        };
+    });
 }

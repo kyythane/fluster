@@ -8,23 +8,19 @@ use crate::{
     types::{basic::Bitmap, shapes::Shape},
 };
 use aabb_quadtree_pathfinder::RectF;
-use palette::{LinSrgb, Srgb};
+use palette::LinSrgb;
 use pathfinder_geometry::vector::Vector2F;
-use std::{
-    thread,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;
 
 pub struct State {
     frame_duration: Duration,
-    delta_time: Duration,
+    frame_time_elapsed: Duration,
     frame: u32,
-    frame_end_time: Instant,
     background_color: LinSrgb,
-    running: bool,
     stage_size: Vector2F,
+    last_frame_end_time: Instant,
     //TODO: pause
 }
 
@@ -32,86 +28,79 @@ impl State {
     pub fn new(background_color: LinSrgb, frame_duration: Duration, stage_size: Vector2F) -> State {
         State {
             frame: 0,
-            frame_end_time: Instant::now(),
-            delta_time: Duration::from_millis(0),
+            frame_time_elapsed: Duration::from_millis(0),
             frame_duration,
             background_color,
-            running: true,
             stage_size,
+            last_frame_end_time: Instant::now(),
         }
-    }
-
-    pub fn get_running(&self) -> bool {
-        self.running
-    }
-
-    pub fn set_running(&mut self, is_running: bool) {
-        self.running = is_running;
     }
 }
 
-pub fn play(
-    renderer: &mut impl Renderer,
-    actions: &mut ActionList,
-    on_frame_complete: &mut dyn FnMut(State) -> State,
-    frame_duration: Duration,
-    stage_size: Vector2F,
-) -> Result<(), String> {
-    let (root_container_id, mut state, library, quad_trees) =
-        initialize(actions, frame_duration, stage_size)?;
-    let mut engine = Engine::new(root_container_id, library, quad_trees);
+pub enum FrameResult {
+    Wait(Instant),
+    Continue,
+    Quit,
+}
 
-    while let Some(_) = actions.get() {
-        if !state.running {
-            break;
-        }
-        state = execute_actions(state, actions, &mut engine)?;
+pub struct Runner<'a, 'b> {
+    state: State,
+    engine: Engine<'a, 'b>,
+}
+
+impl<'a, 'b> Runner<'a, 'b> {
+    pub fn initialize(
+        actions: &mut ActionList,
+        frame_duration: Duration,
+        stage_size: Vector2F,
+    ) -> Result<Self, String> {
+        let (root_container_id, state, library, quad_trees) =
+            initialize(actions, frame_duration, stage_size)?;
+        let engine = Engine::new(root_container_id, library, quad_trees);
+        Ok(Self { state, engine })
+    }
+
+    pub fn next_frame(
+        &mut self,
+        renderer: &mut impl Renderer,
+        actions: &mut ActionList,
+    ) -> Result<FrameResult, String> {
+        let frame_start_time = Instant::now();
+        let mut frame_result = FrameResult::Continue;
+        execute_actions(&mut self.state, actions, &mut self.engine)?;
         if let Some(Action::PresentFrame(start, count)) = actions.get() {
-            if *count == 0 {
-                continue; //Treat PresentFrame(_, 0) as a no-op
-            } else if state.frame > start + count {
-                return Err("Attempting to play incorrect frame. Frame counter and action list have gotten desynced".to_string());
-            } else {
-                let start = state.frame - *start;
-                for _ in 0..(*count - start) {
-                    //TODO: skip updates/paints to catch up to frame rate if we are lagging
-                    let frame_time = FrameTime {
-                        delta_frame: 1,
-                        delta_time: state.delta_time,
-                    };
-                    engine.update(frame_time);
-                    draw_frame(renderer, &state, &engine)?;
-                    state = on_frame_complete(state);
-                    if !state.running {
-                        break;
-                    }
-                    handle_frame_delta(&mut state);
+            if self.state.frame < start + count {
+                let frame_time = FrameTime {
+                    delta_frame: 1,
+                    delta_time: self.state.frame_time_elapsed
+                        + (frame_start_time - self.state.last_frame_end_time),
+                };
+                self.engine.update(frame_time);
+                draw_frame(renderer, &self.state, &self.engine)?;
+                self.state.last_frame_end_time = Instant::now();
+                let frame_time_elapsed = self.state.last_frame_end_time - frame_start_time;
+                println!(
+                    "frame {:?} time {:?}, {:?}% of target ",
+                    self.state.frame,
+                    frame_time_elapsed,
+                    frame_time_elapsed.div_duration_f32(self.state.frame_duration) * 100.0
+                );
+                self.state.frame_time_elapsed = frame_time_elapsed;
+                self.state.frame += 1;
+                frame_result = if frame_time_elapsed < self.state.frame_duration {
+                    FrameResult::Wait(
+                        self.state.last_frame_end_time
+                            + (self.state.frame_duration - frame_time_elapsed),
+                    )
+                } else {
+                    FrameResult::Continue
                 }
+            } else {
+                actions.advance();
             }
         }
-        actions.advance();
+        Ok(frame_result)
     }
-    Ok(())
-}
-
-fn handle_frame_delta(state: &mut State) {
-    let frame_end_time = Instant::now();
-    let frame_time_elapsed = frame_end_time - state.frame_end_time;
-    println!(
-        "frame {:?} time {:?}, {:?}% of target ",
-        state.frame,
-        (frame_end_time - state.frame_end_time),
-        (frame_end_time - state.frame_end_time).div_duration_f32(state.frame_duration) * 100.0
-    );
-    let frame_end_time = if frame_time_elapsed < state.frame_duration {
-        thread::sleep(state.frame_duration - frame_time_elapsed);
-        Instant::now()
-    } else {
-        frame_end_time
-    };
-    state.delta_time = frame_end_time - state.frame_end_time;
-    state.frame_end_time = frame_end_time;
-    state.frame = state.frame + 1;
 }
 
 fn define_shape(id: &Uuid, shape: &Shape, library: &mut Library) {
@@ -174,10 +163,10 @@ fn initialize(
 }
 
 fn execute_actions(
-    state: State,
+    state: &mut State,
     actions: &mut ActionList,
     engine: &mut Engine,
-) -> Result<State, String> {
+) -> Result<(), String> {
     let mut state = state;
     while let Some(action) = actions.get_mut() {
         match action {
@@ -216,14 +205,10 @@ fn execute_actions(
             }
             Action::Label(_) => (),
             Action::EndInitialization => (),
-            Action::Quit => {
-                state.running = false;
-                break;
-            }
         }
         actions.advance();
     }
-    Ok(state)
+    Ok(())
 }
 
 fn draw_frame(renderer: &mut impl Renderer, state: &State, engine: &Engine) -> Result<(), String> {

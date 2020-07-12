@@ -435,7 +435,6 @@ pub enum Action {
     UpdateContainer(ContainerUpdateDefintition),
     RemoveContainer(Uuid, bool),
     PresentFrame(u32, u32), //TODO: if frames have set indexes, then how would it be possible to load in additional frames? Clip ID?
-    Quit,
 }
 
 #[cfg(test)]
