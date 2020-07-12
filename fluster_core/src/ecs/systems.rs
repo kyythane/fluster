@@ -403,26 +403,27 @@ impl<'a> System<'a> for ApplyTransformTweens {
     fn run(&mut self, (mut transform_storage, tweens_storage): Self::SystemData) {
         for (transform, tweens) in (&mut transform_storage, &tweens_storage).join() {
             let before_update = transform.local;
-            transform.local = tweens
+            tweens
                 .0
                 .iter()
-                .filter(|tween| {
+                .filter_map(|tween| {
                     if let PropertyTweenData::Transform { .. } = tween.tween_data() {
-                        true
+                        if let PropertyTweenUpdate::Transform(end_transfom) = tween.compute() {
+                            Some(end_transfom)
+                        } else {
+                            None
+                        }
                     } else {
-                        false
+                        None
                     }
                 })
-                .fold(Transform2F::default(), |transform, tween| {
-                    if let PropertyTweenUpdate::Transform(end_transfom) = tween.compute() {
-                        transform * end_transfom
-                    } else {
-                        transform
+                .reduce(|acc_transform, transform| transform * acc_transform)
+                .map(|updated| {
+                    if updated != before_update {
+                        transform.dirty = true;
                     }
+                    transform.local = updated;
                 });
-            if transform.local != before_update {
-                transform.dirty = true;
-            }
         }
     }
 }
@@ -434,22 +435,23 @@ impl<'a> System<'a> for ApplyMorphTweens {
 
     fn run(&mut self, (mut morph_storage, tweens_storage): Self::SystemData) {
         for (morph, tweens) in (&mut morph_storage, &tweens_storage).join() {
-            morph.0 = tweens
+            tweens
                 .0
                 .iter()
-                .filter(|tween| {
+                .filter_map(|tween| {
                     if let PropertyTweenData::MorphIndex { .. } = tween.tween_data() {
-                        true
+                        if let PropertyTweenUpdate::Morph(end_morph) = tween.compute() {
+                            Some(end_morph)
+                        } else {
+                            None
+                        }
                     } else {
-                        false
+                        None
                     }
                 })
-                .fold(1.0, |morph, tween| {
-                    if let PropertyTweenUpdate::Morph(end_morph) = tween.compute() {
-                        morph * end_morph
-                    } else {
-                        morph
-                    }
+                .reduce(|morph_acc, morph| morph_acc * morph)
+                .map(|updated| {
+                    morph.0 = updated;
                 });
         }
     }
@@ -462,7 +464,7 @@ impl<'a> System<'a> for ApplyViewRectTweens {
 
     fn run(&mut self, (mut view_storage, tweens_storage): Self::SystemData) {
         for (view_rect, tweens) in (&mut view_storage, &tweens_storage).join() {
-            let (count, sum_rect) = tweens
+            tweens
                 .0
                 .iter()
                 .filter(|tween| {
@@ -482,18 +484,19 @@ impl<'a> System<'a> for ApplyViewRectTweens {
                 .enumerate()
                 .reduce(|(_, sum_rect), (index, rect)| {
                     (
-                        index + 1,
+                        index,
                         RectF::from_points(
                             sum_rect.origin() + rect.origin(),
                             sum_rect.lower_right() + rect.lower_right(),
                         ),
                     )
                 })
-                .unwrap_or_else(|| (1, view_rect.0));
-            view_rect.0 = RectF::from_points(
-                sum_rect.origin() / count as f32,
-                sum_rect.lower_right() / count as f32,
-            );
+                .map(|(count, sum_rect)| {
+                    view_rect.0 = RectF::from_points(
+                        sum_rect.origin() / (count + 1) as f32,
+                        sum_rect.lower_right() / count as f32,
+                    );
+                });
         }
     }
 }
@@ -505,7 +508,7 @@ impl<'a> System<'a> for ApplyColoringTweens {
 
     fn run(&mut self, (mut coloring_storage, tweens_storage): Self::SystemData) {
         for (coloring, tweens) in (&mut coloring_storage, &tweens_storage).join() {
-            let (count, sum_denormalized) = tweens
+            tweens
                 .0
                 .iter()
                 .filter(|tween| {
@@ -524,10 +527,11 @@ impl<'a> System<'a> for ApplyColoringTweens {
                 })
                 .enumerate()
                 .reduce(|(_, sum_denormalized), (index, denormalized)| {
-                    (index + 1, sum_denormalized.add(&denormalized))
+                    (index, sum_denormalized.add(&denormalized))
                 })
-                .unwrap_or_else(|| (1, coloring.into_denormalized()));
-            *coloring = (sum_denormalized.div(count as f32)).into_coloring();
+                .map(|(count, sum_denormalized)| {
+                    *coloring = (sum_denormalized.div((count + 1) as f32)).into_coloring();
+                });
         }
     }
 }
@@ -539,7 +543,7 @@ impl<'a> System<'a> for ApplyOrderTweens {
 
     fn run(&mut self, (mut order_storage, tweens_storage): Self::SystemData) {
         for (order, tweens) in (&mut order_storage, &tweens_storage).join() {
-            order.0 = tweens
+            tweens
                 .0
                 .iter()
                 .filter_map(|tween| {
@@ -554,7 +558,9 @@ impl<'a> System<'a> for ApplyOrderTweens {
                     }
                 })
                 .reduce(|max, order| max.max(order))
-                .unwrap_or(order.0);
+                .map(|updated| {
+                    order.0 = updated;
+                });
         }
     }
 }

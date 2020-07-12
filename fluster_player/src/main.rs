@@ -88,8 +88,9 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            edges: Edge::new_rect(
-                                Vector2F::splat(30.0),
+                            edges: Edge::new_polygon(
+                                5,
+                                30.0,
                                 Transform2F::from_translation(Vector2F::splat(-15.0)),
                             ),
                             color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
@@ -103,8 +104,9 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            edges: Edge::new_rect(
+                            edges: Edge::new_superellipse(
                                 Vector2F::splat(30.0),
+                                4.0,
                                 Transform2F::from_translation(Vector2F::splat(-15.0)),
                             ),
                             color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
@@ -118,8 +120,8 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            edges: Edge::new_rect(
-                                Vector2F::splat(30.0),
+                            edges: Edge::new_ellipse(
+                                Vector2F::splat(15.0),
                                 Transform2F::from_translation(Vector2F::splat(-15.0)),
                             ),
                             color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
@@ -219,13 +221,13 @@ fn build_action_list() -> ActionList {
             ],
         )),
         Action::CreateContainer(ContainerCreationDefintition::new(
-            entity_id,
+            root_id,
             shape4_id,
             vec![
                 ContainerCreationProperty::Transform(ScaleRotationTranslation::new(
                     Vector2F::splat(2.0),
                     0.0,
-                    Vector2F::new(300.0, 300.0),
+                    Vector2F::new(50.0, 100.0),
                 )),
                 ContainerCreationProperty::Display(shape4_id),
             ],
@@ -237,7 +239,7 @@ fn build_action_list() -> ActionList {
                 ContainerCreationProperty::Transform(ScaleRotationTranslation::new(
                     Vector2F::splat(2.0),
                     0.0,
-                    Vector2F::new(0.0, 0.0),
+                    Vector2F::new(100.0, 100.0),
                 )),
                 ContainerCreationProperty::Display(shape5_id),
                 ContainerCreationProperty::MorphIndex(0.0),
