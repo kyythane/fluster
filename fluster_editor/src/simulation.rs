@@ -1,68 +1,51 @@
 #![deny(clippy::all)]
 use crate::messages::{EditMessage, SelectionHandle, VertexHandle};
 use crate::{
-    rendering::RenderData,
     scratch_pad::{ScratchPad, EDIT_LAYER},
     tools::SelectionShape,
 };
-use fluster_core::rendering::{adjust_depth, PaintData};
 use fluster_core::{
-    runner::{QuadTreeLayerOptions, SceneData},
-    types::{
-        model::{DisplayLibraryItem, Entity, Part},
-        shapes::{Edge, Shape},
-    },
+    ecs::resources::{Library, QuadTreeLayerOptions, QuadTrees},
+    engine::Engine,
+    types::shapes::{Edge, Shape},
 };
-use pathfinder_color::ColorU;
+use palette::LinSrgb;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::mem;
 use uuid::Uuid;
 
-pub struct StageState {
-    background_color: ColorU,
-    root_entity_id: Uuid,
+pub struct StageState<'a, 'b> {
+    background_color: LinSrgb,
+    root_container_id: Uuid,
     handle_container_id: Uuid,
-    library: HashMap<Uuid, DisplayLibraryItem>,
-    display_list: HashMap<Uuid, Entity>,
     size: Vector2I,
     scale: f32,
     scratch_pad: ScratchPad,
-    scene_data: SceneData,
+    engine: Engine<'a, 'b>,
 }
 
-impl StageState {
+impl<'a, 'b> StageState<'a, 'b> {
     pub fn new(stage_size: Vector2I, background_color: ColorU) -> Self {
-        let root_entity_id = Uuid::new_v4();
-        let mut root_entity = Entity::create_root(root_entity_id);
+        let root_container_id = Uuid::new_v4();
         let handle_container_id = Uuid::new_v4();
-        // use handle_container_id for both part and item id since it is unique.
-        // Note: this part should not have a collision layer, so it isn't included in mouse picking!
-        root_entity.add_part(
-            &handle_container_id,
-            Part::new_vector(handle_container_id, Transform2F::default(), None),
-        );
-
-        let mut display_list = HashMap::new();
-        display_list.insert(root_entity_id, root_entity);
+        let engine = Engine::new(root_container_id, Library::default(), QuadTrees::default());
         let mut new_self = Self {
             background_color,
-            root_entity_id,
+            root_container_id,
             handle_container_id,
-            library: HashMap::new(),
-            display_list,
             size: stage_size,
             scale: 1.0,
             scratch_pad: ScratchPad::default(),
-            scene_data: SceneData::new(),
+            engine,
         };
         // Need to init the draw_handle container before we init scene data so we don't compute_bounds doesn't throw because it can't find a library item
         new_self.update_draw_handle(vec![]);
         // NOTE: currently making edit collision 3x the stage size to allow for overdraw.
-        new_self.scene_data.add_layer(
+        new_self.engine.get_quad_trees_mut().create_quad_tree(
             EDIT_LAYER,
             RectF::new(stage_size.to_f32() * -1.0, stage_size.to_f32() * 3.0),
             QuadTreeLayerOptions::new(12.0),
@@ -72,8 +55,16 @@ impl StageState {
         return new_self;
     }
 
+    pub fn background_color(&self) -> LinSrgb {
+        self.background_color
+    }
+
+    pub fn engine(&self) -> &Engine<'a, 'b> {
+        &self.engine
+    }
+
     pub fn root(&self) -> &Uuid {
-        &self.root_entity_id
+        &self.root_container_id
     }
 
     pub fn draw_handles(&mut self, handles: Vec<SelectionHandle>) -> bool {
@@ -254,35 +245,6 @@ impl StageState {
             }
             DisplayLibraryItem::Raster(..) => todo!(),
         }
-    }
-
-    //TODO: how does root interact with layers? Should I support more than one root?
-    pub fn compute_render_data(&self, timeline: &TimelineState) -> RenderData {
-        let mut nodes = VecDeque::new();
-        let mut depth_list = BTreeMap::new();
-        nodes.push_back(&self.root_entity_id);
-        while let Some(entity_id) = nodes.pop_front() {
-            if !timeline.can_show_entity(entity_id) {
-                continue;
-            }
-            match self.display_list.get(entity_id) {
-                Some(entity) => {
-                    for child_id in entity.children() {
-                        nodes.push_back(child_id);
-                    }
-                    let depth = adjust_depth(entity.depth(), &depth_list);
-                    depth_list.insert(depth, entity);
-                }
-                None => continue,
-            }
-        }
-
-        RenderData::new(
-            PaintData::new(depth_list),
-            &self.scene_data,
-            self.background_color,
-            &self.library,
-        )
     }
 }
 

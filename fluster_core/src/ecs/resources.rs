@@ -64,6 +64,14 @@ impl Library {
         self.textures.get(uuid).cloned()
     }
 
+    pub fn remove_shape(&mut self, uuid: &Uuid) {
+        self.shapes.remove(uuid);
+    }
+
+    pub fn remove_texture(&mut self, uuid: &Uuid) {
+        self.textures.remove(uuid);
+    }
+
     pub fn contains_shape(&self, uuid: &Uuid) -> bool {
         self.shapes.contains_key(uuid)
     }

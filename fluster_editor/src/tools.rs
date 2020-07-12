@@ -6,7 +6,7 @@ use iced_native::{
     input::mouse::Event as MouseEvent, input::ButtonState, text_input::State as TextInputState,
     MouseCursor,
 };
-use pathfinder_color::ColorU;
+use palette::LinSrgba;
 use pathfinder_content::stroke::{LineCap, LineJoin};
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use std::collections::HashMap;
@@ -238,11 +238,11 @@ pub enum ToolOptionHandle {
 
 #[derive(Clone, Copy, Debug)]
 pub enum ToolOption {
-    LineColor(Option<ColorU>),
+    LineColor(Option<LinSrgba>),
     StrokeWidth(f32),
     LineCap(LineCap),
     LineJoin(LineJoin),
-    FillColor(Option<ColorU>),
+    FillColor(Option<LinSrgba>),
     NumEdges(u8),
     ClosedPath(bool),
     CornerRadius(f32),
@@ -269,11 +269,11 @@ impl ToolOption {
 
 #[derive(Clone, Debug)]
 struct Options {
-    line_color: Option<ColorU>,
+    line_color: Option<LinSrgba>,
     stroke_width: f32,
     line_cap: LineCap,
     line_join: LineJoin,
-    fill_color: Option<ColorU>,
+    fill_color: Option<LinSrgba>,
     num_edges: u8,
     closed_path: bool,
     corner_radius: f32,
@@ -294,11 +294,11 @@ impl Default for EditState {
             placement_state: PlacementState::None,
             //TODO: configure/persist defaults
             options: Options {
-                line_color: Some(ColorU::black()),
+                line_color: Some(LinSrgba::new(0.0, 0.0, 0.0, 1.0)),
                 stroke_width: 3.0,
                 line_cap: LineCap::default(),
                 line_join: LineJoin::default(),
-                fill_color: Some(ColorU::white()),
+                fill_color: Some(LinSrgba::new(1.0, 1.0, 1.0, 1.0)),
                 num_edges: 5,
                 closed_path: false,
                 corner_radius: 0.0,

@@ -8,7 +8,7 @@ use crate::{
     types::{basic::Bitmap, shapes::Shape},
 };
 use aabb_quadtree_pathfinder::RectF;
-use palette::{named, LinSrgb, Srgb};
+use palette::{LinSrgb, Srgb};
 use pathfinder_geometry::vector::Vector2F;
 use std::{
     thread,
@@ -135,7 +135,7 @@ fn initialize(
     let mut library = Library::default();
     let mut quad_trees = QuadTrees::default();
     let mut root_entity_id: Option<Uuid> = None;
-    let mut background_color = Srgb::<f32>::from_format(named::OLIVE).into_linear();
+    let mut background_color = LinSrgb::new(1.0, 1.0, 1.0);
     while let Some(action) = actions.get_mut() {
         match action {
             Action::CreateRoot(id) => {

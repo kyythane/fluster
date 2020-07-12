@@ -30,6 +30,7 @@ use std::{
 use uuid::Uuid;
 
 pub struct Engine<'a, 'b> {
+    root_container_id: Uuid,
     world: World,
     dispatcher: Dispatcher<'a, 'b>,
 }
@@ -102,13 +103,21 @@ impl<'a, 'b> Engine<'a, 'b> {
             )
             .build();
         dispatcher.setup(&mut world);
-        Engine { world, dispatcher }
+        Engine {
+            root_container_id,
+            world,
+            dispatcher,
+        }
     }
 
     pub fn update(&mut self, frame_time: FrameTime) {
         self.world.insert(frame_time);
         self.dispatcher.dispatch(&mut self.world);
         self.world.maintain();
+    }
+
+    pub fn root_container_id(&self) -> &Uuid {
+        &self.root_container_id
     }
 
     pub fn get_scene_graph(&self) -> Fetch<SceneGraph> {
@@ -187,6 +196,23 @@ impl<'a, 'b> Engine<'a, 'b> {
             }
         }
         Ok(())
+    }
+
+    pub fn mark_dirty(&mut self, container_id: &Uuid) {
+        {
+            let read_storage = self.world.read_resource::<ContainerMapping>();
+            read_storage.get_entity(container_id).cloned()
+        }
+        .map(|entity| {
+            let mut transform_storage = self.world.write_storage::<Transform>();
+            transform_storage
+                .get_mut(entity)
+                .map(|transform| transform.dirty = true);
+            let mut bounds_storage = self.world.write_storage::<Bounds>();
+            bounds_storage
+                .get_mut(entity)
+                .map(|bounds| bounds.dirty = true);
+        });
     }
 
     pub fn get_drawable_items(&self) -> Vec<DrawableItem> {

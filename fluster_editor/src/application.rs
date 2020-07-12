@@ -13,16 +13,20 @@ use iced_wgpu::{Defaults, Primitive, Renderer};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::{convert::TryInto, hash::Hash, mem};
-pub struct Stage<'a> {
+pub struct Stage<'a, 'b, 'c> {
     width: u16,
     height: u16,
     frame: ImageHandle,
     edit_state: &'a EditState,
-    stage_state: &'a StageState,
+    stage_state: &'a StageState<'b, 'c>,
 }
 
-impl<'a> Stage<'a> {
-    pub fn new(frame: ImageHandle, stage_state: &'a StageState, edit_state: &'a EditState) -> Self {
+impl<'a, 'b, 'c> Stage<'a, 'b, 'c> {
+    pub fn new(
+        frame: ImageHandle,
+        stage_state: &'a StageState<'b, 'c>,
+        edit_state: &'a EditState,
+    ) -> Self {
         Self {
             width: stage_state.width().try_into().unwrap(),
             height: stage_state.height().try_into().unwrap(),
@@ -33,7 +37,7 @@ impl<'a> Stage<'a> {
     }
 }
 
-impl<'a> Widget<AppMessage, Renderer> for Stage<'a> {
+impl<'a, 'b, 'c> Widget<AppMessage, Renderer> for Stage<'a, 'b, 'c> {
     fn width(&self) -> Length {
         Length::Units(self.width)
     }
@@ -114,7 +118,7 @@ impl<'a> Widget<AppMessage, Renderer> for Stage<'a> {
     }
 }
 
-impl<'a> Into<Element<'a, AppMessage>> for Stage<'a> {
+impl<'a, 'b, 'c> Into<Element<'a, AppMessage>> for Stage<'a, 'b, 'c> {
     fn into(self) -> Element<'a, AppMessage> {
         Element::new(self)
     }
@@ -151,8 +155,8 @@ impl Default for AppFlags {
     }
 }
 
-pub struct App {
-    stage_state: StageState,
+pub struct App<'a, 'b> {
+    stage_state: StageState<'a, 'b>,
     stage_renderer: StageRenderer,
     edit_state: EditState,
     edit_display_state: EditDisplayState,
@@ -161,10 +165,15 @@ pub struct App {
     tool_pane_state: ToolPaneState,
 }
 
-impl App {
+impl<'a, 'b> App<'a, 'b> {
     fn refresh_stage(&mut self) {
-        let render_data = self.stage_state.compute_render_data(&self.timeline_state);
-        let frame_handle = self.stage_renderer.draw_frame(render_data).unwrap();
+        let frame_handle = self
+            .stage_renderer
+            .draw_frame(
+                self.stage_state.background_color(),
+                self.stage_state.engine(),
+            )
+            .unwrap();
         mem::replace(&mut self.frame_handle, frame_handle);
     }
 
@@ -220,7 +229,7 @@ impl App {
     }
 }
 
-impl Application for App {
+impl<'a, 'b> Application for App<'a, 'b> {
     type Executor = executor::Default;
     type Message = AppMessage;
     type Flags = AppFlags;
@@ -231,7 +240,7 @@ impl Application for App {
         let mut stage_renderer = StageRenderer::new(flags.stage_size).unwrap();
         let timeline_state = TimelineState::new(stage_state.root());
         let frame_handle = stage_renderer
-            .draw_frame(stage_state.compute_render_data(&timeline_state))
+            .draw_frame(stage_state.background_color(), stage_state.engine())
             .unwrap();
         (
             Self {
