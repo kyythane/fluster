@@ -598,18 +598,21 @@ impl<'a> System<'a> for UpdateWorldTransform {
                     break;
                 }
             }
-            queue.push_back(dirty_root);
-            while let Some(next) = queue.pop_front() {
+            queue.push_back((dirty_root, current_world_transform));
+            while let Some((next, current_world_transform)) = queue.pop_front() {
+                let current_world_transform =
+                    if let Some(transform) = transform_storage.get_mut(next) {
+                        let transform_before_update = transform.world;
+                        transform.world = current_world_transform * transform.local;
+                        if transform.world != transform_before_update {
+                            transform.dirty = true;
+                        }
+                        transform.world
+                    } else {
+                        current_world_transform
+                    };
                 for child in scene_graph.get_children(&next).unwrap() {
-                    queue.push_back(*child);
-                }
-                if let Some(transform) = transform_storage.get_mut(next) {
-                    let transform_before_update = transform.world;
-                    transform.world = current_world_transform * transform.local;
-                    if transform.world != transform_before_update {
-                        transform.dirty = true;
-                    }
-                    current_world_transform = transform.world;
+                    queue.push_back((*child, current_world_transform));
                 }
             }
         }

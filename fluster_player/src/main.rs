@@ -44,12 +44,10 @@ fn build_action_list() -> ActionList {
         Action::DefineShape {
             id: shape_id,
             shape: Shape::Fill {
-                edges: vec![
-                    Edge::Line(Vector2F::new(-15.0, -15.0)),
-                    Edge::Line(Vector2F::new(15.0, -15.0)),
-                    Edge::Line(Vector2F::new(15.0, 15.0)),
-                    Edge::Line(Vector2F::new(-15.0, 15.0)),
-                ],
+                edges: Edge::new_rect(
+                    Vector2F::splat(30.0),
+                    Transform2F::from_translation(Vector2F::splat(-15.0)),
+                ),
                 color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
                     .into_linear(),
             },
@@ -57,13 +55,10 @@ fn build_action_list() -> ActionList {
         Action::DefineShape {
             id: shape2_id,
             shape: Shape::Path {
-                edges: vec![
-                    Edge::Line(Vector2F::new(-15.0, -15.0)),
-                    Edge::Line(Vector2F::new(15.0, -15.0)),
-                    Edge::Line(Vector2F::new(15.0, 15.0)),
-                    Edge::Line(Vector2F::new(-15.0, 15.0)),
-                    Edge::Close,
-                ],
+                edges: Edge::new_rect(
+                    Vector2F::splat(30.0),
+                    Transform2F::from_translation(Vector2F::splat(-15.0)),
+                ),
                 stroke_style: StrokeStyle {
                     line_width: 3.0,
                     line_cap: LineCap::Square,
@@ -78,12 +73,10 @@ fn build_action_list() -> ActionList {
                 shapes: vec![
                     AugmentedShape {
                         shape: Shape::Fill {
-                            edges: vec![
-                                Edge::Line(Vector2F::new(-15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, 15.0)),
-                                Edge::Line(Vector2F::new(-15.0, 15.0)),
-                            ],
+                            edges: Edge::new_rect(
+                                Vector2F::splat(30.0),
+                                Transform2F::from_translation(Vector2F::splat(-15.0)),
+                            ),
                             color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
                                 .into_linear(),
                         },
@@ -95,12 +88,10 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            edges: vec![
-                                Edge::Line(Vector2F::new(-15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, 15.0)),
-                                Edge::Line(Vector2F::new(-15.0, 15.0)),
-                            ],
+                            edges: Edge::new_rect(
+                                Vector2F::splat(30.0),
+                                Transform2F::from_translation(Vector2F::splat(-15.0)),
+                            ),
                             color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
                                 .into_linear(),
                         },
@@ -112,12 +103,10 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            edges: vec![
-                                Edge::Line(Vector2F::new(-15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, 15.0)),
-                                Edge::Line(Vector2F::new(-15.0, 15.0)),
-                            ],
+                            edges: Edge::new_rect(
+                                Vector2F::splat(30.0),
+                                Transform2F::from_translation(Vector2F::splat(-15.0)),
+                            ),
                             color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
                                 .into_linear(),
                         },
@@ -129,12 +118,10 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            edges: vec![
-                                Edge::Line(Vector2F::new(-15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, 15.0)),
-                                Edge::Line(Vector2F::new(-15.0, 15.0)),
-                            ],
+                            edges: Edge::new_rect(
+                                Vector2F::splat(30.0),
+                                Transform2F::from_translation(Vector2F::splat(-15.0)),
+                            ),
                             color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
                                 .into_linear(),
                         },
