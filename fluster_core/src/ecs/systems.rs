@@ -4,15 +4,18 @@ use super::{
         ViewRect,
     },
     resources::{
-        ContainerCreationQueue, ContainerMapping, FrameTime, Library, QuadTreeLayer, QuadTrees,
-        SceneGraph,
+        ContainerCreationQueue, ContainerMapping, ContainerUpdateQueue, FrameTime, Library,
+        QuadTreeLayer, QuadTrees, SceneGraph,
     },
 };
 use crate::{
-    actions::{BoundsKindDefinition, ContainerCreationProperty},
-    tween::{PropertyTweenData, PropertyTweenUpdate, Tween},
-    types::coloring::Coloring,
+    actions::{
+        BoundsKindDefinition, ContainerCreationProperty, ContainerUpdateProperty, RectPoints,
+    },
+    tween::{PropertyTween, PropertyTweenData, PropertyTweenUpdate, Tween, TweenDuration},
+    types::{basic::ScaleRotationTranslation, coloring::Coloring},
 };
+use palette::LinSrgba;
 use pathfinder_geometry::{rect::RectF, transform2d::Transform2F, vector::Vector2F};
 use reduce::Reduce;
 use specs::{
@@ -43,7 +46,7 @@ pub struct ContainerCreation;
 impl<'a> System<'a> for ContainerCreation {
     type SystemData = ContainerCreationSystemData<'a>;
 
-    fn run(&mut self, mut data: ContainerCreationSystemData) {
+    fn run(&mut self, mut data: Self::SystemData) {
         while let Some(definition) = data.container_creation_queue.dequeue() {
             if data.container_mapping.contains_container(definition.id()) {
                 // TODO: errors
@@ -157,8 +160,240 @@ impl<'a> System<'a> for ContainerCreation {
         }
     }
 }
+#[derive(SystemData)]
+pub struct ContainerUpdateSystemData<'a> {
+    container_mapping: Write<'a, ContainerMapping>,
+    container_update_queue: Write<'a, ContainerUpdateQueue>,
+    scene_graph: WriteExpect<'a, SceneGraph>,
+    quad_trees: Write<'a, QuadTrees>,
+    library: Read<'a, Library>,
+    transform_storage: WriteStorage<'a, Transform>,
+    order_storage: WriteStorage<'a, Order>,
+    morph_storage: WriteStorage<'a, Morph>,
+    bounds_storage: WriteStorage<'a, Bounds>,
+    layer_storage: WriteStorage<'a, Layer>,
+    view_rect_storage: WriteStorage<'a, ViewRect>,
+    coloring_storage: WriteStorage<'a, Coloring>,
+    display_storage: WriteStorage<'a, Display>,
+    tween_storage: WriteStorage<'a, Tweens>,
+}
 
-pub struct UpdateContainers;
+pub struct ContainerUpdate;
+
+impl ContainerUpdate {
+    fn add_tween(tween_storage: &mut WriteStorage<Tweens>, entity: Entity, tween: PropertyTween) {
+        tween_storage
+            .entry(entity)
+            .unwrap()
+            .or_insert(Tweens(vec![]))
+            .0
+            .push(tween);
+    }
+}
+
+impl<'a> System<'a> for ContainerUpdate {
+    type SystemData = ContainerUpdateSystemData<'a>;
+    fn run(&mut self, mut data: Self::SystemData) {
+        while let Some(definition) = data.container_update_queue.dequeue() {
+            if let Some(entity) = data.container_mapping.get_entity(definition.id()) {
+                let entity = *entity;
+                for property in definition.properties() {
+                    match property {
+                        ContainerUpdateProperty::Transform(srt, easing, duration_frames) => {
+                            let start = data
+                                .transform_storage
+                                .entry(entity)
+                                .unwrap()
+                                .or_insert(Transform::default())
+                                .local;
+                            let tween = PropertyTween::new_transform(
+                                ScaleRotationTranslation::from_transform(&start),
+                                *srt,
+                                TweenDuration::new_frame(*duration_frames),
+                                *easing,
+                            );
+                            Self::add_tween(&mut data.tween_storage, entity, tween);
+                        }
+                        ContainerUpdateProperty::MorphIndex(morph, easing, duration_frames) => {
+                            let start = data
+                                .morph_storage
+                                .entry(entity)
+                                .unwrap()
+                                .or_insert(Morph::default())
+                                .0;
+                            let tween = PropertyTween::new_morph_index(
+                                start,
+                                *morph,
+                                TweenDuration::new_frame(*duration_frames),
+                                *easing,
+                            );
+                            Self::add_tween(&mut data.tween_storage, entity, tween);
+                        }
+                        ContainerUpdateProperty::Coloring(
+                            coloring,
+                            color_space,
+                            easing,
+                            duration_frames,
+                        ) => {
+                            let library_item = data.display_storage.get(entity).and_then(
+                                |display| match display.1 {
+                                    DisplayKind::Vector => data
+                                        .library
+                                        .get_shape(&display.0)
+                                        .and_then(|shape| Some(Some(shape.color())))
+                                        .unwrap_or(None),
+                                    DisplayKind::Raster => {
+                                        Some(Coloring::Color(LinSrgba::new(1.0, 1.0, 1.0, 1.0)))
+                                    }
+                                },
+                            );
+                            let coloring_component = data.coloring_storage.get(entity);
+                            let start = match (library_item, coloring_component) {
+                                (_, Some(component)) => component.clone(),
+                                (Some(coloring), None) => {
+                                    data.coloring_storage
+                                        .insert(entity, coloring.clone())
+                                        .unwrap();
+                                    coloring
+                                }
+                                (_, _) => {
+                                    //TODO: errors
+                                    todo!()
+                                }
+                            };
+                            let tween = PropertyTween::new_coloring(
+                                start,
+                                coloring.clone(),
+                                *color_space,
+                                TweenDuration::new_frame(*duration_frames),
+                                *easing,
+                            );
+                            Self::add_tween(&mut data.tween_storage, entity, tween);
+                        }
+                        ContainerUpdateProperty::ViewRect(rect_points, easing, duration_frames) => {
+                            let library_item = data
+                                .display_storage
+                                .get(entity)
+                                .and_then(|display| data.library.get_texture(&display.0));
+                            let view_rect_component = data.view_rect_storage.get(entity);
+                            let start = match (library_item, view_rect_component) {
+                                (_, Some(component)) => component.0,
+                                (Some(pattern), None) => {
+                                    let rect = RectF::from_points(
+                                        Vector2F::zero(),
+                                        pattern.size().to_f32(),
+                                    );
+                                    data.view_rect_storage
+                                        .insert(entity, ViewRect(rect))
+                                        .unwrap();
+                                    rect
+                                }
+                                (_, _) => {
+                                    //TODO: errors
+                                    todo!()
+                                }
+                            };
+                            let tween = PropertyTween::new_view_rect(
+                                RectPoints::from_rect(&start),
+                                *rect_points,
+                                TweenDuration::new_frame(*duration_frames),
+                                *easing,
+                            );
+                            Self::add_tween(&mut data.tween_storage, entity, tween);
+                        }
+                        ContainerUpdateProperty::Order(order, easing, duration_frames) => {
+                            let start = data
+                                .order_storage
+                                .entry(entity)
+                                .unwrap()
+                                .or_insert(Order::default())
+                                .0;
+                            let tween = PropertyTween::new_order(
+                                start,
+                                *order,
+                                TweenDuration::new_frame(*duration_frames),
+                                *easing,
+                            );
+                            Self::add_tween(&mut data.tween_storage, entity, tween);
+                        }
+                        ContainerUpdateProperty::Display(display) => {
+                            let display_item = if data.library.contains_shape(display) {
+                                Display(*display, DisplayKind::Vector)
+                            } else if data.library.contains_texture(display) {
+                                Display(*display, DisplayKind::Raster)
+                            } else {
+                                // TODO: errors
+                                panic!()
+                            };
+                            data.display_storage.insert(entity, display_item).unwrap();
+                        }
+                        ContainerUpdateProperty::RemoveDisplay => {
+                            data.display_storage.remove(entity);
+                        }
+                        ContainerUpdateProperty::Bounds(bounds_definition) => {
+                            let bounds = match bounds_definition {
+                                BoundsKindDefinition::Display => Bounds {
+                                    bounds: RectF::default(),
+                                    source: BoundsSource::Display,
+                                    dirty: true,
+                                },
+                                BoundsKindDefinition::Defined(rect_points) => Bounds {
+                                    // NOTE: not definining bounds since that will get computed in first frame after entity is updated
+                                    bounds: RectF::default(),
+                                    source: BoundsSource::Defined(RectF::from_points(
+                                        rect_points.origin,
+                                        rect_points.lower_right,
+                                    )),
+                                    dirty: true,
+                                },
+                            };
+                            data.bounds_storage.insert(entity, bounds).unwrap();
+                        }
+                        ContainerUpdateProperty::RemoveBounds => {
+                            data.bounds_storage.remove(entity);
+                        }
+                        ContainerUpdateProperty::AddToLayer(layer) => {
+                            if let Some(bounds) = data.bounds_storage.get_mut(entity) {
+                                let layers = data
+                                    .layer_storage
+                                    .entry(entity)
+                                    .unwrap()
+                                    .or_insert(Layer::default());
+                                if !layers.quad_trees.contains(layer) {
+                                    layers.quad_trees.insert(*layer);
+                                    bounds.dirty = true;
+                                    // NOTE: not inserting into quad tree since that will get handled during the first frame after updating
+                                }
+                            }
+                        }
+                        ContainerUpdateProperty::RemoveFromLayer(layer) => {
+                            if let Some(layers) = data.layer_storage.get_mut(entity) {
+                                if layers.quad_trees.remove(layer) {
+                                    data.quad_trees.remove_from_layer(layer, entity);
+                                }
+                            };
+                        }
+                        ContainerUpdateProperty::Parent(new_parent) => {
+                            if let Some(new_parent) = data.container_mapping.get_entity(new_parent)
+                            {
+                                data.scene_graph.reparent(new_parent, entity);
+                                if let Some(transfom) = data.transform_storage.get_mut(entity) {
+                                    transfom.dirty = true;
+                                }
+                            } else {
+                                // Todo: errors
+                                todo!();
+                            }
+                        }
+                    }
+                }
+            } else {
+                //TODO: errors
+                todo!();
+            }
+        }
+    }
+}
 
 pub struct ApplyTransformTweens;
 

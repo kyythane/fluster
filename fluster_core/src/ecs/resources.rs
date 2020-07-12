@@ -27,6 +27,21 @@ impl ContainerCreationQueue {
 }
 
 #[derive(Default, Debug)]
+pub struct ContainerUpdateQueue {
+    container_data: VecDeque<ContainerUpdateDefintition>,
+}
+
+impl ContainerUpdateQueue {
+    pub fn enqueue(&mut self, definition: ContainerUpdateDefintition) {
+        self.container_data.push_back(definition);
+    }
+
+    pub fn dequeue(&mut self) -> Option<ContainerUpdateDefintition> {
+        self.container_data.pop_front()
+    }
+}
+
+#[derive(Default, Debug)]
 pub struct Library {
     shapes: HashMap<Uuid, Arc<Shape>>,
     textures: HashMap<Uuid, Arc<Pattern>>,

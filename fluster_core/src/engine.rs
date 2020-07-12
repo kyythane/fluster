@@ -1,28 +1,23 @@
 use crate::{
-    actions::{
-        BoundsKindDefinition, ContainerCreationDefintition, ContainerUpdateDefintition,
-        ContainerUpdateProperty, RectPoints,
-    },
+    actions::{ContainerCreationDefintition, ContainerUpdateDefintition},
     ecs::{
         components::{
-            Bounds, BoundsSource, Display, DisplayKind, Layer, Morph, Order, Transform, Tweens,
-            ViewRect,
+            Bounds, Display, DisplayKind, Layer, Morph, Order, Transform, Tweens, ViewRect,
         },
         resources::{
-            ContainerCreationQueue, ContainerMapping, FrameTime, Library, QuadTrees, SceneGraph,
+            ContainerCreationQueue, ContainerMapping, ContainerUpdateQueue, FrameTime, Library,
+            QuadTrees, SceneGraph,
         },
         systems::{
             ApplyColoringTweens, ApplyMorphTweens, ApplyOrderTweens, ApplyTransformTweens,
-            ApplyViewRectTweens, ContainerCreation, UpdateBounds, UpdateQuadTree, UpdateTweens,
-            UpdateWorldTransform,
+            ApplyViewRectTweens, ContainerCreation, ContainerUpdate, UpdateBounds, UpdateQuadTree,
+            UpdateTweens, UpdateWorldTransform,
         },
     },
-    tween::{PropertyTween, TweenDuration},
-    types::{basic::ScaleRotationTranslation, coloring::Coloring, shapes::Shape},
+    types::{coloring::Coloring, shapes::Shape},
 };
-use palette::LinSrgba;
 use pathfinder_content::pattern::Pattern;
-use pathfinder_geometry::{rect::RectF, transform2d::Transform2F, vector::Vector2F};
+use pathfinder_geometry::{rect::RectF, transform2d::Transform2F};
 use specs::{
     error::Error as SpecsError,
     shred::{Fetch, FetchMut},
@@ -62,34 +57,36 @@ impl<'a, 'b> Engine<'a, 'b> {
         world.insert(container_mapping);
         world.insert(library);
         world.insert(ContainerCreationQueue::default());
+        world.insert(ContainerUpdateQueue::default());
 
         // Setup systems
         let mut dispatcher = DispatcherBuilder::new()
             .with(ContainerCreation, "container_creation", &[])
+            .with(ContainerUpdate, "container_update", &["container_creation"])
             .with(
                 ApplyTransformTweens,
                 "apply_transform_tweens",
-                &["container_creation"],
+                &["container_creation", "container_update"],
             )
             .with(
                 ApplyMorphTweens,
                 "apply_morph_tweens",
-                &["container_creation"],
+                &["container_creation", "container_update"],
             )
             .with(
                 ApplyViewRectTweens,
                 "apply_view_rect_tweens",
-                &["container_creation"],
+                &["container_creation", "container_update"],
             )
             .with(
                 ApplyColoringTweens,
                 "apply_coloring_tweens",
-                &["container_creation"],
+                &["container_creation", "container_update"],
             )
             .with(
                 ApplyOrderTweens,
                 "apply_order_tweens",
-                &["container_creation"],
+                &["container_creation", "container_update"],
             )
             .with(
                 UpdateWorldTransform,
@@ -157,240 +154,9 @@ impl<'a, 'b> Engine<'a, 'b> {
         container_creation_queue.enqueue(definition.clone());
     }
 
-    pub fn update_container(
-        &mut self,
-        definition: &ContainerUpdateDefintition,
-    ) -> Result<(), SpecsError> {
-        let container_mapping = self.world.read_resource::<ContainerMapping>();
-        if let Some(entity) = container_mapping.get_entity(definition.id()) {
-            let entity = *entity;
-            for property in definition.properties() {
-                match property {
-                    ContainerUpdateProperty::Transform(srt, easing, duration_frames) => {
-                        let start = self
-                            .world
-                            .write_storage::<Transform>()
-                            .entry(entity)?
-                            .or_insert(Transform::default())
-                            .local;
-                        let tween = PropertyTween::new_transform(
-                            ScaleRotationTranslation::from_transform(&start),
-                            *srt,
-                            TweenDuration::new_frame(*duration_frames),
-                            *easing,
-                        );
-                        self.world
-                            .write_storage::<Tweens>()
-                            .entry(entity)?
-                            .or_insert(Tweens(vec![]))
-                            .0
-                            .push(tween);
-                    }
-                    ContainerUpdateProperty::MorphIndex(morph, easing, duration_frames) => {
-                        let start = self
-                            .world
-                            .write_storage::<Morph>()
-                            .entry(entity)?
-                            .or_insert(Morph::default())
-                            .0;
-                        let tween = PropertyTween::new_morph_index(
-                            start,
-                            *morph,
-                            TweenDuration::new_frame(*duration_frames),
-                            *easing,
-                        );
-                        self.world
-                            .write_storage::<Tweens>()
-                            .entry(entity)?
-                            .or_insert(Tweens(vec![]))
-                            .0
-                            .push(tween);
-                    }
-                    ContainerUpdateProperty::Coloring(
-                        coloring,
-                        color_space,
-                        easing,
-                        duration_frames,
-                    ) => {
-                        let library = self.world.read_resource::<Library>();
-                        let library_item = self
-                            .world
-                            .read_storage::<Display>()
-                            .get(entity)
-                            .and_then(|display| match display.1 {
-                                DisplayKind::Vector => library
-                                    .get_shape(&display.0)
-                                    .and_then(|shape| Some(Some(shape.color())))
-                                    .unwrap_or(None),
-                                DisplayKind::Raster => {
-                                    Some(Coloring::Color(LinSrgba::new(1.0, 1.0, 1.0, 1.0)))
-                                }
-                            });
-                        let mut coloring_stotage = self.world.write_storage::<Coloring>();
-                        let coloring_component = coloring_stotage.get(entity);
-                        let start = match (library_item, coloring_component) {
-                            (_, Some(component)) => component.clone(),
-                            (Some(coloring), None) => {
-                                coloring_stotage.insert(entity, coloring.clone())?;
-                                coloring
-                            }
-                            (_, _) => {
-                                //TODO: errors
-                                todo!()
-                            }
-                        };
-                        let tween = PropertyTween::new_coloring(
-                            start,
-                            coloring.clone(),
-                            *color_space,
-                            TweenDuration::new_frame(*duration_frames),
-                            *easing,
-                        );
-                        self.world
-                            .write_storage::<Tweens>()
-                            .entry(entity)?
-                            .or_insert(Tweens(vec![]))
-                            .0
-                            .push(tween);
-                    }
-                    ContainerUpdateProperty::ViewRect(rect_points, easing, duration_frames) => {
-                        let library = self.world.read_resource::<Library>();
-                        let library_item = self
-                            .world
-                            .read_storage::<Display>()
-                            .get(entity)
-                            .and_then(|display| library.get_texture(&display.0));
-                        let mut view_rect_storage = self.world.write_storage::<ViewRect>();
-                        let view_rect_component = view_rect_storage.get(entity);
-                        let start = match (library_item, view_rect_component) {
-                            (_, Some(component)) => component.0,
-                            (Some(pattern), None) => {
-                                let rect =
-                                    RectF::from_points(Vector2F::zero(), pattern.size().to_f32());
-                                view_rect_storage.insert(entity, ViewRect(rect))?;
-                                rect
-                            }
-                            (_, _) => {
-                                //TODO: errors
-                                todo!()
-                            }
-                        };
-                        let tween = PropertyTween::new_view_rect(
-                            RectPoints::from_rect(&start),
-                            *rect_points,
-                            TweenDuration::new_frame(*duration_frames),
-                            *easing,
-                        );
-                        self.world
-                            .write_storage::<Tweens>()
-                            .entry(entity)?
-                            .or_insert(Tweens(vec![]))
-                            .0
-                            .push(tween);
-                    }
-                    ContainerUpdateProperty::Order(order, easing, duration_frames) => {
-                        let start = self
-                            .world
-                            .write_storage::<Order>()
-                            .entry(entity)?
-                            .or_insert(Order::default())
-                            .0;
-                        let tween = PropertyTween::new_order(
-                            start,
-                            *order,
-                            TweenDuration::new_frame(*duration_frames),
-                            *easing,
-                        );
-                        self.world
-                            .write_storage::<Tweens>()
-                            .entry(entity)?
-                            .or_insert(Tweens(vec![]))
-                            .0
-                            .push(tween);
-                    }
-                    ContainerUpdateProperty::Display(display) => {
-                        let library = self.world.read_resource::<Library>();
-                        let display_item = if library.contains_shape(display) {
-                            Display(*display, DisplayKind::Vector)
-                        } else if library.contains_texture(display) {
-                            Display(*display, DisplayKind::Raster)
-                        } else {
-                            // TODO: errors
-                            panic!()
-                        };
-                        self.world
-                            .write_storage::<Display>()
-                            .insert(entity, display_item)?;
-                    }
-                    ContainerUpdateProperty::RemoveDisplay => {
-                        self.world.write_storage::<Display>().remove(entity);
-                    }
-                    ContainerUpdateProperty::Bounds(bounds_definition) => {
-                        let bounds = match bounds_definition {
-                            BoundsKindDefinition::Display => Bounds {
-                                bounds: RectF::default(),
-                                source: BoundsSource::Display,
-                                dirty: true,
-                            },
-                            BoundsKindDefinition::Defined(rect_points) => Bounds {
-                                // NOTE: not definining bounds since that will get computed in first frame after entity is updated
-                                bounds: RectF::default(),
-                                source: BoundsSource::Defined(RectF::from_points(
-                                    rect_points.origin,
-                                    rect_points.lower_right,
-                                )),
-                                dirty: true,
-                            },
-                        };
-                        self.world
-                            .write_storage::<Bounds>()
-                            .insert(entity, bounds)?;
-                    }
-                    ContainerUpdateProperty::RemoveBounds => {
-                        self.world.write_storage::<Bounds>().remove(entity);
-                    }
-                    ContainerUpdateProperty::AddToLayer(layer) => {
-                        let mut layer_store = self.world.write_storage::<Layer>();
-                        let mut bounds_store = self.world.write_storage::<Bounds>();
-                        if let Some(bounds) = bounds_store.get_mut(entity) {
-                            let layers = layer_store.entry(entity)?.or_insert(Layer::default());
-                            if !layers.quad_trees.contains(layer) {
-                                layers.quad_trees.insert(*layer);
-                                bounds.dirty = true;
-                                // NOTE: not inserting into quad tree since that will get handled during the first frame after updating
-                            }
-                        }
-                    }
-                    ContainerUpdateProperty::RemoveFromLayer(layer) => {
-                        let mut layer_store = self.world.write_storage::<Layer>();
-                        if let Some(layers) = layer_store.get_mut(entity) {
-                            if layers.quad_trees.remove(layer) {
-                                let mut quad_trees = self.world.write_resource::<QuadTrees>();
-                                quad_trees.remove_from_layer(layer, entity);
-                            }
-                        };
-                    }
-                    ContainerUpdateProperty::Parent(new_parent) => {
-                        let mut scene_graph = self.world.write_resource::<SceneGraph>();
-                        if let Some(new_parent) = container_mapping.get_entity(new_parent) {
-                            scene_graph.reparent(new_parent, entity);
-                            if let Some(transfom) =
-                                self.world.write_storage::<Transform>().get_mut(entity)
-                            {
-                                transfom.dirty = true;
-                            }
-                        } else {
-                            // Todo: errors
-                            todo!();
-                        }
-                    }
-                }
-            }
-        } else {
-            //TODO: errors
-            todo!();
-        }
-        Ok(())
+    pub fn update_container(&mut self, definition: &ContainerUpdateDefintition) {
+        let mut container_update_queue = self.world.write_resource::<ContainerUpdateQueue>();
+        container_update_queue.enqueue(definition.clone());
     }
 
     pub fn remove_container(&mut self, container_id: &Uuid) -> Result<(), SpecsError> {
