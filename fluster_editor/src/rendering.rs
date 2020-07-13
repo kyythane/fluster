@@ -5,6 +5,13 @@ use fluster_core::{
 };
 use fluster_graphics::FlusterRendererImpl;
 use gl::{ReadPixels, BGRA, UNSIGNED_BYTE};
+use glutin::{
+    dpi::PhysicalSize,
+    event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::{Window, WindowBuilder},
+    ContextBuilder, ContextWrapper, GlProfile, GlRequest, PossiblyCurrent,
+};
 use iced::image::Handle as ImageHandle;
 use palette::LinSrgb;
 use pathfinder_canvas::CanvasFontContext;
@@ -14,40 +21,35 @@ use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_resources::embedded::EmbeddedResourceLoader;
-use sdl2::video::{GLContext, GLProfile, Window};
-use std::convert::TryInto;
-use std::error::Error;
-use std::ffi::c_void;
+use std::{convert::TryInto, error::Error, ffi::c_void};
+
+//TODO: This class is temporary until Iced has smoother integration
 
 pub struct StageRenderer {
     renderer: FlusterRendererImpl<GLDevice>,
-    window: Window,
     stage_size: Vector2I,
-    //Need to keep gl_context around so it doesn't get freed, but we don't *actually* need it for anything
-    #[allow(unused_variables, dead_code)]
-    gl_context: GLContext,
+    gl_context: ContextWrapper<PossiblyCurrent, Window>,
 }
 
 impl StageRenderer {
-    //TODO: maybe make a proper type for error here?
     pub fn new(stage_size: Vector2I) -> Result<StageRenderer, String> {
-        let sdl_context = sdl2::init()?;
-        let video = sdl_context.video()?;
-        let gl_attributes = video.gl_attr();
-        gl_attributes.set_context_profile(GLProfile::Core);
-        gl_attributes.set_context_version(3, 3);
-        let window = video
-            .window("Stage", stage_size.x() as u32, stage_size.y() as u32)
-            .hidden()
-            .opengl()
-            .build();
-        let window = match window {
-            Ok(win) => win,
-            Err(window_error) => return Err(window_error.to_string()),
-        };
-        let gl_context = window.gl_create_context()?;
-        gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
-        window.gl_make_current(&gl_context)?;
+        let event_loop = EventLoop::new();
+        let physical_window_size = PhysicalSize::new(stage_size.x() as f64, stage_size.y() as f64);
+
+        let window_builder = WindowBuilder::new()
+            .with_title("Fluster Temp Renderer")
+            .with_inner_size(physical_window_size);
+
+        let gl_context = ContextBuilder::new()
+            .with_gl(GlRequest::Latest)
+            .with_gl_profile(GlProfile::Core)
+            .build_windowed(window_builder, &event_loop)
+            .unwrap();
+
+        let gl_context = unsafe { gl_context.make_current().unwrap() };
+        gl::load_with(|name| gl_context.get_proc_address(name) as *const _);
+
+        gl_context.window().set_visible(false);
 
         let device = GLDevice::new(GLVersion::GL3, 0);
         let renderer_mode = RendererMode::default_for_device(&device);
@@ -67,7 +69,6 @@ impl StageRenderer {
         let fluster_renderer = FlusterRendererImpl::new(font_context, renderer, Box::new(|| ()));
         Ok(StageRenderer {
             renderer: fluster_renderer,
-            window,
             stage_size,
             gl_context,
         })
@@ -99,7 +100,7 @@ impl StageRenderer {
             );
             target
         };
-        self.window.gl_swap_window();
+        self.gl_context.swap_buffers().unwrap();
         Ok(ImageHandle::from_pixels(
             self.stage_size.x().try_into()?,
             self.stage_size.y().try_into()?,

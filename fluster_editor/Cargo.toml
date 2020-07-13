@@ -7,7 +7,6 @@ edition = "2018"
 
 [dependencies]
 gl = "0.14"
-sdl2 = "0.33"
 fluster_core = { path = "../fluster_core" }
 fluster_graphics = { path = "../fluster_graphics" }
 pathfinder_canvas = { git = "https://github.com/servo/pathfinder.git" }
@@ -22,4 +21,5 @@ uuid = { version = "0.8", features = ["v4"] }
 iced = { version = "0.1", features = ["image"] }
 iced_native = "0.2"
 iced_wgpu = "0.2"
+glutin = "0.23"
 palette = { git = "https://github.com/Ogeon/palette.git" }

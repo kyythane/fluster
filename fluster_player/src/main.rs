@@ -10,11 +10,13 @@ use fluster_core::types::{
     shapes::{AugmentedShape, Edge, MorphEdge, Shape},
 };
 use fluster_graphics::FlusterRendererImpl;
-use glutin::dpi::PhysicalSize;
-use glutin::event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent};
-use glutin::event_loop::{ControlFlow, EventLoop};
-use glutin::window::WindowBuilder;
-use glutin::{ContextBuilder, GlProfile, GlRequest};
+use glutin::{
+    dpi::PhysicalSize,
+    event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
+    ContextBuilder, GlProfile, GlRequest,
+};
 use palette::{LinSrgba, Srgb, Srgba};
 use pathfinder_canvas::CanvasFontContext;
 use pathfinder_color::ColorF;
@@ -312,7 +314,7 @@ fn main() {
     let physical_window_size = PhysicalSize::new(window_size.x() as f64, window_size.y() as f64);
 
     let window_builder = WindowBuilder::new()
-        .with_title("Minimal example")
+        .with_title("Fluster Player")
         .with_inner_size(physical_window_size);
 
     let gl_context = ContextBuilder::new()
@@ -335,6 +337,7 @@ fn main() {
 
     let font_context = CanvasFontContext::from_system_source();
 
+    // TODO: Is there benefit using swap_buffers_with_damage here? Investigate and possibly add it to display data generated from Engine
     let mut fluster_renderer = FlusterRendererImpl::new(
         font_context,
         renderer,
@@ -370,7 +373,7 @@ fn main() {
             _ => {
                 *control_flow = match runner.next_frame(&mut fluster_renderer, &mut action_list) {
                     Ok(FrameResult::Wait(until)) => ControlFlow::WaitUntil(until),
-                    Ok(FrameResult::Continue) => ControlFlow::Wait,
+                    Ok(FrameResult::Continue) => ControlFlow::Poll,
                     Ok(FrameResult::Quit) => ControlFlow::Exit,
                     Err(error) => {
                         println!("{}", error);

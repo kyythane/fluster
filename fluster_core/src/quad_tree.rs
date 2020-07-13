@@ -156,6 +156,16 @@ impl<T: Eq + PartialEq + Hash + Clone + Copy + Debug, S: BuildHasher> QuadTree<T
         }
     }
 
+    /// Returns the number of elements in the tree
+    pub fn len(&self) -> usize {
+        self.rect_cache.len()
+    }
+
+    /// Returns true if the tree is empty.
+    pub fn is_empty(&self) -> bool {
+        self.rect_cache.is_empty()
+    }
+
     /// Returns the enclosing bounding-box for the entire tree.
     pub fn bounding_box(&self) -> RectF {
         self.root.bounding_box()
@@ -200,7 +210,7 @@ impl<T: Eq + PartialEq + Clone + Copy + Debug> QuadNode<T> {
                 elements.retain(|(elem_index, elem_aabb)| {
                     !self.attempt_insert_children(*elem_index, *elem_aabb, config)
                 });
-                self.elements = elements;
+                mem::replace(&mut self.elements, elements);
             }
             // Try to fit this item into a child. If it doesn't fit, put it in
             self.attempt_insert_children(item, item_aabb, config)

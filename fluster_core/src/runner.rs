@@ -7,9 +7,8 @@ use crate::{
     engine::Engine,
     types::{basic::Bitmap, shapes::Shape},
 };
-use aabb_quadtree_pathfinder::RectF;
 use palette::LinSrgb;
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use std::time::{Duration, Instant};
 use streaming_iterator::StreamingIterator;
 use uuid::Uuid;

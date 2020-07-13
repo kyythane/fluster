@@ -1,9 +1,10 @@
+use crate::quad_tree::QuadTree;
 use crate::{
     actions::{ContainerCreationDefintition, ContainerUpdateDefintition},
     types::shapes::Shape,
 };
-use aabb_quadtree_pathfinder::{QuadTree, RectF};
 use pathfinder_content::pattern::Pattern;
+use pathfinder_geometry::rect::RectF;
 use serde::{Deserialize, Serialize};
 use specs::Entity;
 use std::collections::{hash_map::RandomState, HashMap, VecDeque};
