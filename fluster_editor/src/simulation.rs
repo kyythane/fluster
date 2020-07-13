@@ -1,12 +1,12 @@
 #![deny(clippy::all)]
-use crate::messages::{EditMessage, SelectionHandle, VertexHandle};
+use crate::messages::EditMessage;
 use crate::{
     scratch_pad::{ScratchPad, EDIT_LAYER},
     tools::SelectionShape,
 };
 use fluster_core::{
-    ecs::resources::{Library, QuadTreeLayerOptions, QuadTrees},
-    engine::Engine,
+    ecs::resources::{FrameTime, Library, QuadTreeLayerOptions, QuadTreeQuery, QuadTrees},
+    engine::{Engine, SelectionHandle, VertexHandle},
     types::shapes::{Edge, Shape},
 };
 use palette::LinSrgb;
@@ -14,8 +14,8 @@ use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use std::collections::{HashMap, HashSet};
-use std::mem;
+use std::collections::HashSet;
+use std::{mem, time::Duration};
 use uuid::Uuid;
 
 pub struct StageState<'a, 'b> {
@@ -29,7 +29,7 @@ pub struct StageState<'a, 'b> {
 }
 
 impl<'a, 'b> StageState<'a, 'b> {
-    pub fn new(stage_size: Vector2I, background_color: ColorU) -> Self {
+    pub fn new(stage_size: Vector2I, background_color: LinSrgb) -> Self {
         let root_container_id = Uuid::new_v4();
         let handle_container_id = Uuid::new_v4();
         let engine = Engine::new(root_container_id, Library::default(), QuadTrees::default());
@@ -110,13 +110,7 @@ impl<'a, 'b> StageState<'a, 'b> {
 
     pub fn apply_edit(&mut self, edit_message: &EditMessage) -> bool {
         // TODO: return a proper message type!
-        match self.scratch_pad.apply_edit(
-            edit_message,
-            &mut self.library,
-            &mut self.display_list,
-            &mut self.scene_data,
-            &self.root_entity_id,
-        ) {
+        match self.scratch_pad.apply_edit(edit_message, &mut self.engine) {
             Ok(res) => {
                 if res {
                     self.update_scene();
@@ -133,8 +127,10 @@ impl<'a, 'b> StageState<'a, 'b> {
     }
 
     pub fn update_scene(&mut self) {
-        self.scene_data
-            .recompute(&self.root_entity_id, &mut self.display_list, &self.library)
+        self.engine.update(FrameTime {
+            delta_frame: 1,
+            delta_time: Duration::from_secs_f64(1.0 / 60.0),
+        })
     }
 
     pub fn scale(&self) -> f32 {
@@ -154,96 +150,11 @@ impl<'a, 'b> StageState<'a, 'b> {
             // Broadphase, collect all the parts with bounding boxes that overlap our query
             SelectionShape::None => vec![],
             SelectionShape::Point(point) => self
-                .scene_data
-                .quad_tree(&EDIT_LAYER)
-                .unwrap()
-                .0
-                .query_point(point),
+                .engine
+                .spatial_query(&QuadTreeQuery::Point(EDIT_LAYER, *point)),
             SelectionShape::Area(rect) => self
-                .scene_data
-                .quad_tree(&EDIT_LAYER)
-                .unwrap()
-                .0
-                .query_rect(rect),
-        }
-        .into_iter()
-        .fold(
-            // Since we query by part AABB, we need to collect them under the owning entity
-            HashMap::new(),
-            |mut map: HashMap<Uuid, Vec<Uuid>>, ((e_id, p_id), _)| {
-                map.entry(e_id).or_default().push(p_id);
-                map
-            },
-        )
-        .into_iter()
-        .flat_map(|(e_id, p_ids)| {
-            let entity = self.display_list.get(&e_id).unwrap();
-            let world_space_transform = self
-                .scene_data
-                .world_space_transforms()
-                .get(entity.id())
-                .unwrap();
-            p_ids.into_iter().map(move |p_id| {
-                let part = entity.get_part(&p_id).unwrap();
-                let vertex_handles = self.collect_vertex_handles(
-                    selection_shape,
-                    entity,
-                    world_space_transform,
-                    part,
-                );
-                SelectionHandle::new(e_id, *part.item_id(), vertex_handles)
-            })
-        })
-        .collect::<Vec<SelectionHandle>>()
-    }
-
-    // Narrow phase, Find all vertexes that overlap our query
-    fn collect_vertex_handles(
-        &self,
-        selection_shape: &SelectionShape,
-        entity: &Entity,
-        // Passing this in is kinda gross, but we don't want to refetch this multiple times per entity for a large selection
-        world_space_transform: &Transform2F,
-        part: &Part,
-    ) -> Vec<VertexHandle> {
-        let item_id = part.item_id();
-        match self.library.get(item_id).unwrap() {
-            DisplayLibraryItem::Vector(shape) => {
-                let edges = shape
-                    .edge_list(entity.morph_index())
-                    .into_iter()
-                    .enumerate();
-                match selection_shape {
-                    SelectionShape::None => vec![],
-                    SelectionShape::Point(point) => edges
-                        .flat_map(|(index, edge)| {
-                            // TODO: configure handle radius (pixels)
-                            edge.query_disk(point, 10.0, world_space_transform).map(
-                                move |(vertex_index, distance, vertex)| {
-                                    VertexHandle::new(
-                                        *item_id,
-                                        index,
-                                        vertex_index,
-                                        vertex,
-                                        distance,
-                                    )
-                                },
-                            )
-                        })
-                        .collect::<Vec<VertexHandle>>(),
-                    SelectionShape::Area(rect) => edges
-                        .flat_map(|(index, edge)| {
-                            edge.query_rect(rect, world_space_transform).map(
-                                move |(vertex_index, vertex)| {
-                                    // Box selection has a separation of 0, since everything is inherently "inside" the specified area rather than near a point
-                                    VertexHandle::new(*item_id, index, vertex_index, vertex, 0.0)
-                                },
-                            )
-                        })
-                        .collect::<Vec<VertexHandle>>(),
-                }
-            }
-            DisplayLibraryItem::Raster(..) => todo!(),
+                .engine
+                .spatial_query(&QuadTreeQuery::Rect(EDIT_LAYER, *rect)),
         }
     }
 }

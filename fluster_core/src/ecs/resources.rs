@@ -3,10 +3,11 @@ use crate::{
     actions::{ContainerCreationDefintition, ContainerUpdateDefintition},
     types::shapes::Shape,
 };
+use pathfinder_canvas::Vector2F;
 use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::rect::RectF;
 use serde::{Deserialize, Serialize};
-use specs::Entity;
+use specs::{Entity};
 use std::collections::{hash_map::RandomState, HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
@@ -123,7 +124,23 @@ impl ContainerMapping {
     }
 }
 
-pub type QuadTreeLayer = u32;
+#[derive(
+    Debug, Default, Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Serialize, Deserialize,
+)]
+pub struct QuadTreeLayer(u32);
+
+impl QuadTreeLayer {
+    pub const fn new(layer: u32) -> Self {
+        QuadTreeLayer(layer)
+    }
+}
+
+pub enum QuadTreeQuery {
+    Point(QuadTreeLayer, Vector2F),
+    Disk(QuadTreeLayer, Vector2F, f32),
+    Rect(QuadTreeLayer, RectF),
+    Ray(QuadTreeLayer, Vector2F, Vector2F),
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct QuadTreeLayerOptions {
@@ -180,6 +197,27 @@ impl QuadTrees {
             tree.remove(&entity);
         });
     }
+
+    pub fn query(&self, query: &QuadTreeQuery) -> Option<Vec<(Entity, RectF)>> {
+        match query {
+            QuadTreeQuery::Point(layer, point) => self
+                .0
+                .get(layer)
+                .and_then(|tree| Some(tree.0.query_point(point))),
+            QuadTreeQuery::Disk(layer, point, radius) => self
+                .0
+                .get(layer)
+                .and_then(|tree| Some(tree.0.query_disk(point, *radius))),
+            QuadTreeQuery::Rect(layer, rect) => self
+                .0
+                .get(layer)
+                .and_then(|tree| Some(tree.0.query_rect(rect))),
+            QuadTreeQuery::Ray(layer, origin, direction) => self
+                .0
+                .get(layer)
+                .and_then(|tree| Some(tree.0.query_ray(origin, direction))),
+        }
+    }
 }
 
 #[derive(Default, Copy, Clone, Debug)]
@@ -187,6 +225,15 @@ pub struct FrameTime {
     pub delta_time: Duration,
     pub delta_frame: u32,
     // Other frame time data will *eventually* live here
+}
+
+impl FrameTime {
+    pub fn new(delta_time: Duration, delta_frame: u32) -> Self {
+        Self {
+            delta_time,
+            delta_frame,
+        }
+    }
 }
 
 #[derive(Debug)]

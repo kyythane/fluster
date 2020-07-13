@@ -1,10 +1,10 @@
 #![deny(clippy::all)]
-use crate::messages::{EditMessage, SelectionHandle, Template, ToolMessage};
+use crate::messages::{EditMessage, Template, ToolMessage};
 use crate::tools::{ToolOption, ToolOptionHandle};
 use fluster_core::{
     actions::{ContainerCreationDefintition, ContainerCreationProperty},
     ecs::resources::{Library, QuadTreeLayer},
-    engine::Engine,
+    engine::{Engine, SelectionHandle},
     types::shapes::{Edge, Shape},
 };
 use palette::LinSrgba;
@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::mem;
 use uuid::Uuid;
 
-pub const EDIT_LAYER: QuadTreeLayer = std::u32::MAX - 1;
+pub const EDIT_LAYER: QuadTreeLayer = QuadTreeLayer::new(std::u32::MAX - 1);
 
 fn create_shape_prototype(options: &Vec<ToolOption>) -> Shape {
     //TODO: Fill and StrokedFill, rename Path to Stroke

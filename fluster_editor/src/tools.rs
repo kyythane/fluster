@@ -1,5 +1,6 @@
 #![deny(clippy::all)]
-use crate::messages::{AppMessage, EditMessage, SelectionHandle, Template, ToolMessage};
+use crate::messages::{AppMessage, EditMessage, Template, ToolMessage};
+use fluster_core::engine::SelectionHandle;
 use iced::{Checkbox, Column, Length, Row, Text, TextInput};
 use iced_native::{
     image::Handle as ImageHandle, input::mouse::Button as MouseButton,
@@ -80,7 +81,8 @@ impl Tool {
                     MouseEvent::Input { state, button }
                         if state == ButtonState::Pressed && button == MouseButton::Left =>
                     {
-                        if selection.len() > 0 && selection[0].has_vertex() {
+                        // TODO: Pick first selection w/ valid vertex
+                        if selection.len() > 0 && selection[0].handles().len() > 0 {
                             Some(ToolMessage::MovePointStart {
                                 selection_handle: selection.swap_remove(0),
                             })

@@ -10,6 +10,7 @@ use iced::{
 };
 use iced_native::{layout, Clipboard, Event, Hasher, Layout, MouseCursor, Point, Widget};
 use iced_wgpu::{Defaults, Primitive, Renderer};
+use palette::LinSrgb;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::{convert::TryInto, hash::Hash, mem};
@@ -137,11 +138,11 @@ pub struct ToolPaneState {
 
 pub struct AppFlags {
     stage_size: Vector2I,
-    background_color: ColorU,
+    background_color: LinSrgb,
 }
 
 impl AppFlags {
-    pub fn new(stage_size: Vector2I, background_color: ColorU) -> Self {
+    pub fn new(stage_size: Vector2I, background_color: LinSrgb) -> Self {
         Self {
             stage_size,
             background_color,
@@ -151,7 +152,7 @@ impl AppFlags {
 
 impl Default for AppFlags {
     fn default() -> Self {
-        Self::new(Vector2I::new(800, 600), ColorU::white())
+        Self::new(Vector2I::new(800, 600), LinSrgb::new(1.0, 1.0, 1.0))
     }
 }
 

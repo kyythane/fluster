@@ -210,7 +210,7 @@ impl<T: Eq + PartialEq + Clone + Copy + Debug> QuadNode<T> {
                 elements.retain(|(elem_index, elem_aabb)| {
                     !self.attempt_insert_children(*elem_index, *elem_aabb, config)
                 });
-                mem::replace(&mut self.elements, elements);
+                self.elements = elements;
             }
             // Try to fit this item into a child. If it doesn't fit, put it in
             self.attempt_insert_children(item, item_aabb, config)

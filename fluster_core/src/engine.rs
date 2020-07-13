@@ -6,7 +6,7 @@ use crate::{
         },
         resources::{
             ContainerCreationQueue, ContainerMapping, ContainerUpdateQueue, FrameTime, Library,
-            QuadTrees, SceneGraph,
+            QuadTreeQuery, QuadTrees, SceneGraph,
         },
         systems::{
             ApplyColoringTweens, ApplyMorphTweens, ApplyOrderTweens, ApplyTransformTweens,
@@ -17,13 +17,14 @@ use crate::{
     types::{coloring::Coloring, shapes::Shape},
 };
 use pathfinder_content::pattern::Pattern;
-use pathfinder_geometry::{rect::RectF, transform2d::Transform2F};
+use pathfinder_geometry::{rect::RectF, transform2d::Transform2F, vector::Vector2F};
 use specs::{
     error::Error as SpecsError,
     shred::{Fetch, FetchMut},
     Builder, Dispatcher, DispatcherBuilder, Entity, Join, World, WorldExt,
 };
 use std::{
+    cmp::Ordering,
     collections::{HashMap, VecDeque},
     sync::Arc,
 };
@@ -215,6 +216,109 @@ impl<'a, 'b> Engine<'a, 'b> {
         });
     }
 
+    pub fn spatial_query(&self, query: &QuadTreeQuery) -> Vec<SelectionHandle> {
+        let transform_storage = self.world.read_storage::<Transform>();
+        let morph_storage = self.world.read_storage::<Morph>();
+        let display_storage = self.world.read_storage::<Display>();
+        let container_mapping = self.world.read_resource::<ContainerMapping>();
+        let library = self.world.read_resource::<Library>();
+        self.world
+            .read_resource::<QuadTrees>()
+            .query(query)
+            .map_or_else(
+                || vec![],
+                |entities| self.depth_sort_bounding_boxes(entities),
+            )
+            .into_iter()
+            .map(|(entity, bounds)| {
+                let container_id = container_mapping.get_container(&entity).copied().unwrap();
+                let transform = transform_storage.get(entity).copied().unwrap_or_default();
+                let morph = morph_storage.get(entity).copied().unwrap_or_default().0;
+                let (shape_id, edge_list) = match display_storage.get(entity) {
+                    Some(Display(shape_id, DisplayKind::Vector)) => library
+                        .get_shape(shape_id)
+                        .and_then(|shape| Some((Some(*shape_id), shape.edge_list(morph))))
+                        .unwrap_or((Some(*shape_id), vec![])),
+                    _ => (None, vec![]),
+                };
+                let handles = edge_list
+                    .into_iter()
+                    .enumerate()
+                    .flat_map(|(index, edge)| match query {
+                        QuadTreeQuery::Point(_, point) => edge
+                            .query_disk(point, 10.0, &transform.world)
+                            .map(|(vertex_index, distance, vertex)| {
+                                VertexHandle::new(vertex, index, vertex_index, distance)
+                            })
+                            .collect::<Vec<VertexHandle>>(),
+                        QuadTreeQuery::Disk(_, point, radius) => edge
+                            .query_disk(point, *radius, &transform.world)
+                            .map(|(vertex_index, distance, vertex)| {
+                                VertexHandle::new(vertex, index, vertex_index, distance)
+                            })
+                            .collect::<Vec<VertexHandle>>(),
+                        QuadTreeQuery::Rect(_, rect) => edge
+                            .query_rect(rect, &transform.world)
+                            .map(|(vertex_index, vertex)| {
+                                VertexHandle::new(vertex, index, vertex_index, 0.0)
+                            })
+                            .collect::<Vec<VertexHandle>>(),
+                        QuadTreeQuery::Ray(layer, origin, direction) => {
+                            //Todo Not used yet and is a pain, so this is future Lily's problem
+                            todo!()
+                        }
+                    })
+                    .collect();
+                SelectionHandle {
+                    container_id,
+                    shape_id,
+                    world_transform: transform.world,
+                    bounds,
+                    handles,
+                }
+            })
+            .collect()
+    }
+
+    pub fn depth_sort_bounding_boxes(
+        &self,
+        mut entities: Vec<(Entity, RectF)>,
+    ) -> Vec<(Entity, RectF)> {
+        let order_storage = self.world.read_storage::<Order>();
+        let scene_graph = self.world.read_resource::<SceneGraph>();
+        let orderings = entities
+            .iter()
+            .map(|(entity, _)| {
+                (*entity, {
+                    let mut ordering = scene_graph
+                        .get_parent_iter(entity)
+                        .map(|parent| order_storage.get(*parent).copied().unwrap_or_default().0)
+                        .collect::<Vec<i8>>();
+                    ordering.reverse();
+                    ordering.push(order_storage.get(*entity).copied().unwrap_or_default().0);
+                    ordering
+                })
+            })
+            .collect::<HashMap<Entity, Vec<i8>>>();
+        entities.sort_by(|(entity_a, _), (entity_b, _)| {
+            for (order_a, order_b) in orderings
+                .get(entity_a)
+                .unwrap()
+                .iter()
+                .zip(orderings.get(entity_b).unwrap().iter())
+            {
+                // Sort front to back
+                match order_b.cmp(order_a) {
+                    Ordering::Less => return Ordering::Less,
+                    Ordering::Greater => return Ordering::Greater,
+                    _ => (),
+                }
+            }
+            entity_a.cmp(entity_b)
+        });
+        entities
+    }
+
     pub fn get_drawable_items(&self) -> Vec<DrawableItem> {
         let library = self.get_library();
         let scene_graph = self.get_scene_graph();
@@ -270,6 +374,7 @@ impl<'a, 'b> Engine<'a, 'b> {
         queue.push_back(*scene_graph.root());
         while let Some(next) = queue.pop_front() {
             let mut children = scene_graph.get_children(&next).cloned().unwrap();
+            // Sort back to front
             children.sort_by(|a, b| {
                 let order_a = unordered
                     .get(&a)
@@ -305,4 +410,54 @@ pub struct DrawableItem {
     pub coloring: Option<Coloring>,
     pub view_rect: Option<RectF>,
     pub morph: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct SelectionHandle {
+    container_id: Uuid,
+    shape_id: Option<Uuid>,
+    world_transform: Transform2F,
+    bounds: RectF,
+    handles: Vec<VertexHandle>,
+}
+
+impl SelectionHandle {
+    pub fn new(
+        container_id: Uuid,
+        shape_id: Option<Uuid>,
+        world_transform: Transform2F,
+        bounds: RectF,
+        handles: Vec<VertexHandle>,
+    ) -> Self {
+        Self {
+            container_id,
+            shape_id,
+            world_transform,
+            bounds,
+            handles,
+        }
+    }
+
+    pub fn handles(&self) -> &Vec<VertexHandle> {
+        &self.handles
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct VertexHandle {
+    position: Vector2F,
+    vertex_id: usize,
+    edge_id: usize,
+    separation: f32,
+}
+
+impl VertexHandle {
+    pub fn new(position: Vector2F, vertex_id: usize, edge_id: usize, separation: f32) -> Self {
+        Self {
+            position,
+            vertex_id,
+            edge_id,
+            separation,
+        }
+    }
 }
