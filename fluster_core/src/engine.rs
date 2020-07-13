@@ -269,13 +269,14 @@ impl<'a, 'b> Engine<'a, 'b> {
                         }
                     })
                     .collect();
-                SelectionHandle {
+                SelectionHandle::new(
                     container_id,
                     shape_id,
-                    world_transform: transform.world,
+                    transform.world,
                     bounds,
+                    morph,
                     handles,
-                }
+                )
             })
             .collect()
     }
@@ -418,6 +419,7 @@ pub struct SelectionHandle {
     shape_id: Option<Uuid>,
     world_transform: Transform2F,
     bounds: RectF,
+    morph: f32,
     handles: Vec<VertexHandle>,
 }
 
@@ -427,6 +429,7 @@ impl SelectionHandle {
         shape_id: Option<Uuid>,
         world_transform: Transform2F,
         bounds: RectF,
+        morph: f32,
         handles: Vec<VertexHandle>,
     ) -> Self {
         Self {
@@ -434,12 +437,39 @@ impl SelectionHandle {
             shape_id,
             world_transform,
             bounds,
+            morph,
             handles,
         }
     }
 
+    pub fn container_id(&self) -> &Uuid {
+        &self.container_id
+    }
+
+    pub fn shape_id(&self) -> &Option<Uuid> {
+        &self.shape_id
+    }
+
+    pub fn world_transform(&self) -> &Transform2F {
+        &self.world_transform
+    }
+
+    pub fn bounds(&self) -> &RectF {
+        &self.bounds
+    }
+
+    pub fn morph(&self) -> f32 {
+        self.morph
+    }
+
     pub fn handles(&self) -> &Vec<VertexHandle> {
         &self.handles
+    }
+
+    pub fn min_vertex(&self) -> Option<&VertexHandle> {
+        self.handles
+            .iter()
+            .min_by(|a, b| a.separation.partial_cmp(&b.separation).unwrap())
     }
 }
 
@@ -452,7 +482,7 @@ pub struct VertexHandle {
 }
 
 impl VertexHandle {
-    pub fn new(position: Vector2F, vertex_id: usize, edge_id: usize, separation: f32) -> Self {
+    pub fn new(position: Vector2F, edge_id: usize, vertex_id: usize, separation: f32) -> Self {
         Self {
             position,
             vertex_id,
@@ -463,5 +493,17 @@ impl VertexHandle {
 
     pub fn position(&self) -> Vector2F {
         self.position
+    }
+
+    pub fn edge_id(&self) -> usize {
+        self.edge_id
+    }
+
+    pub fn vertex_id(&self) -> usize {
+        self.vertex_id
+    }
+
+    pub fn separation(&self) -> f32 {
+        self.separation
     }
 }

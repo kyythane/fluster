@@ -12,7 +12,7 @@ use iced_native::{layout, Clipboard, Event, Hasher, Layout, MouseCursor, Point, 
 use iced_wgpu::{Defaults, Primitive, Renderer};
 use palette::LinSrgb;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use std::{convert::TryInto, hash::Hash, mem};
+use std::{convert::TryInto, hash::Hash};
 pub struct Stage<'a, 'b, 'c> {
     width: u16,
     height: u16,
@@ -174,7 +174,7 @@ impl<'a, 'b> App<'a, 'b> {
                 self.stage_state.engine(),
             )
             .unwrap();
-        mem::replace(&mut self.frame_handle, frame_handle);
+        self.frame_handle = frame_handle;
     }
 
     fn tool_pane(tool_pane_state: &mut ToolPaneState) -> Column<AppMessage> {

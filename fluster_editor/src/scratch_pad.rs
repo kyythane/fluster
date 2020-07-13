@@ -36,7 +36,7 @@ fn create_shape_prototype(options: &Vec<ToolOption>) -> Shape {
     }
     Shape::Path {
         edges: vec![],
-        color: line_color.unwrap_or(LinSrgba::new(1.0, 1.0, 1.0, 1.0)),
+        color: line_color.unwrap_or(LinSrgba::new(0.0, 0.0, 0.0, 1.0)),
         stroke_style: StrokeStyle {
             line_width,
             line_cap,
@@ -152,7 +152,7 @@ impl ScratchPadState {
                 ToolMessage::MovePointStart { selection_handle } => {
                     if let Self::None = self {
                         let mut vertex_scratch_pad =
-                            VertexScratchPad::start_drag(selection_handle, engine);
+                            VertexScratchPad::start_drag(engine, selection_handle)?;
                         mem::replace(self, Self::EditVertexes(vertex_scratch_pad));
                         Ok(false)
                     } else {
@@ -162,7 +162,7 @@ impl ScratchPadState {
                 ToolMessage::MovePointHover { hover_position } => {
                     if let Self::EditVertexes(vertex_scratch_pad) = self {
                         vertex_scratch_pad
-                            .update_preview_drag(engine.get_library_mut(), *hover_position);
+                            .update_preview_drag(&mut *engine.get_library_mut(), *hover_position);
                         Ok(true)
                     } else {
                         Err("Unexpected Message \"MovePointHover\"".to_owned())
@@ -183,9 +183,12 @@ impl ScratchPadState {
                     template,
                 } => {
                     if let Self::None = self {
-                        let mut template_scratch_pad =
-                            TemplateShapeScratchpad::init(*start_position, options, *template);
-                        template_scratch_pad.start(engine);
+                        let mut template_scratch_pad = TemplateShapeScratchpad::start(
+                            engine,
+                            *start_position,
+                            options,
+                            *template,
+                        );
                         mem::replace(self, Self::NewTemplateShape(template_scratch_pad));
                         Ok(false)
                     } else {
@@ -198,7 +201,7 @@ impl ScratchPadState {
                 ToolMessage::TemplatePlaceHover { hover_position } => {
                     if let Self::NewTemplateShape(template_scratch_pad) = self {
                         template_scratch_pad
-                            .update_preview(engine.get_library_mut(), *hover_position)?;
+                            .update_preview(&mut *engine.get_library_mut(), *hover_position)?;
                         Ok(true)
                     } else {
                         Err("Unexpected Message \"TemplatePlaceHover\"".to_owned())
@@ -231,7 +234,7 @@ struct ShapeScratchPad {
 
 struct VertexScratchPad {
     container_id: Uuid,
-    item_it: Uuid,
+    item_id: Uuid,
     edges: Vec<Edge>,
     shape_prototype: Shape,
     selected_point: (usize, usize),
@@ -335,48 +338,27 @@ impl ShapeScratchPad {
 }
 
 impl VertexScratchPad {
-    fn init(selection_handle: &SelectionHandle, library: &Library) -> Result<Self, String> {
-        if let Some(vertex) = selection_handle.min_vertex() {
-            if let Some(DisplayLibraryItem::Vector(shape)) = library.get(vertex.library_id()) {
+    fn start_drag(engine: &mut Engine, selection_handle: &SelectionHandle) -> Result<Self, String> {
+        if let (Some(vertex), Some(item_id)) =
+            (selection_handle.min_vertex(), selection_handle.shape_id())
+        {
+            if let Some(shape) = engine.get_library_mut().get_shape(item_id) {
                 Ok(Self {
-                    entity_id: *selection_handle.entity_id(),
-                    item_id: Uuid::new_v4(),
-                    edges: vec![],
-                    shape_prototype: shape.clone(),
+                    container_id: *selection_handle.container_id(),
+                    item_id: *item_id,
+                    edges: shape.edge_list(selection_handle.morph()),
+                    shape_prototype: (*shape).clone(),
                     selected_point: (0, 0),
                 })
             } else {
-                Err(format!(
-                    "Could not find library item {:?}",
-                    vertex.library_id()
-                ))
+                Err(format!("Could not find library item {:?}", item_id))
             }
         } else {
             Err("Selection contained 0 vertexes".to_owned())
         }
     }
 
-    fn start_drag(&mut self, selection_handle: &SelectionHandle, engine: &mut Engine) {
-        if let Some(vertex) = selection_handle.min_vertex() {
-            if let Some(DisplayLibraryItem::Vector(shape)) = library.get(vertex.library_id()) {
-                let morph_index =
-                    if let Some(entity) = display_list.get(&selection_handle.entity_id()) {
-                        entity.morph_index()
-                    } else {
-                        0.0
-                    };
-                self.item_id = *vertex.library_id();
-                self.edges = shape.edge_list(morph_index);
-                self.selected_point = (vertex.edge_id(), vertex.vertex_id());
-            }
-        }
-    }
-
-    fn update_preview_drag(
-        &mut self,
-        library: &mut HashMap<Uuid, DisplayLibraryItem>,
-        temp_position: Vector2F,
-    ) {
+    fn update_preview_drag(&mut self, library: &mut Library, temp_position: Vector2F) {
         self.edges[self.selected_point.0].update_point(self.selected_point.1, temp_position);
         update_library(
             library,
@@ -386,25 +368,24 @@ impl VertexScratchPad {
         );
     }
 
-    fn complete_drag(
-        &mut self,
-        display_list: &mut HashMap<Uuid, Entity>,
-        library: &mut HashMap<Uuid, DisplayLibraryItem>,
-    ) {
+    fn complete_drag(&mut self, engine: &mut Engine) {
         update_library(
-            library,
+            &mut *engine.get_library_mut(),
             self.item_id,
             &self.shape_prototype,
             mem::take(&mut self.edges),
         );
-        display_list.entry(self.entity_id).and_modify(|root| {
-            root.mark_dirty();
-        });
+        engine.mark_dirty(&self.container_id);
     }
 }
 
 impl TemplateShapeScratchpad {
-    fn init(start_position: Vector2F, options: &Vec<ToolOption>, template: Template) -> Self {
+    fn start(
+        engine: &mut Engine,
+        start_position: Vector2F,
+        options: &Vec<ToolOption>,
+        template: Template,
+    ) -> Self {
         let mut edges = 5;
         let mut corner_radius: f32 = 0.0;
         let mut use_super_ellipse_approximation = false;
@@ -426,15 +407,30 @@ impl TemplateShapeScratchpad {
             ToolOptionHandle::UseSuperEllipseApproximation,
             ToolOption::UseSuperEllipseApproximation(use_super_ellipse_approximation),
         );
-        Self {
-            part_id: Uuid::new_v4(),
+        let new_self = Self {
+            container_id: Uuid::new_v4(),
             item_id: Uuid::new_v4(),
             shape_prototype: create_shape_prototype(options),
             start_position,
             end_position: start_position,
             template,
             template_options,
-        }
+        };
+        update_library(
+            &mut *engine.get_library_mut(),
+            new_self.item_id,
+            &new_self.shape_prototype,
+            vec![],
+        );
+        engine.create_container(&ContainerCreationDefintition::new(
+            *engine.root_container_id(),
+            new_self.container_id,
+            vec![
+                ContainerCreationProperty::Display(new_self.item_id),
+                ContainerCreationProperty::Layer(EDIT_LAYER),
+            ],
+        ));
+        new_self
     }
 
     fn compute_edge(&self) -> Result<Vec<Edge>, String> {
@@ -526,25 +522,9 @@ impl TemplateShapeScratchpad {
         }
     }
 
-    fn start(
-        &mut self,
-        library: &mut HashMap<Uuid, DisplayLibraryItem>,
-        display_list: &mut HashMap<Uuid, Entity>,
-        root_entity_id: &Uuid,
-    ) {
-        let mut part = Part::new_vector(self.item_id, Transform2F::default(), None);
-        part.add_to_collision_layer(EDIT_LAYER);
-        display_list.entry(*root_entity_id).and_modify(|root| {
-            root.add_part(&self.part_id, part);
-            // Mark the root clean since we don't want to recompute bounds until the shape is done
-            root.mark_clean();
-        });
-        update_library(library, self.item_id, &self.shape_prototype, vec![]);
-    }
-
     fn update_preview(
         &mut self,
-        library: &mut HashMap<Uuid, DisplayLibraryItem>,
+        library: &mut Library,
         temp_position: Vector2F,
     ) -> Result<(), String> {
         self.end_position = temp_position;
@@ -563,7 +543,7 @@ impl TemplateShapeScratchpad {
             engine.remove_container(&self.container_id);
         } else {
             update_library(
-                engine.get_library_mut(),
+                &mut *engine.get_library_mut(),
                 self.item_id,
                 &self.shape_prototype,
                 self.compute_edge()?,

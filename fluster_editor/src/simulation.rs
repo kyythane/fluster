@@ -145,7 +145,6 @@ impl<'a, 'b> StageState<'a, 'b> {
 
     pub fn query_selection(&self, selection_shape: &SelectionShape) -> Vec<SelectionHandle> {
         match selection_shape {
-            // Broadphase, collect all the parts with bounding boxes that overlap our query
             SelectionShape::None => vec![],
             SelectionShape::Point(point) => self
                 .engine
