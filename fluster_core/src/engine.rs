@@ -460,4 +460,8 @@ impl VertexHandle {
             separation,
         }
     }
+
+    pub fn position(&self) -> Vector2F {
+        self.position
+    }
 }

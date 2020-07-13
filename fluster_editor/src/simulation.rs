@@ -6,10 +6,10 @@ use crate::{
 };
 use fluster_core::{
     ecs::resources::{FrameTime, Library, QuadTreeLayerOptions, QuadTreeQuery, QuadTrees},
-    engine::{Engine, SelectionHandle, VertexHandle},
+    engine::{Engine, SelectionHandle},
     types::shapes::{Edge, Shape},
 };
-use palette::LinSrgb;
+use palette::{LinSrgb, LinSrgba};
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
@@ -70,41 +70,39 @@ impl<'a, 'b> StageState<'a, 'b> {
     pub fn draw_handles(&mut self, handles: Vec<SelectionHandle>) -> bool {
         let mut edges = vec![];
         for handle in handles {
-            for vertex_handle in handle.vertex_handles() {
+            for vertex_handle in handle.handles() {
                 edges.extend(
                     Edge::new_ellipse(
                         Vector2F::splat(5.0),
-                        Transform2F::from_translation(*vertex_handle.position()),
+                        Transform2F::from_translation(vertex_handle.position()),
                     )
                     .into_iter(),
                 );
             }
         }
-        let redraw_needed = edges.len() > 0 || {
-            if let Some(DisplayLibraryItem::Vector(path)) =
-                self.library.get(&self.handle_container_id)
-            {
-                path.len() > 0
-            } else {
-                false
-            }
-        };
+        let redraw_needed = edges.len() > 0
+            || self
+                .engine
+                .get_library()
+                .get_shape(&self.handle_container_id)
+                .map(|shape| shape.edge_list(0.0).len() > 0)
+                .unwrap_or_default();
         self.update_draw_handle(edges);
         redraw_needed
     }
 
     fn update_draw_handle(&mut self, edges: Vec<Edge>) {
-        self.library.insert(
+        self.engine.get_library_mut().add_shape(
             self.handle_container_id,
-            DisplayLibraryItem::Vector(Shape::Path {
-                color: ColorU::new(192, 255, 0, 255),
+            Shape::Path {
+                color: LinSrgba::new(0.3, 0.8, 0.7, 1.0),
                 edges,
                 stroke_style: StrokeStyle {
                     line_width: 2.0,
                     line_cap: LineCap::default(),
                     line_join: LineJoin::default(),
                 },
-            }),
+            },
         );
     }
 

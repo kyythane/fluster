@@ -156,16 +156,6 @@ impl<T: Eq + PartialEq + Hash + Clone + Copy + Debug, S: BuildHasher> QuadTree<T
         }
     }
 
-    /// Returns the number of elements in the tree
-    pub fn len(&self) -> usize {
-        self.rect_cache.len()
-    }
-
-    /// Returns true if the tree is empty.
-    pub fn is_empty(&self) -> bool {
-        self.rect_cache.is_empty()
-    }
-
     /// Returns the enclosing bounding-box for the entire tree.
     pub fn bounding_box(&self) -> RectF {
         self.root.bounding_box()

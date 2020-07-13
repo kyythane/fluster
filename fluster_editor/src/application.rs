@@ -11,7 +11,6 @@ use iced::{
 use iced_native::{layout, Clipboard, Event, Hasher, Layout, MouseCursor, Point, Widget};
 use iced_wgpu::{Defaults, Primitive, Renderer};
 use palette::LinSrgb;
-use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::{convert::TryInto, hash::Hash, mem};
 pub struct Stage<'a, 'b, 'c> {
