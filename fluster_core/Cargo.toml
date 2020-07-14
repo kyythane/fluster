@@ -5,7 +5,6 @@ authors = ["Lillian Primrose"]
 edition = "2018"
 
 [dependencies]
-aabb-quadtree-pathfinder = { git = "https://github.com/kyythane/aabb-quadtree.git" }
 bincode = "1.2"
 circular = "0.3"
 nom = "5.1"

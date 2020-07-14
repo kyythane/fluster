@@ -12,7 +12,7 @@ use pathfinder_geometry::vector::Vector2F;
 use pathfinder_gpu::Device;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::RendererOptions;
+use pathfinder_renderer::gpu::options::{RendererLevel, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer as PathfinderRenderer;
 use pathfinder_renderer::options::BuildOptions;
 use std::mem;
@@ -78,10 +78,7 @@ where
         self.canvas = Some(Canvas::new(stage_size).get_context_2d(self.font_context.clone()))
     }
     fn set_background(&mut self, color: ColorU) {
-        self.renderer.set_options(RendererOptions {
-            background_color: Some(color.to_f32()),
-            no_compute: false,
-        });
+        self.renderer.options_mut().background_color = Some(color.to_f32());
     }
     fn draw_shape(
         &mut self,
@@ -209,7 +206,11 @@ where
     fn end_frame(&mut self) {
         if self.canvas.is_some() {
             let canvas = mem::replace(&mut self.canvas, None).unwrap();
-            let scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(), RayonExecutor);
+            let mut scene = SceneProxy::from_scene(
+                canvas.into_canvas().into_scene(),
+                RendererLevel::D3D9,
+                RayonExecutor,
+            );
             scene.build_and_render(&mut self.renderer, BuildOptions::default());
             (self.on_frame_end)();
         }

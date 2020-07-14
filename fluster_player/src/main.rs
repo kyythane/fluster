@@ -15,7 +15,7 @@ use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions, RendererMode};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use sdl2::event::Event;
@@ -314,15 +314,14 @@ fn main() {
     gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
     window.gl_make_current(&gl_context).unwrap();
 
-    let renderer = Renderer::new(
-        GLDevice::new(GLVersion::GL3, 0),
-        &EmbeddedResourceLoader,
-        DestFramebuffer::full_window(window_size),
-        RendererOptions {
-            background_color: Some(ColorF::white()),
-            no_compute: false,
-        },
-    );
+    let device = GLDevice::new(GLVersion::GL3, 0);
+    let mode = RendererMode::default_for_device(&device);
+    let options = RendererOptions {
+        background_color: Some(ColorF::white()),
+        dest: DestFramebuffer::full_window(window_size),
+        ..RendererOptions::default()
+    };
+    let renderer = Renderer::new(device, &EmbeddedResourceLoader, mode, options);
 
     let font_context = CanvasFontContext::from_system_source();
 

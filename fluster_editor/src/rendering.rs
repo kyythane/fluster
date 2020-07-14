@@ -8,7 +8,7 @@ use pathfinder_canvas::CanvasFontContext;
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gl::{GLDevice, GLVersion};
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use sdl2::video::{GLContext, GLProfile, Window};
@@ -76,13 +76,16 @@ impl StageRenderer {
         gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
         window.gl_make_current(&gl_context)?;
 
+        let device = GLDevice::new(GLVersion::GL3, 0);
+        let renderer_mode = RendererMode::default_for_device(&device);
         let renderer = Renderer::new(
-            GLDevice::new(GLVersion::GL3, 0),
+            device,
             &EmbeddedResourceLoader,
-            DestFramebuffer::full_window(stage_size),
+            renderer_mode,
             RendererOptions {
+                dest: DestFramebuffer::full_window(stage_size),
                 background_color: Some(ColorF::white()),
-                no_compute: false,
+                show_debug_ui: false,
             },
         );
 
