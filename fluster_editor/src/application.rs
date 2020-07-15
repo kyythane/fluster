@@ -4,11 +4,11 @@ use crate::simulation::{StageState, TimelineState};
 use crate::tools::{EditDisplayState, EditState, Tool};
 
 use iced::{
-    button::State as ButtonState, executor, image::Handle as ImageHandle, Align, Application,
-    Button, Column, Command, Container, Element, Image, Length, Row, Size,
+    button::State as ButtonState, executor, image::Handle as ImageHandle, mouse, Align,
+    Application, Button, Column, Command, Container, Element, Length, Row, Size, Text,
 };
-use iced_native::{layout, Clipboard, Event, Hasher, Layout, MouseCursor, Point, Widget};
-use iced_wgpu::{Defaults, Primitive, Renderer};
+use iced_graphics::{Backend, Defaults, Primitive, Renderer};
+use iced_native::{layout, Clipboard, Event, Hasher, Layout, Point, Widget};
 use palette::LinSrgb;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::{convert::TryInto, hash::Hash};
@@ -36,7 +36,10 @@ impl<'a, 'b, 'c> Stage<'a, 'b, 'c> {
     }
 }
 
-impl<'a, 'b, 'c> Widget<AppMessage, Renderer> for Stage<'a, 'b, 'c> {
+impl<'a, 'b, 'c, B> Widget<AppMessage, Renderer<B>> for Stage<'a, 'b, 'c>
+where
+    B: Backend,
+{
     fn width(&self) -> Length {
         Length::Units(self.width)
     }
@@ -45,7 +48,7 @@ impl<'a, 'b, 'c> Widget<AppMessage, Renderer> for Stage<'a, 'b, 'c> {
         Length::Units(self.height)
     }
 
-    fn layout(&self, _renderer: &Renderer, _limits: &layout::Limits) -> layout::Node {
+    fn layout(&self, _renderer: &Renderer<B>, _limits: &layout::Limits) -> layout::Node {
         layout::Node::new(Size::new(f32::from(self.width), f32::from(self.height)))
     }
 
@@ -57,15 +60,15 @@ impl<'a, 'b, 'c> Widget<AppMessage, Renderer> for Stage<'a, 'b, 'c> {
 
     fn draw(
         &self,
-        _renderer: &mut Renderer,
+        _renderer: &mut Renderer<B>,
         _defaults: &Defaults,
         layout: Layout<'_>,
         cursor_position: Point,
-    ) -> (Primitive, MouseCursor) {
+    ) -> (Primitive, mouse::Interaction) {
         let cursor = if layout.bounds().contains(cursor_position) {
             self.edit_state.mouse_cursor()
         } else {
-            MouseCursor::OutOfBounds
+            mouse::Interaction::Idle
         };
         (
             Primitive::Image {
@@ -82,7 +85,7 @@ impl<'a, 'b, 'c> Widget<AppMessage, Renderer> for Stage<'a, 'b, 'c> {
         layout: Layout<'_>,
         cursor_position: Point,
         messages: &mut Vec<AppMessage>,
-        _renderer: &Renderer,
+        _renderer: &Renderer<B>,
         _clipboard: Option<&dyn Clipboard>,
     ) {
         let in_bounds = layout.bounds().contains(cursor_position);
@@ -166,19 +169,16 @@ pub struct App<'a, 'b> {
 
 impl<'a, 'b> App<'a, 'b> {
     fn refresh_stage(&mut self) {
-        let frame_handle = self
-            .stage_renderer
-            .draw_frame(
-                self.stage_state.background_color(),
-                self.stage_state.engine(),
-            )
-            .unwrap();
+        let frame_handle = self.stage_renderer.draw_frame(
+            self.stage_state.background_color(),
+            self.stage_state.engine(),
+        );
         self.frame_handle = frame_handle;
     }
 
     fn tool_pane(tool_pane_state: &mut ToolPaneState) -> Column<AppMessage> {
         fn button_factory(button_state: &mut ButtonState, tool: Tool) -> Button<AppMessage> {
-            Button::new(button_state, Image::new(tool.image_handle()))
+            Button::new(button_state, Text::new(tool.name()))
                 .on_press(AppMessage::EditMessage(tool.change_message()))
                 .width(Length::Fill)
         }
@@ -238,9 +238,8 @@ impl<'a, 'b> Application for App<'a, 'b> {
         let stage_state = StageState::new(flags.stage_size, flags.background_color);
         let mut stage_renderer = StageRenderer::new(flags.stage_size).unwrap();
         let timeline_state = TimelineState::new(stage_state.root());
-        let frame_handle = stage_renderer
-            .draw_frame(stage_state.background_color(), stage_state.engine())
-            .unwrap();
+        let frame_handle =
+            stage_renderer.draw_frame(stage_state.background_color(), stage_state.engine());
         (
             Self {
                 stage_state,

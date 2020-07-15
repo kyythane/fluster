@@ -1,11 +1,7 @@
 use crate::messages::{AppMessage, EditMessage, Template, ToolMessage};
 use fluster_core::engine::SelectionHandle;
-use iced::{Checkbox, Column, Length, Row, Text, TextInput};
-use iced_native::{
-    image::Handle as ImageHandle, input::mouse::Button as MouseButton,
-    input::mouse::Event as MouseEvent, input::ButtonState, text_input::State as TextInputState,
-    MouseCursor,
-};
+use iced::{mouse, Checkbox, Column, Length, Row, Text, TextInput};
+use iced_native::{image::Handle as ImageHandle, text_input::State as TextInputState};
 use palette::LinSrgba;
 use pathfinder_content::stroke::{LineCap, LineJoin};
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
@@ -42,6 +38,10 @@ impl Tool {
         ))
     }
 
+    pub fn name(&self) -> String {
+        format!("{:?}", self)
+    }
+
     pub fn change_message(&self) -> EditMessage {
         EditMessage::ToolChange(*self)
     }
@@ -56,18 +56,17 @@ impl Tool {
         }
     }
 
-    fn mouse_cursor(&self, placement_state: PlacementState) -> MouseCursor {
-        match self {
-            _ => match placement_state {
-                PlacementState::None => MouseCursor::Pointer,
-                PlacementState::Placing => MouseCursor::Grabbing,
-            },
+    fn mouse_cursor(&self, placement_state: PlacementState) -> mouse::Interaction {
+        match (placement_state, self) {
+            (PlacementState::None, _) => mouse::Interaction::Pointer,
+            (PlacementState::Placing, Tool::Pointer) => mouse::Interaction::Grabbing,
+            (PlacementState::Placing, _) => mouse::Interaction::Crosshair,
         }
     }
 
     fn on_mouse_event(
         &self,
-        mouse_event: MouseEvent,
+        mouse_event: mouse::Event,
         mut selection: Vec<SelectionHandle>,
         stage_position: Vector2F,
         tool_options: Vec<ToolOption>,
@@ -77,9 +76,7 @@ impl Tool {
         match self {
             Self::Pointer => match placement_state {
                 PlacementState::None => match mouse_event {
-                    MouseEvent::Input { state, button }
-                        if state == ButtonState::Pressed && button == MouseButton::Left =>
-                    {
+                    mouse::Event::ButtonPressed(mouse::Button::Left) => {
                         // TODO: Pick first selection w/ valid vertex
                         if selection.len() > 0 && selection[0].handles().len() > 0 {
                             Some(ToolMessage::MovePointStart {
@@ -92,38 +89,30 @@ impl Tool {
                     _ => None,
                 },
                 PlacementState::Placing => match mouse_event {
-                    MouseEvent::Input { state, button }
-                        if state == ButtonState::Pressed && button == MouseButton::Left =>
-                    {
+                    mouse::Event::ButtonPressed(mouse::Button::Left) => {
                         Some(ToolMessage::MovePointEnd)
                     }
-                    MouseEvent::CursorMoved { .. } => Some(ToolMessage::MovePointHover {
+                    mouse::Event::CursorMoved { .. } => Some(ToolMessage::MovePointHover {
                         hover_position: stage_position,
                     }),
                     _ => None,
                 },
             },
             Self::Path => match mouse_event {
-                MouseEvent::Input { state, button }
-                    if state == ButtonState::Pressed && button == MouseButton::Left =>
-                {
-                    match placement_state {
-                        PlacementState::None => Some(ToolMessage::PathStart {
-                            start_position: stage_position,
-                            options: tool_options,
-                        }),
-                        PlacementState::Placing => Some(ToolMessage::PathNext {
-                            next_position: stage_position,
-                        }),
-                    }
-                }
-                MouseEvent::Input { state, .. } if state == ButtonState::Pressed => {
-                    match placement_state {
-                        PlacementState::None => None,
-                        PlacementState::Placing => Some(ToolMessage::PathEnd),
-                    }
-                }
-                MouseEvent::CursorMoved { .. } => {
+                mouse::Event::ButtonPressed(mouse::Button::Left) => match placement_state {
+                    PlacementState::None => Some(ToolMessage::PathStart {
+                        start_position: stage_position,
+                        options: tool_options,
+                    }),
+                    PlacementState::Placing => Some(ToolMessage::PathNext {
+                        next_position: stage_position,
+                    }),
+                },
+                mouse::Event::ButtonPressed(..) => match placement_state {
+                    PlacementState::None => None,
+                    PlacementState::Placing => Some(ToolMessage::PathEnd),
+                },
+                mouse::Event::CursorMoved { .. } => {
                     if let PlacementState::Placing = placement_state {
                         Some(ToolMessage::PathPlaceHover {
                             hover_position: stage_position,
@@ -136,9 +125,7 @@ impl Tool {
             },
             Self::Ellipse | Self::Rect | Self::Polygon => match placement_state {
                 PlacementState::None => match mouse_event {
-                    MouseEvent::Input { state, button }
-                        if state == ButtonState::Pressed && button == MouseButton::Left =>
-                    {
+                    mouse::Event::ButtonPressed(mouse::Button::Left) => {
                         Some(ToolMessage::TemplateStart {
                             start_position: stage_position,
                             options: tool_options,
@@ -153,10 +140,10 @@ impl Tool {
                     _ => None,
                 },
                 PlacementState::Placing => match mouse_event {
-                    MouseEvent::Input { state, .. } if state == ButtonState::Pressed => {
+                    mouse::Event::ButtonPressed(mouse::Button::Left) => {
                         Some(ToolMessage::TemplateEnd)
                     }
-                    MouseEvent::CursorMoved { .. } => Some(ToolMessage::TemplatePlaceHover {
+                    mouse::Event::CursorMoved { .. } => Some(ToolMessage::TemplatePlaceHover {
                         hover_position: stage_position,
                     }),
                     _ => None,
@@ -315,7 +302,7 @@ impl EditState {
         self.placement_state = PlacementState::None;
     }
 
-    pub fn mouse_cursor(&self) -> MouseCursor {
+    pub fn mouse_cursor(&self) -> mouse::Interaction {
         self.tool.mouse_cursor(self.placement_state)
     }
 
@@ -325,16 +312,14 @@ impl EditState {
 
     pub fn on_mouse_event(
         &self,
-        mouse_event: MouseEvent,
+        mouse_event: mouse::Event,
         selection: Vec<SelectionHandle>,
         stage_position: Vector2F,
         in_bounds: bool,
     ) -> Option<EditMessage> {
         if !in_bounds {
             match mouse_event {
-                MouseEvent::Input { state, .. } if state == ButtonState::Pressed => {
-                    Some(EditMessage::Cancel)
-                }
+                mouse::Event::ButtonPressed(..) => Some(EditMessage::Cancel),
                 _ => None,
             }
         } else {
