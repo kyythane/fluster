@@ -150,7 +150,7 @@ impl ScratchPadState {
                 }
                 ToolMessage::MovePointStart { selection_handle } => {
                     if let Self::None = self {
-                        let mut vertex_scratch_pad =
+                        let vertex_scratch_pad =
                             VertexScratchPad::start_drag(engine, selection_handle)?;
                         *self = Self::EditVertexes(vertex_scratch_pad);
                         Ok(false)
