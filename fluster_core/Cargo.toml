@@ -27,5 +27,5 @@ mockall = "0.7"
 
 [dev-dependencies.cargo-husky]
 version = "1"
-default-features = false # Disable features which are enabled by default
+default-features = false
 features = ["prepush-hook", "run-for-all", "run-cargo-test", "run-cargo-clippy", "run-cargo-fmt"]
