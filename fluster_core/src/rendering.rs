@@ -1,4 +1,3 @@
-#![deny(clippy::all)]
 use super::types::{coloring::Coloring, shapes::Shape};
 use crate::engine::{Engine, LibraryItem};
 use palette::{IntoComponent, LinSrgb, LinSrgba};

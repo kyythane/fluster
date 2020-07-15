@@ -1,4 +1,3 @@
-#![deny(clippy::all)]
 use crate::messages::AppMessage;
 use crate::rendering::StageRenderer;
 use crate::simulation::{StageState, TimelineState};

@@ -1,4 +1,3 @@
-#![deny(clippy::all)]
 use crate::messages::EditMessage;
 use crate::{
     scratch_pad::{ScratchPad, EDIT_LAYER},
@@ -262,7 +261,7 @@ impl FrameState {
                 let mut entities = HashSet::new();
                 entities.insert(*id);
                 let new_frame = Self::Key { entities };
-                mem::replace(self, new_frame);
+                *self = new_frame;
             }
         }
     }

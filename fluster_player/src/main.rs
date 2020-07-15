@@ -1,3 +1,4 @@
+#![deny(clippy::all)]
 use fluster_core::actions::{
     Action, ActionList, ContainerCreationDefintition, ContainerCreationProperty,
     ContainerUpdateDefintition, ContainerUpdateProperty,

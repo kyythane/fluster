@@ -1,4 +1,3 @@
-#![deny(clippy::all)]
 use crate::messages::{EditMessage, Template, ToolMessage};
 use crate::tools::{ToolOption, ToolOptionHandle};
 use fluster_core::{
@@ -114,7 +113,7 @@ impl ScratchPadState {
                     if let Self::None = self {
                         let shape_scratch_pad =
                             ShapeScratchPad::start_path(*start_position, engine, options);
-                        mem::replace(self, Self::NewPath(shape_scratch_pad));
+                        *self = Self::NewPath(shape_scratch_pad);
                         Ok(false)
                     } else {
                         Err(
@@ -143,7 +142,7 @@ impl ScratchPadState {
                 ToolMessage::PathEnd => {
                     if let Self::NewPath(shape_scratch_pad) = self {
                         shape_scratch_pad.complete_path(engine);
-                        mem::replace(self, Self::None);
+                        *self = Self::None;
                         Ok(true) //TODO: update scene message
                     } else {
                         Err("Unexpected Message \"PathEnd\"".to_owned())
@@ -153,7 +152,7 @@ impl ScratchPadState {
                     if let Self::None = self {
                         let mut vertex_scratch_pad =
                             VertexScratchPad::start_drag(engine, selection_handle)?;
-                        mem::replace(self, Self::EditVertexes(vertex_scratch_pad));
+                        *self = Self::EditVertexes(vertex_scratch_pad);
                         Ok(false)
                     } else {
                         Err("Attempting to edit a vertex while edit in progress".to_owned())
@@ -171,7 +170,7 @@ impl ScratchPadState {
                 ToolMessage::MovePointEnd => {
                     if let Self::EditVertexes(vertex_scratch_pad) = self {
                         vertex_scratch_pad.complete_drag(engine);
-                        mem::replace(self, Self::None);
+                        *self = Self::None;
                         Ok(true) //TODO: update scene message
                     } else {
                         Err("Unexpected Message \"PathEnd\"".to_owned())
@@ -183,13 +182,13 @@ impl ScratchPadState {
                     template,
                 } => {
                     if let Self::None = self {
-                        let mut template_scratch_pad = TemplateShapeScratchpad::start(
+                        let template_scratch_pad = TemplateShapeScratchpad::start(
                             engine,
                             *start_position,
                             options,
                             *template,
                         );
-                        mem::replace(self, Self::NewTemplateShape(template_scratch_pad));
+                        *self = Self::NewTemplateShape(template_scratch_pad);
                         Ok(false)
                     } else {
                         Err(
@@ -210,7 +209,7 @@ impl ScratchPadState {
                 ToolMessage::TemplateEnd => {
                     if let Self::NewTemplateShape(template_scratch_pad) = self {
                         template_scratch_pad.complete(engine)?;
-                        mem::replace(self, Self::None);
+                        *self = Self::None;
                         Ok(true) //TODO: update scene message
                     } else {
                         Err("Unexpected Message \"TemplateEnd\"".to_owned())

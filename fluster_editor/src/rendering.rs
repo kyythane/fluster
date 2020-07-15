@@ -1,4 +1,3 @@
-#![deny(clippy::all)]
 use fluster_core::{
     engine::Engine,
     rendering::{lin_srgb_to_coloru, paint, Renderer as FlusterRenderer},

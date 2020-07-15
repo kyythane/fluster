@@ -1,5 +1,3 @@
-#![deny(clippy::all)]
-
 use super::actions::Action;
 use bincode::Error as BinError;
 use bincode::ErrorKind as BinErrorKind;

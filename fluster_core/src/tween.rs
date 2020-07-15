@@ -1,5 +1,3 @@
-#![deny(clippy::all)]
-
 use super::actions::RectPoints;
 use super::types::{
     basic::ScaleRotationTranslation,

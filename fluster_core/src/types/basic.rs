@@ -1,4 +1,3 @@
-#![deny(clippy::all)]
 use pathfinder_color::ColorU;
 use pathfinder_content::pattern::{Image, Pattern};
 use pathfinder_geometry::transform2d::Transform2F;

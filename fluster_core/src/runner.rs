@@ -1,5 +1,3 @@
-#![deny(clippy::all)]
-
 use super::actions::{Action, ActionList};
 use super::rendering::{lin_srgb_to_coloru, paint, Renderer};
 use crate::{

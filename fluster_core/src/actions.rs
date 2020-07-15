@@ -1,5 +1,3 @@
-#![deny(clippy::all)]
-
 use super::tween::Easing;
 use super::types::{
     basic::{transform_des, transform_ser, Bitmap, ScaleRotationTranslation, Vector2FDef},

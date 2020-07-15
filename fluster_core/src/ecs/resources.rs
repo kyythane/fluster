@@ -7,7 +7,7 @@ use pathfinder_canvas::Vector2F;
 use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::rect::RectF;
 use serde::{Deserialize, Serialize};
-use specs::{Entity};
+use specs::Entity;
 use std::collections::{hash_map::RandomState, HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;

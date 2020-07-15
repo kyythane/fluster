@@ -1,4 +1,3 @@
-#![deny(clippy::all)]
 use crate::messages::{AppMessage, EditMessage, Template, ToolMessage};
 use fluster_core::engine::SelectionHandle;
 use iced::{Checkbox, Column, Length, Row, Text, TextInput};
