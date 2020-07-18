@@ -20,7 +20,7 @@ pathfinder_renderer = { git = "https://github.com/servo/pathfinder.git" }
 pathfinder_resources = { git = "https://github.com/servo/pathfinder.git" }
 uuid = { version = "0.8", features = ["v4"] }
 palette = { git = "https://github.com/Ogeon/palette.git" }
-iced = { git = "https://github.com/hecrj/iced.git", features = ["glow"] }
+iced = { git = "https://github.com/hecrj/iced.git", features = ["image"] }
 iced_native = { git = "https://github.com/hecrj/iced.git" }
 iced_graphics = { git = "https://github.com/hecrj/iced.git" }
 iced_winit = { git = "https://github.com/hecrj/iced.git" }

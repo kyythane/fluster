@@ -4,7 +4,10 @@ use fluster_core::{
     actions::{ContainerCreationDefintition, ContainerCreationProperty},
     ecs::resources::{Library, QuadTreeLayer},
     engine::{Engine, SelectionHandle},
-    types::shapes::{Edge, Shape},
+    types::{
+        basic::ScaleRotationTranslation,
+        shapes::{Edge, Shape},
+    },
 };
 use palette::LinSrgba;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
@@ -276,6 +279,7 @@ impl ShapeScratchPad {
             *engine.root_container_id(),
             container_id,
             vec![
+                ContainerCreationProperty::Transform(ScaleRotationTranslation::default()),
                 ContainerCreationProperty::Display(item_id),
                 ContainerCreationProperty::Layer(EDIT_LAYER),
             ],
@@ -320,7 +324,7 @@ impl ShapeScratchPad {
         }
         if self.committed_edges <= 1 {
             engine.get_library_mut().remove_shape(&self.item_id);
-            engine.remove_container(&self.container_id);
+            engine.remove_container(&self.container_id).unwrap();
         } else {
             if self.close_path {
                 self.edges.push(Edge::Close);
@@ -347,7 +351,7 @@ impl VertexScratchPad {
                     item_id: *item_id,
                     edges: shape.edge_list(selection_handle.morph()),
                     shape_prototype: (*shape).clone(),
-                    selected_point: (0, 0),
+                    selected_point: (vertex.edge_id(), vertex.vertex_id()),
                 })
             } else {
                 Err(format!("Could not find library item {:?}", item_id))
@@ -425,6 +429,7 @@ impl TemplateShapeScratchpad {
             *engine.root_container_id(),
             new_self.container_id,
             vec![
+                ContainerCreationProperty::Transform(ScaleRotationTranslation::default()),
                 ContainerCreationProperty::Display(new_self.item_id),
                 ContainerCreationProperty::Layer(EDIT_LAYER),
             ],
@@ -539,7 +544,7 @@ impl TemplateShapeScratchpad {
     fn complete(&mut self, engine: &mut Engine) -> Result<(), String> {
         if (self.end_position - self.start_position).length() < std::f32::EPSILON {
             engine.get_library_mut().remove_shape(&self.item_id);
-            engine.remove_container(&self.container_id);
+            engine.remove_container(&self.container_id).unwrap();
         } else {
             update_library(
                 &mut *engine.get_library_mut(),

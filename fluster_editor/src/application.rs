@@ -5,7 +5,7 @@ use crate::tools::{EditDisplayState, EditState, Tool};
 
 use iced::{
     button::State as ButtonState, executor, image::Handle as ImageHandle, mouse, Align,
-    Application, Button, Column, Command, Container, Element, Length, Row, Size, Text,
+    Application, Button, Column, Command, Container, Element, Image, Length, Row, Size, Text,
 };
 use iced_graphics::{Backend, Defaults, Primitive, Renderer};
 use iced_native::{layout, Clipboard, Event, Hasher, Layout, Point, Widget};
@@ -178,7 +178,7 @@ impl<'a, 'b> App<'a, 'b> {
 
     fn tool_pane(tool_pane_state: &mut ToolPaneState) -> Column<AppMessage> {
         fn button_factory(button_state: &mut ButtonState, tool: Tool) -> Button<AppMessage> {
-            Button::new(button_state, Text::new(tool.name()))
+            Button::new(button_state, Image::new(tool.image_handle()))
                 .on_press(AppMessage::EditMessage(tool.change_message()))
                 .width(Length::Fill)
         }
