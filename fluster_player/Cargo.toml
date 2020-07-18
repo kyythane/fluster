@@ -17,5 +17,4 @@ pathfinder_renderer = { git = "https://github.com/servo/pathfinder.git" }
 pathfinder_resources = { git = "https://github.com/servo/pathfinder.git" }
 gl = "0.14"
 glutin = "0.23"
-uuid = { version = "0.8", features = ["v4"] }
 palette = { git = "https://github.com/Ogeon/palette.git" }
