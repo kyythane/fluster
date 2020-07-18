@@ -64,16 +64,16 @@ impl Library {
         self.shapes.get(id).cloned()
     }
 
-    pub fn get_texture(&self, uuid: &LibraryId) -> Option<Arc<Pattern>> {
-        self.textures.get(uuid).cloned()
+    pub fn get_texture(&self, id: &LibraryId) -> Option<Arc<Pattern>> {
+        self.textures.get(id).cloned()
     }
 
     pub fn remove_shape(&mut self, id: &LibraryId) {
         self.shapes.remove(id);
     }
 
-    pub fn remove_texture(&mut self, uuid: &LibraryId) {
-        self.textures.remove(uuid);
+    pub fn remove_texture(&mut self, id: &LibraryId) {
+        self.textures.remove(id);
     }
 
     pub fn contains_shape(&self, id: &LibraryId) -> bool {

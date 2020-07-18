@@ -661,12 +661,12 @@ impl<'a> System<'a> for UpdateBounds {
                 bounds.bounds = match bounds.source {
                     BoundsSource::Display => {
                         match display {
-                            Some(Display(uuid, DisplayKind::Vector)) => {
-                                let shape = library.get_shape(uuid).unwrap();
+                            Some(Display(id, DisplayKind::Vector)) => {
+                                let shape = library.get_shape(id).unwrap();
                                 shape.compute_bounding(&transform.world, morph.unwrap_or(&Morph(0.0)).0)
                             }
-                            Some(Display(uuid, DisplayKind::Raster)) => {
-                                let pattern = library.get_texture(uuid).unwrap();
+                            Some(Display(id, DisplayKind::Raster)) => {
+                                let pattern = library.get_texture(id).unwrap();
                                 let (o, lr) = view_rect.and_then(|ViewRect(rect)| Some((rect.origin(), rect.lower_right()))).unwrap_or_else(|| (Vector2F::zero(), pattern.size().to_f32()));
                                 let o = transform.world * o;
                                 let lr = transform.world * lr;
