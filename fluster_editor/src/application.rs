@@ -5,7 +5,7 @@ use crate::tools::{EditDisplayState, EditState, Tool};
 
 use iced::{
     button::State as ButtonState, executor, image::Handle as ImageHandle, mouse, Align,
-    Application, Button, Column, Command, Container, Element, Image, Length, Row, Size, Text,
+    Application, Button, Column, Command, Container, Element, Image, Length, Row, Size,
 };
 use iced_graphics::{Backend, Defaults, Primitive, Renderer};
 use iced_native::{layout, Clipboard, Event, Hasher, Layout, Point, Widget};

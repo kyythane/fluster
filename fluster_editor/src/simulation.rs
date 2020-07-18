@@ -6,7 +6,10 @@ use crate::{
 use fluster_core::{
     ecs::resources::{FrameTime, Library, QuadTreeLayerOptions, QuadTreeQuery, QuadTrees},
     engine::{Engine, SelectionHandle},
-    types::shapes::{Edge, Shape},
+    types::{
+        basic::{ContainerId, LibraryId},
+        shapes::{Edge, Shape},
+    },
 };
 use palette::{LinSrgb, LinSrgba};
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
@@ -15,12 +18,11 @@ use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::collections::HashSet;
 use std::{mem, time::Duration};
-use uuid::Uuid;
 
 pub struct StageState<'a, 'b> {
     background_color: LinSrgb,
-    root_container_id: Uuid,
-    handle_container_id: Uuid,
+    root_container_id: ContainerId,
+    handle_ids: (ContainerId, LibraryId),
     size: Vector2I,
     scale: f32,
     scratch_pad: ScratchPad,
@@ -29,13 +31,14 @@ pub struct StageState<'a, 'b> {
 
 impl<'a, 'b> StageState<'a, 'b> {
     pub fn new(stage_size: Vector2I, background_color: LinSrgb) -> Self {
-        let root_container_id = Uuid::new_v4();
-        let handle_container_id = Uuid::new_v4();
+        let root_container_id = ContainerId::new();
+        let handle_container_id = ContainerId::new();
+        let handle_library_id = LibraryId::new();
         let engine = Engine::new(root_container_id, Library::default(), QuadTrees::default());
         let mut new_self = Self {
             background_color,
             root_container_id,
-            handle_container_id,
+            handle_ids: (handle_container_id, handle_library_id),
             size: stage_size,
             scale: 1.0,
             scratch_pad: ScratchPad::default(),
@@ -62,7 +65,7 @@ impl<'a, 'b> StageState<'a, 'b> {
         &self.engine
     }
 
-    pub fn root(&self) -> &Uuid {
+    pub fn root(&self) -> &ContainerId {
         &self.root_container_id
     }
 
@@ -83,7 +86,7 @@ impl<'a, 'b> StageState<'a, 'b> {
             || self
                 .engine
                 .get_library()
-                .get_shape(&self.handle_container_id)
+                .get_shape(&self.handle_ids.1)
                 .map(|shape| shape.edge_list(0.0).len() > 0)
                 .unwrap_or_default();
         self.update_draw_handle(edges);
@@ -92,7 +95,7 @@ impl<'a, 'b> StageState<'a, 'b> {
 
     fn update_draw_handle(&mut self, edges: Vec<Edge>) {
         self.engine.get_library_mut().add_shape(
-            self.handle_container_id,
+            self.handle_ids.1,
             Shape::Path {
                 color: LinSrgba::new(0.3, 0.8, 0.7, 1.0),
                 edges,
@@ -161,14 +164,14 @@ pub struct TimelineState {
 }
 
 impl TimelineState {
-    pub fn new(root_id: &Uuid) -> Self {
+    pub fn new(root_id: &ContainerId) -> Self {
         let layer = LayerState::new(root_id);
         return Self {
             layers: vec![layer],
         };
     }
 
-    pub fn can_show_entity(&self, id: &Uuid) -> bool {
+    pub fn can_show_entity(&self, id: &ContainerId) -> bool {
         self.layers.iter().any(|layer| layer.can_show_entity(id))
     }
 
@@ -194,7 +197,7 @@ pub struct LayerState {
 }
 
 impl LayerState {
-    pub fn new(root_id: &Uuid) -> Self {
+    pub fn new(root_id: &ContainerId) -> Self {
         let frame_state = FrameState::from_entity(*root_id);
         Self {
             frames: vec![(frame_state, (0, 1))],
@@ -203,14 +206,14 @@ impl LayerState {
         }
     }
 
-    pub fn can_show_entity(&self, id: &Uuid) -> bool {
+    pub fn can_show_entity(&self, id: &ContainerId) -> bool {
         if !self.visible {
             return false;
         }
         self.contains_entity(id)
     }
 
-    pub fn contains_entity(&self, id: &Uuid) -> bool {
+    pub fn contains_entity(&self, id: &ContainerId) -> bool {
         if let Some((frame, ..)) = self.frames.get(self.current_frame_index) {
             return frame.contains_entity(id);
         }
@@ -234,25 +237,25 @@ impl LayerState {
 
 #[derive(Debug, Clone)]
 pub enum FrameState {
-    Key { entities: HashSet<Uuid> },
+    Key { entities: HashSet<ContainerId> },
     Empty,
 }
 
 impl FrameState {
-    pub fn from_entity(entity: Uuid) -> Self {
+    pub fn from_entity(entity: ContainerId) -> Self {
         let mut entities = HashSet::new();
         entities.insert(entity);
         Self::Key { entities }
     }
 
-    pub fn contains_entity(&self, id: &Uuid) -> bool {
+    pub fn contains_entity(&self, id: &ContainerId) -> bool {
         match self {
             Self::Key { entities } => entities.contains(id),
             Self::Empty => false,
         }
     }
 
-    pub fn add_entity(&mut self, id: &Uuid) {
+    pub fn add_entity(&mut self, id: &ContainerId) {
         match self {
             Self::Key { entities } => {
                 entities.insert(*id);
@@ -266,7 +269,7 @@ impl FrameState {
         }
     }
 
-    pub fn remove_entity(&mut self, id: &Uuid) {
+    pub fn remove_entity(&mut self, id: &ContainerId) {
         if let Self::Key { entities } = self {
             entities.remove(id);
             if entities.is_empty() {

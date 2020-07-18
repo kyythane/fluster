@@ -1,7 +1,10 @@
 use crate::quad_tree::QuadTree;
 use crate::{
     actions::{ContainerCreationDefintition, ContainerUpdateDefintition},
-    types::shapes::Shape,
+    types::{
+        basic::{ContainerId, LibraryId},
+        shapes::Shape,
+    },
 };
 use pathfinder_canvas::Vector2F;
 use pathfinder_content::pattern::Pattern;
@@ -11,7 +14,6 @@ use specs::Entity;
 use std::collections::{hash_map::RandomState, HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
-use uuid::Uuid;
 
 #[derive(Default, Debug)]
 pub struct ContainerCreationQueue {
@@ -45,57 +47,57 @@ impl ContainerUpdateQueue {
 
 #[derive(Default, Debug)]
 pub struct Library {
-    shapes: HashMap<Uuid, Arc<Shape>>,
-    textures: HashMap<Uuid, Arc<Pattern>>,
+    shapes: HashMap<LibraryId, Arc<Shape>>,
+    textures: HashMap<LibraryId, Arc<Pattern>>,
 }
 
 impl Library {
-    pub fn add_shape(&mut self, uuid: Uuid, shape: Shape) {
-        self.shapes.insert(uuid, Arc::new(shape));
+    pub fn add_shape(&mut self, id: LibraryId, shape: Shape) {
+        self.shapes.insert(id, Arc::new(shape));
     }
 
-    pub fn add_texture(&mut self, uuid: Uuid, pattern: Pattern) {
-        self.textures.insert(uuid, Arc::new(pattern));
+    pub fn add_texture(&mut self, id: LibraryId, pattern: Pattern) {
+        self.textures.insert(id, Arc::new(pattern));
     }
 
-    pub fn get_shape(&self, uuid: &Uuid) -> Option<Arc<Shape>> {
-        self.shapes.get(uuid).cloned()
+    pub fn get_shape(&self, id: &LibraryId) -> Option<Arc<Shape>> {
+        self.shapes.get(id).cloned()
     }
 
-    pub fn get_texture(&self, uuid: &Uuid) -> Option<Arc<Pattern>> {
+    pub fn get_texture(&self, uuid: &LibraryId) -> Option<Arc<Pattern>> {
         self.textures.get(uuid).cloned()
     }
 
-    pub fn remove_shape(&mut self, uuid: &Uuid) {
-        self.shapes.remove(uuid);
+    pub fn remove_shape(&mut self, id: &LibraryId) {
+        self.shapes.remove(id);
     }
 
-    pub fn remove_texture(&mut self, uuid: &Uuid) {
+    pub fn remove_texture(&mut self, uuid: &LibraryId) {
         self.textures.remove(uuid);
     }
 
-    pub fn contains_shape(&self, uuid: &Uuid) -> bool {
-        self.shapes.contains_key(uuid)
+    pub fn contains_shape(&self, id: &LibraryId) -> bool {
+        self.shapes.contains_key(id)
     }
 
-    pub fn contains_texture(&self, uuid: &Uuid) -> bool {
-        self.textures.contains_key(uuid)
+    pub fn contains_texture(&self, id: &LibraryId) -> bool {
+        self.textures.contains_key(id)
     }
 }
 
 #[derive(Default, Debug)]
 pub struct ContainerMapping {
-    container_to_entity: HashMap<Uuid, Entity>,
-    entity_to_container: HashMap<Entity, Uuid>,
+    container_to_entity: HashMap<ContainerId, Entity>,
+    entity_to_container: HashMap<Entity, ContainerId>,
 }
 
 impl ContainerMapping {
-    pub fn add_container(&mut self, container_id: Uuid, entity: Entity) {
+    pub fn add_container(&mut self, container_id: ContainerId, entity: Entity) {
         self.container_to_entity.insert(container_id, entity);
         self.entity_to_container.insert(entity, container_id);
     }
 
-    pub fn remove_container(&mut self, container_id: &Uuid) {
+    pub fn remove_container(&mut self, container_id: &ContainerId) {
         self.container_to_entity
             .remove(container_id)
             .and_then(|removed_entity| self.entity_to_container.remove(&removed_entity));
@@ -107,15 +109,15 @@ impl ContainerMapping {
             .and_then(|removed_container| self.container_to_entity.remove(&removed_container));
     }
 
-    pub fn get_container(&self, entity: &Entity) -> Option<&Uuid> {
+    pub fn get_container(&self, entity: &Entity) -> Option<&ContainerId> {
         self.entity_to_container.get(entity)
     }
 
-    pub fn get_entity(&self, container_id: &Uuid) -> Option<&Entity> {
+    pub fn get_entity(&self, container_id: &ContainerId) -> Option<&Entity> {
         self.container_to_entity.get(container_id)
     }
 
-    pub fn contains_container(&self, container_id: &Uuid) -> bool {
+    pub fn contains_container(&self, container_id: &ContainerId) -> bool {
         self.container_to_entity.contains_key(container_id)
     }
 

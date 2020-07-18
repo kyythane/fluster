@@ -1,22 +1,23 @@
 use super::tween::Easing;
 use super::types::{
-    basic::{transform_des, transform_ser, Bitmap, ScaleRotationTranslation, Vector2FDef},
+    basic::{Bitmap, ScaleRotationTranslation, Vector2FDef},
     coloring::Coloring,
     shapes::Shape,
 };
 use crate::{
     ecs::resources::{QuadTreeLayer, QuadTreeLayerOptions},
-    types::coloring::ColorSpace,
+    types::{
+        basic::{ContainerId, LibraryId},
+        coloring::ColorSpace,
+    },
 };
 use core::cmp::min;
 use palette::LinSrgb;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
-use uuid::Uuid;
 
 pub struct ActionList {
     actions: Vec<Action>,
@@ -135,218 +136,19 @@ impl RectPoints {
         }
     }
 }
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct PartDefinition {
-    part_id: Uuid,
-    item_id: Uuid,
-    transform: ScaleRotationTranslation,
-    payload: Vec<PartDefinitionPayload>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum PartDefinitionPayload {
-    Coloring(Coloring),
-    ViewRect(RectPoints),
-}
-
-impl PartDefinition {
-    pub fn new(
-        part_id: Uuid,
-        item_id: Uuid,
-        transform: ScaleRotationTranslation,
-        payload: Vec<PartDefinitionPayload>,
-    ) -> Self {
-        Self {
-            part_id,
-            item_id,
-            transform,
-            payload,
-        }
-    }
-
-    pub fn part_id(&self) -> &Uuid {
-        &self.part_id
-    }
-
-    pub fn item_id(&self) -> &Uuid {
-        &self.item_id
-    }
-
-    pub fn transform(&self) -> Transform2F {
-        Transform2F::from_scale_rotation_translation(
-            self.transform.scale,
-            self.transform.theta,
-            self.transform.translation,
-        )
-    }
-
-    pub fn payload(&self) -> impl Iterator<Item = &PartDefinitionPayload> {
-        self.payload.iter()
-    }
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct PartUpdateDefinition {
-    part_id: Uuid,
-    easing: Easing,
-    payload: PartUpdatePayload,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum PartUpdatePayload {
-    Transform(ScaleRotationTranslation),
-    Coloring(Coloring),
-    ViewRect(RectPoints),
-}
-
-impl PartUpdatePayload {
-    pub fn from_scale_rotation_translation(
-        scale_rotation_translation: ScaleRotationTranslation,
-    ) -> Self {
-        Self::Transform(scale_rotation_translation)
-    }
-
-    pub fn from_transform(transform: &Transform2F) -> Self {
-        Self::Transform(ScaleRotationTranslation::from_transform(transform))
-    }
-
-    pub fn from_coloring(coloring: Coloring) -> Self {
-        Self::Coloring(coloring)
-    }
-
-    pub fn from_view_rect_points(rect_points: RectPoints) -> Self {
-        Self::ViewRect(rect_points)
-    }
-
-    pub fn from_view_rect(rect: &RectF) -> Self {
-        Self::ViewRect(RectPoints {
-            origin: rect.origin(),
-            lower_right: rect.lower_right(),
-        })
-    }
-}
-
-impl PartUpdateDefinition {
-    pub fn new(part_id: Uuid, easing: Easing, payload: PartUpdatePayload) -> Self {
-        Self {
-            part_id,
-            easing,
-            payload,
-        }
-    }
-
-    pub fn part_id(&self) -> &Uuid {
-        &self.part_id
-    }
-
-    pub fn easing(&self) -> Easing {
-        self.easing
-    }
-
-    pub fn payload(&self) -> &PartUpdatePayload {
-        &self.payload
-    }
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct EntityDefinition {
-    pub depth: u32,
-    pub id: Uuid,
-    pub name: String,
-    pub parent: Option<Uuid>,
-    pub parts: Vec<PartDefinition>,
-    #[serde(serialize_with = "transform_ser", deserialize_with = "transform_des")]
-    pub transform: Transform2F,
-    pub morph_index: f32,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct EntityUpdateDefinition {
-    duration_frames: u16,
-    id: Uuid,
-    part_updates: Vec<PartUpdateDefinition>,
-    entity_updates: Vec<EntityUpdatePayload>,
-}
-
-impl EntityUpdateDefinition {
-    pub fn new(
-        id: Uuid,
-        duration_frames: u16,
-        part_updates: Vec<PartUpdateDefinition>,
-        entity_updates: Vec<EntityUpdatePayload>,
-    ) -> Self {
-        Self {
-            id,
-            duration_frames,
-            part_updates,
-            entity_updates,
-        }
-    }
-
-    pub fn id(&self) -> &Uuid {
-        &self.id
-    }
-
-    pub fn duration_frames(&self) -> u16 {
-        self.duration_frames
-    }
-
-    pub fn part_updates(&self) -> impl Iterator<Item = &PartUpdateDefinition> {
-        self.part_updates.iter()
-    }
-
-    pub fn entity_updates(&self) -> impl Iterator<Item = &EntityUpdatePayload> {
-        self.entity_updates.iter()
-    }
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum EntityUpdatePayload {
-    Transform {
-        easing: Easing,
-        transform: ScaleRotationTranslation,
-    },
-    MorphIndex {
-        easing: Easing,
-        morph_index: f32,
-    },
-}
-
-impl EntityUpdatePayload {
-    pub fn from_morph_index(morph_index: f32, easing: Easing) -> Self {
-        Self::MorphIndex {
-            morph_index,
-            easing,
-        }
-    }
-
-    pub fn from_scale_rotation_translation(
-        scale_rotation_translation: ScaleRotationTranslation,
-        easing: Easing,
-    ) -> Self {
-        Self::Transform {
-            transform: scale_rotation_translation,
-            easing,
-        }
-    }
-
-    pub fn from_transform(transform: &Transform2F, easing: Easing) -> Self {
-        Self::Transform {
-            transform: ScaleRotationTranslation::from_transform(&transform),
-            easing,
-        }
-    }
-}
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ContainerCreationDefintition {
-    id: Uuid,
-    parent: Uuid,
+    id: ContainerId,
+    parent: ContainerId,
     properties: Vec<ContainerCreationProperty>,
 }
 
 impl ContainerCreationDefintition {
-    pub fn new(parent: Uuid, id: Uuid, properties: Vec<ContainerCreationProperty>) -> Self {
+    pub fn new(
+        parent: ContainerId,
+        id: ContainerId,
+        properties: Vec<ContainerCreationProperty>,
+    ) -> Self {
         Self {
             id,
             parent,
@@ -354,11 +156,11 @@ impl ContainerCreationDefintition {
         }
     }
 
-    pub fn id(&self) -> &Uuid {
+    pub fn id(&self) -> &ContainerId {
         &self.id
     }
 
-    pub fn parent(&self) -> &Uuid {
+    pub fn parent(&self) -> &ContainerId {
         &self.parent
     }
 
@@ -373,7 +175,7 @@ pub enum ContainerCreationProperty {
     MorphIndex(f32),
     Coloring(Coloring),
     ViewRect(RectPoints),
-    Display(Uuid),
+    Display(LibraryId),
     Layer(QuadTreeLayer),
     Order(i8),
     Bounds(BoundsKindDefinition),
@@ -381,16 +183,16 @@ pub enum ContainerCreationProperty {
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ContainerUpdateDefintition {
-    id: Uuid,
+    id: ContainerId,
     properties: Vec<ContainerUpdateProperty>,
 }
 
 impl ContainerUpdateDefintition {
-    pub fn new(id: Uuid, properties: Vec<ContainerUpdateProperty>) -> Self {
+    pub fn new(id: ContainerId, properties: Vec<ContainerUpdateProperty>) -> Self {
         Self { id, properties }
     }
 
-    pub fn id(&self) -> &Uuid {
+    pub fn id(&self) -> &ContainerId {
         &self.id
     }
 
@@ -405,9 +207,9 @@ pub enum ContainerUpdateProperty {
     Coloring(Coloring, ColorSpace, Easing, u32),
     ViewRect(RectPoints, Easing, u32),
     Order(i8, Easing, u32),
-    Display(Uuid),
+    Display(LibraryId),
     RemoveDisplay,
-    Parent(Uuid),
+    Parent(ContainerId),
     AddToLayer(QuadTreeLayer),
     RemoveFromLayer(QuadTreeLayer),
     Bounds(BoundsKindDefinition),
@@ -422,16 +224,16 @@ pub enum BoundsKindDefinition {
 //TODO: additional actions: Text, Scripts, Fonts
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Action {
-    CreateRoot(Uuid),
+    CreateRoot(ContainerId),
     AddQuadTreeLayer(QuadTreeLayer, RectPoints, QuadTreeLayerOptions),
     SetBackground { color: LinSrgb },
     EndInitialization,
     Label(String),
-    DefineShape { id: Uuid, shape: Shape },
-    LoadBitmap { id: Uuid, bitmap: Bitmap },
+    DefineShape { id: LibraryId, shape: Shape },
+    LoadBitmap { id: LibraryId, bitmap: Bitmap },
     CreateContainer(ContainerCreationDefintition),
     UpdateContainer(ContainerUpdateDefintition),
-    RemoveContainer(Uuid, bool),
+    RemoveContainer(ContainerId, bool),
     PresentFrame(u32, u32), //TODO: if frames have set indexes, then how would it be possible to load in additional frames? Clip ID?
 }
 

@@ -6,7 +6,7 @@ use fluster_core::actions::{
 use fluster_core::runner;
 use fluster_core::tween::Easing;
 use fluster_core::types::{
-    basic::ScaleRotationTranslation,
+    basic::{ContainerId, LibraryId, ScaleRotationTranslation},
     coloring::{ColorSpace, Coloring},
     shapes::{AugmentedShape, Edge, MorphEdge, Shape},
 };
@@ -30,17 +30,16 @@ use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use runner::{FrameResult, Runner};
 use std::{f32::consts::PI, time::Duration};
-use uuid::Uuid;
 
 fn build_action_list() -> ActionList {
-    let shape_id = Uuid::new_v4();
-    let shape2_id = Uuid::new_v4();
-    let shape3_id = Uuid::new_v4();
-    let shape4_id = Uuid::new_v4();
-    let shape5_id = Uuid::new_v4();
-    let root_id = Uuid::new_v4();
-    let entity_id = Uuid::new_v4();
-    let entity2_id = Uuid::new_v4();
+    let shape_id = LibraryId::new();
+    let shape2_id = LibraryId::new();
+    let shape3_id = LibraryId::new();
+    let shape4_id = LibraryId::new();
+    let shape5_id = LibraryId::new();
+    let root_id = ContainerId::new();
+    let entity_id = ContainerId::new();
+    let entity2_id = ContainerId::new();
     let actions = vec![
         Action::SetBackground {
             color: Srgb::<f32>::from_format(Srgb::<u8>::new(254, 200, 216)).into_linear(),
@@ -204,7 +203,7 @@ fn build_action_list() -> ActionList {
         )),
         Action::CreateContainer(ContainerCreationDefintition::new(
             entity_id,
-            shape_id,
+            ContainerId::from_uuid(shape_id.into()),
             vec![
                 ContainerCreationProperty::Transform(ScaleRotationTranslation::new(
                     Vector2F::splat(2.0),
@@ -216,7 +215,7 @@ fn build_action_list() -> ActionList {
         )),
         Action::CreateContainer(ContainerCreationDefintition::new(
             entity_id,
-            shape2_id,
+            ContainerId::from_uuid(shape2_id.into()),
             vec![
                 ContainerCreationProperty::Transform(ScaleRotationTranslation::new(
                     Vector2F::splat(2.0),
@@ -228,7 +227,7 @@ fn build_action_list() -> ActionList {
         )),
         Action::CreateContainer(ContainerCreationDefintition::new(
             root_id,
-            shape4_id,
+            ContainerId::from_uuid(shape4_id.into()),
             vec![
                 ContainerCreationProperty::Transform(ScaleRotationTranslation::new(
                     Vector2F::splat(2.0),
@@ -240,7 +239,7 @@ fn build_action_list() -> ActionList {
         )),
         Action::CreateContainer(ContainerCreationDefintition::new(
             entity_id,
-            shape5_id,
+            ContainerId::from_uuid(shape5_id.into()),
             vec![
                 ContainerCreationProperty::Transform(ScaleRotationTranslation::new(
                     Vector2F::splat(2.0),
@@ -270,7 +269,7 @@ fn build_action_list() -> ActionList {
             )],
         )),
         Action::UpdateContainer(ContainerUpdateDefintition::new(
-            shape5_id,
+            ContainerId::from_uuid(shape5_id.into()),
             vec![ContainerUpdateProperty::MorphIndex(
                 1.0,
                 Easing::ElasticInOut,

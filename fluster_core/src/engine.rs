@@ -14,7 +14,11 @@ use crate::{
             UpdateTweens, UpdateWorldTransform,
         },
     },
-    types::{coloring::Coloring, shapes::Shape},
+    types::{
+        basic::{ContainerId, LibraryId},
+        coloring::Coloring,
+        shapes::Shape,
+    },
 };
 use pathfinder_content::pattern::Pattern;
 use pathfinder_geometry::{rect::RectF, transform2d::Transform2F, vector::Vector2F};
@@ -28,16 +32,15 @@ use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
 };
-use uuid::Uuid;
 
 pub struct Engine<'a, 'b> {
-    root_container_id: Uuid,
+    root_container_id: ContainerId,
     world: World,
     dispatcher: Dispatcher<'a, 'b>,
 }
 
 impl<'a, 'b> Engine<'a, 'b> {
-    pub fn new(root_container_id: Uuid, library: Library, quad_trees: QuadTrees) -> Self {
+    pub fn new(root_container_id: ContainerId, library: Library, quad_trees: QuadTrees) -> Self {
         let mut world = World::new();
         //Register components
         world.register::<Transform>();
@@ -117,7 +120,7 @@ impl<'a, 'b> Engine<'a, 'b> {
         self.world.maintain();
     }
 
-    pub fn root_container_id(&self) -> &Uuid {
+    pub fn root_container_id(&self) -> &ContainerId {
         &self.root_container_id
     }
 
@@ -153,7 +156,7 @@ impl<'a, 'b> Engine<'a, 'b> {
         self.world.write_resource::<QuadTrees>()
     }
 
-    pub fn get_root_container_id(&self) -> Uuid {
+    pub fn get_root_container_id(&self) -> ContainerId {
         let scene_graph = self.get_scene_graph();
         let container_mapping = self.get_container_mapping();
         *container_mapping.get_container(scene_graph.root()).unwrap()
@@ -169,7 +172,7 @@ impl<'a, 'b> Engine<'a, 'b> {
         container_update_queue.enqueue(definition.clone());
     }
 
-    pub fn remove_container(&mut self, container_id: &Uuid) -> Result<(), SpecsError> {
+    pub fn remove_container(&mut self, container_id: &ContainerId) -> Result<(), SpecsError> {
         let mut scene_graph = self.world.write_resource::<SceneGraph>();
         let mut container_mapping = self.world.write_resource::<ContainerMapping>();
         let mut quad_trees = self.world.write_resource::<QuadTrees>();
@@ -184,7 +187,10 @@ impl<'a, 'b> Engine<'a, 'b> {
         Ok(())
     }
 
-    pub fn remove_container_and_children(&mut self, container_id: &Uuid) -> Result<(), SpecsError> {
+    pub fn remove_container_and_children(
+        &mut self,
+        container_id: &ContainerId,
+    ) -> Result<(), SpecsError> {
         let mut scene_graph = self.world.write_resource::<SceneGraph>();
         let mut container_mapping = self.world.write_resource::<ContainerMapping>();
         let entities = self.world.entities_mut();
@@ -199,7 +205,7 @@ impl<'a, 'b> Engine<'a, 'b> {
         Ok(())
     }
 
-    pub fn mark_dirty(&mut self, container_id: &Uuid) {
+    pub fn mark_dirty(&mut self, container_id: &ContainerId) {
         {
             let read_storage = self.world.read_resource::<ContainerMapping>();
             read_storage.get_entity(container_id).cloned()
@@ -415,8 +421,8 @@ pub struct DrawableItem {
 
 #[derive(Clone, Debug)]
 pub struct SelectionHandle {
-    container_id: Uuid,
-    shape_id: Option<Uuid>,
+    container_id: ContainerId,
+    shape_id: Option<LibraryId>,
     world_transform: Transform2F,
     bounds: RectF,
     morph: f32,
@@ -425,8 +431,8 @@ pub struct SelectionHandle {
 
 impl SelectionHandle {
     pub fn new(
-        container_id: Uuid,
-        shape_id: Option<Uuid>,
+        container_id: ContainerId,
+        shape_id: Option<LibraryId>,
         world_transform: Transform2F,
         bounds: RectF,
         morph: f32,
@@ -442,11 +448,11 @@ impl SelectionHandle {
         }
     }
 
-    pub fn container_id(&self) -> &Uuid {
+    pub fn container_id(&self) -> &ContainerId {
         &self.container_id
     }
 
-    pub fn shape_id(&self) -> &Option<Uuid> {
+    pub fn shape_id(&self) -> &Option<LibraryId> {
         &self.shape_id
     }
 

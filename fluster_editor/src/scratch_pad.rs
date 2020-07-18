@@ -5,7 +5,7 @@ use fluster_core::{
     ecs::resources::{Library, QuadTreeLayer},
     engine::{Engine, SelectionHandle},
     types::{
-        basic::ScaleRotationTranslation,
+        basic::{ContainerId, LibraryId, ScaleRotationTranslation},
         shapes::{Edge, Shape},
     },
 };
@@ -15,7 +15,6 @@ use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use std::collections::HashMap;
 use std::mem;
-use uuid::Uuid;
 
 pub const EDIT_LAYER: QuadTreeLayer = QuadTreeLayer::new(std::u32::MAX - 1);
 
@@ -47,7 +46,7 @@ fn create_shape_prototype(options: &Vec<ToolOption>) -> Shape {
     }
 }
 
-fn update_library(library: &mut Library, id: Uuid, shape_prototype: &Shape, edges: Vec<Edge>) {
+fn update_library(library: &mut Library, id: LibraryId, shape_prototype: &Shape, edges: Vec<Edge>) {
     let shape = match shape_prototype {
         Shape::Path {
             color,
@@ -225,8 +224,8 @@ impl ScratchPadState {
     }
 }
 struct ShapeScratchPad {
-    container_id: Uuid,
-    item_id: Uuid,
+    container_id: ContainerId,
+    item_id: LibraryId,
     edges: Vec<Edge>,
     committed_edges: usize,
     shape_prototype: Shape,
@@ -235,16 +234,16 @@ struct ShapeScratchPad {
 }
 
 struct VertexScratchPad {
-    container_id: Uuid,
-    item_id: Uuid,
+    container_id: ContainerId,
+    item_id: LibraryId,
     edges: Vec<Edge>,
     shape_prototype: Shape,
     selected_point: (usize, usize),
 }
 
 struct TemplateShapeScratchpad {
-    container_id: Uuid,
-    item_id: Uuid,
+    container_id: ContainerId,
+    item_id: LibraryId,
     shape_prototype: Shape,
     start_position: Vector2F,
     end_position: Vector2F,
@@ -263,8 +262,8 @@ impl ShapeScratchPad {
             ToolOption::ClosedPath(close_path_opt) => close_path = *close_path_opt,
             _ => (),
         });
-        let item_id = Uuid::new_v4();
-        let container_id = Uuid::new_v4();
+        let item_id = LibraryId::new();
+        let container_id = ContainerId::new();
         let new_self = Self {
             container_id,
             item_id,
@@ -411,8 +410,8 @@ impl TemplateShapeScratchpad {
             ToolOption::UseSuperEllipseApproximation(use_super_ellipse_approximation),
         );
         let new_self = Self {
-            container_id: Uuid::new_v4(),
-            item_id: Uuid::new_v4(),
+            container_id: ContainerId::new(),
+            item_id: LibraryId::new(),
             shape_prototype: create_shape_prototype(options),
             start_position,
             end_position: start_position,

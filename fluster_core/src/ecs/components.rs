@@ -1,6 +1,6 @@
 use super::resources::QuadTreeLayer;
 use crate::tween::PropertyTween;
-use crate::types::coloring::Coloring;
+use crate::types::{basic::LibraryId, coloring::Coloring};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use specs::{
@@ -8,7 +8,6 @@ use specs::{
     Component,
 };
 use std::collections::HashSet;
-use uuid::Uuid;
 #[derive(Component, Debug, Copy, Clone)]
 #[storage(VecStorage)]
 pub struct Transform {
@@ -50,7 +49,7 @@ pub struct Layer {
 
 #[derive(Component, Debug)]
 #[storage(DenseVecStorage)]
-pub struct Display(pub Uuid, pub DisplayKind);
+pub struct Display(pub LibraryId, pub DisplayKind);
 
 #[derive(Clone, Copy, Debug)]
 pub enum DisplayKind {

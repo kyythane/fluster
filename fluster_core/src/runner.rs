@@ -3,13 +3,15 @@ use super::rendering::{lin_srgb_to_coloru, paint, Renderer};
 use crate::{
     ecs::resources::{FrameTime, Library, QuadTrees},
     engine::Engine,
-    types::{basic::Bitmap, shapes::Shape},
+    types::{
+        basic::{Bitmap, ContainerId, LibraryId},
+        shapes::Shape,
+    },
 };
 use palette::LinSrgb;
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};
 use std::time::{Duration, Instant};
 use streaming_iterator::StreamingIterator;
-use uuid::Uuid;
 
 pub struct State {
     frame_duration: Duration,
@@ -100,16 +102,15 @@ impl<'a, 'b> Runner<'a, 'b> {
     }
 }
 
-fn define_shape(id: &Uuid, shape: &Shape, library: &mut Library) {
+fn define_shape(id: &LibraryId, shape: &Shape, library: &mut Library) {
     if !library.contains_shape(id) {
         library.add_shape(*id, shape.clone());
     }
 }
 
-// Note: this is destructive to the source bitmap. Bitmaps can be very large, and library loads are idempotent
-fn load_bitmap(id: &Uuid, bitmap: &mut Bitmap, library: &mut Library) {
+fn load_bitmap(id: &LibraryId, bitmap: &mut Bitmap, library: &mut Library) {
     if !library.contains_texture(id) {
-        library.add_texture(*id, bitmap.release_contents());
+        library.add_texture(*id, bitmap.pattern());
     }
 }
 
@@ -117,10 +118,10 @@ fn initialize(
     actions: &mut ActionList,
     frame_duration: Duration,
     stage_size: Vector2F,
-) -> Result<(Uuid, State, Library, QuadTrees), String> {
+) -> Result<(ContainerId, State, Library, QuadTrees), String> {
     let mut library = Library::default();
     let mut quad_trees = QuadTrees::default();
-    let mut root_entity_id: Option<Uuid> = None;
+    let mut root_entity_id: Option<ContainerId> = None;
     let mut background_color = LinSrgb::new(1.0, 1.0, 1.0);
     while let Some(action) = actions.get_mut() {
         match action {
