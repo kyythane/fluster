@@ -7,6 +7,7 @@ edition = "2018"
 
 [dependencies]
 gl = "0.14"
+sdl2 = "0.33"
 fluster_core = { path = "../fluster_core" }
 fluster_graphics = { path = "../fluster_graphics" }
 pathfinder_canvas = { git = "https://github.com/servo/pathfinder.git" }

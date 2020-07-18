@@ -173,7 +173,7 @@ impl<'a, 'b> App<'a, 'b> {
             self.stage_state.background_color(),
             self.stage_state.engine(),
         );
-        self.frame_handle = frame_handle;
+        self.frame_handle = frame_handle.unwrap();
     }
 
     fn tool_pane(tool_pane_state: &mut ToolPaneState) -> Column<AppMessage> {
@@ -238,8 +238,9 @@ impl<'a, 'b> Application for App<'a, 'b> {
         let stage_state = StageState::new(flags.stage_size, flags.background_color);
         let mut stage_renderer = StageRenderer::new(flags.stage_size).unwrap();
         let timeline_state = TimelineState::new(stage_state.root());
-        let frame_handle =
-            stage_renderer.draw_frame(stage_state.background_color(), stage_state.engine());
+        let frame_handle = stage_renderer
+            .draw_frame(stage_state.background_color(), stage_state.engine())
+            .unwrap();
         (
             Self {
                 stage_state,
