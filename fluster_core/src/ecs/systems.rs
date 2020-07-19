@@ -1,7 +1,8 @@
 use super::{
+    common::recompute_bounds,
     components::{
-        Bounds, BoundsSource, Display, DisplayKind, Layer, Morph, Order, Transform, Tweens,
-        ViewRect,
+        Bounds, BoundsSource, Display, DisplayKind, Layer, LocalTransform, Morph, Order, Tweens,
+        ViewRect, WorldTransform,
     },
     resources::{
         ContainerCreationQueue, ContainerMapping, ContainerUpdateQueue, FrameTime, Library,
@@ -19,10 +20,15 @@ use palette::LinSrgba;
 use pathfinder_geometry::{rect::RectF, transform2d::Transform2F, vector::Vector2F};
 use reduce::Reduce;
 use specs::{
-    shred::ResourceId, Entities, Entity, Join, Read, ReadExpect, ReadStorage, System, SystemData,
-    World, Write, WriteExpect, WriteStorage,
+    prelude::ComponentEvent, shred::ResourceId, BitSet, Entities, Entity, Join, Read, ReadExpect,
+    ReadStorage, ReaderId, System, SystemData, World, Write, WriteExpect, WriteStorage,
 };
 use std::collections::{HashSet, VecDeque};
+
+// TODO: experiment with thesholds once we have a faster pipeline
+const TRANSLATION_THRESHOLD: f32 = 0.00001;
+const ROTATION_THRESHOLD: f32 = 0.00001;
+const SCALE_THRESHOLD: f32 = 0.00001;
 
 #[derive(SystemData)]
 pub struct ContainerCreationSystemData<'a> {
@@ -31,7 +37,8 @@ pub struct ContainerCreationSystemData<'a> {
     scene_graph: WriteExpect<'a, SceneGraph>,
     library: Read<'a, Library>,
     entities: Entities<'a>,
-    transform_storage: WriteStorage<'a, Transform>,
+    local_transform_storage: WriteStorage<'a, LocalTransform>,
+    world_transform_storage: WriteStorage<'a, WorldTransform>,
     order_storage: WriteStorage<'a, Order>,
     morph_storage: WriteStorage<'a, Morph>,
     bounds_storage: WriteStorage<'a, Bounds>,
@@ -67,18 +74,17 @@ impl<'a> System<'a> for ContainerCreation {
                 for property in definition.properties() {
                     match property {
                         ContainerCreationProperty::Transform(srt) => {
-                            let transform = Transform {
-                                local: Transform2F::from_scale_rotation_translation(
+                            entity_builder = entity_builder.with(
+                                LocalTransform(Transform2F::from_scale_rotation_translation(
                                     srt.scale,
                                     srt.theta,
                                     srt.translation,
-                                ),
-                                // NOTE: not definining world transform since that will get computed in first frame after entity is added
-                                world: Transform2F::default(),
-                                dirty: true,
-                            };
-                            entity_builder =
-                                entity_builder.with(transform, &mut data.transform_storage);
+                                )),
+                                &mut data.local_transform_storage,
+                            );
+                            // NOTE: not definining world transform since that will get computed in first frame after entity is added
+                            entity_builder = entity_builder
+                                .with(WorldTransform::default(), &mut data.world_transform_storage);
                         }
                         ContainerCreationProperty::MorphIndex(morph) => {
                             entity_builder =
@@ -118,7 +124,6 @@ impl<'a> System<'a> for ContainerCreation {
                                 BoundsKindDefinition::Display => Bounds {
                                     bounds: RectF::default(),
                                     source: BoundsSource::Display,
-                                    dirty: true,
                                 },
                                 BoundsKindDefinition::Defined(rect_points) => Bounds {
                                     // NOTE: not definining bounds since that will get computed in first frame after entity is added
@@ -127,7 +132,6 @@ impl<'a> System<'a> for ContainerCreation {
                                         rect_points.origin,
                                         rect_points.lower_right,
                                     )),
-                                    dirty: true,
                                 },
                             };
                             entity_builder = entity_builder.with(bounds, &mut data.bounds_storage);
@@ -167,7 +171,8 @@ pub struct ContainerUpdateSystemData<'a> {
     scene_graph: WriteExpect<'a, SceneGraph>,
     quad_trees: Write<'a, QuadTrees>,
     library: Read<'a, Library>,
-    transform_storage: WriteStorage<'a, Transform>,
+    local_transform_storage: ReadStorage<'a, LocalTransform>,
+    world_transform_storage: WriteStorage<'a, WorldTransform>,
     order_storage: WriteStorage<'a, Order>,
     morph_storage: WriteStorage<'a, Morph>,
     bounds_storage: WriteStorage<'a, Bounds>,
@@ -200,19 +205,15 @@ impl<'a> System<'a> for ContainerUpdate {
                 for property in definition.properties() {
                     match property {
                         ContainerUpdateProperty::Transform(srt, easing, duration_frames) => {
-                            let start = data
-                                .transform_storage
-                                .entry(entity)
-                                .unwrap()
-                                .or_insert(Transform::default())
-                                .local;
-                            let tween = PropertyTween::new_transform(
-                                ScaleRotationTranslation::from_transform(&start),
-                                *srt,
-                                TweenDuration::new_frame(*duration_frames),
-                                *easing,
-                            );
-                            Self::add_tween(&mut data.tween_storage, entity, tween);
+                            if let Some(start) = data.local_transform_storage.get(entity) {
+                                let tween = PropertyTween::new_transform(
+                                    ScaleRotationTranslation::from_transform(&start.0),
+                                    *srt,
+                                    TweenDuration::new_frame(*duration_frames),
+                                    *easing,
+                                );
+                                Self::add_tween(&mut data.tween_storage, entity, tween);
+                            }
                         }
                         ContainerUpdateProperty::MorphIndex(morph, easing, duration_frames) => {
                             let start = data
@@ -335,7 +336,6 @@ impl<'a> System<'a> for ContainerUpdate {
                                 BoundsKindDefinition::Display => Bounds {
                                     bounds: RectF::default(),
                                     source: BoundsSource::Display,
-                                    dirty: true,
                                 },
                                 BoundsKindDefinition::Defined(rect_points) => Bounds {
                                     // NOTE: not definining bounds since that will get computed in first frame after entity is updated
@@ -344,7 +344,6 @@ impl<'a> System<'a> for ContainerUpdate {
                                         rect_points.origin,
                                         rect_points.lower_right,
                                     )),
-                                    dirty: true,
                                 },
                             };
                             data.bounds_storage.insert(entity, bounds).unwrap();
@@ -353,7 +352,7 @@ impl<'a> System<'a> for ContainerUpdate {
                             data.bounds_storage.remove(entity);
                         }
                         ContainerUpdateProperty::AddToLayer(layer) => {
-                            if let Some(bounds) = data.bounds_storage.get_mut(entity) {
+                            if let Some(_) = data.bounds_storage.get(entity) {
                                 let layers = data
                                     .layer_storage
                                     .entry(entity)
@@ -361,8 +360,6 @@ impl<'a> System<'a> for ContainerUpdate {
                                     .or_insert(Layer::default());
                                 if !layers.quad_trees.contains(layer) {
                                     layers.quad_trees.insert(*layer);
-                                    bounds.dirty = true;
-                                    // NOTE: not inserting into quad tree since that will get handled during the first frame after updating
                                 }
                             }
                         }
@@ -377,8 +374,9 @@ impl<'a> System<'a> for ContainerUpdate {
                             if let Some(new_parent) = data.container_mapping.get_entity(new_parent)
                             {
                                 data.scene_graph.reparent(new_parent, entity);
-                                if let Some(transfom) = data.transform_storage.get_mut(entity) {
-                                    transfom.dirty = true;
+                                if let Some(transfom) = data.world_transform_storage.get_mut(entity)
+                                {
+                                    transfom.0 = Transform2F::default();
                                 }
                             } else {
                                 // Todo: errors
@@ -398,11 +396,12 @@ impl<'a> System<'a> for ContainerUpdate {
 pub struct ApplyTransformTweens;
 
 impl<'a> System<'a> for ApplyTransformTweens {
-    type SystemData = (WriteStorage<'a, Transform>, ReadStorage<'a, Tweens>);
+    type SystemData = (WriteStorage<'a, LocalTransform>, ReadStorage<'a, Tweens>);
 
-    fn run(&mut self, (mut transform_storage, tweens_storage): Self::SystemData) {
-        for (transform, tweens) in (&mut transform_storage, &tweens_storage).join() {
-            let before_update = transform.local;
+    fn run(&mut self, (mut local_transform_storage, tweens_storage): Self::SystemData) {
+        for (mut local_transform, tweens) in
+            (&mut local_transform_storage.restrict_mut(), &tweens_storage).join()
+        {
             tweens
                 .0
                 .iter()
@@ -419,13 +418,19 @@ impl<'a> System<'a> for ApplyTransformTweens {
                 })
                 .reduce(|acc_transform, transform| transform * acc_transform)
                 .map(|updated| {
-                    if updated != before_update {
-                        transform.dirty = true;
+                    let before_update = local_transform.get_unchecked().0;
+                    if transform_changed(before_update, updated) {
+                        local_transform.get_mut_unchecked().0 = updated;
                     }
-                    transform.local = updated;
                 });
         }
     }
+}
+
+fn transform_changed(before: Transform2F, after: Transform2F) -> bool {
+    (after.translation() - before.translation()).square_length() >= TRANSLATION_THRESHOLD
+        || (after.rotation() - before.rotation()).abs() >= ROTATION_THRESHOLD
+        || (after.extract_scale() - before.extract_scale()).square_length() >= SCALE_THRESHOLD
 }
 
 pub struct ApplyMorphTweens;
@@ -434,6 +439,7 @@ impl<'a> System<'a> for ApplyMorphTweens {
     type SystemData = (WriteStorage<'a, Morph>, ReadStorage<'a, Tweens>);
 
     fn run(&mut self, (mut morph_storage, tweens_storage): Self::SystemData) {
+        // We don't need a restrict_mut here, because all returned morphs will be updated
         for (morph, tweens) in (&mut morph_storage, &tweens_storage).join() {
             tweens
                 .0
@@ -565,30 +571,47 @@ impl<'a> System<'a> for ApplyOrderTweens {
     }
 }
 
-pub struct UpdateWorldTransform;
+#[derive(Default)]
+pub struct UpdateWorldTransform {
+    reader_id: Option<ReaderId<ComponentEvent>>,
+}
 
 impl<'a> System<'a> for UpdateWorldTransform {
     type SystemData = (
         Entities<'a>,
-        WriteStorage<'a, Transform>,
+        WriteStorage<'a, WorldTransform>,
+        ReadStorage<'a, LocalTransform>,
         ReadExpect<'a, SceneGraph>,
     );
 
-    fn run(&mut self, (entities, mut transform_storage, scene_graph): Self::SystemData) {
-        // First pass algorithm. O(m log n), where m is # dirty nodes and n is # total nodes.
-        let dirty_roots = entities
-            .join()
-            .filter(|entity| {
-                if let Some(transform) = transform_storage.get(*entity) {
-                    transform.dirty
-                } else {
-                    false
+    fn setup(&mut self, world: &mut World) {
+        Self::SystemData::setup(world);
+        self.reader_id = Some(WriteStorage::<LocalTransform>::fetch(&world).register_reader());
+    }
+
+    fn run(
+        &mut self,
+        (entities, mut world_transform_storage, local_transform_storage, scene_graph): Self::SystemData,
+    ) {
+        let mut dirty = BitSet::default();
+        local_transform_storage
+            .channel()
+            .read(self.reader_id.as_mut().unwrap())
+            .into_iter()
+            .for_each(|event| match event {
+                ComponentEvent::Modified(id) | ComponentEvent::Inserted(id) => {
+                    dirty.add(*id);
                 }
-            })
-            .map(|entity| {
+                _ => (),
+            });
+        // First pass algorithm. O(m log n), where m is # dirty nodes and n is # total nodes.
+        // TODO: This would be more efficient with memoization instead of walking up the whole tree for each child.
+        let dirty_roots = (&entities, &dirty)
+            .join()
+            .map(|(entity, _)| {
                 let mut maximal_id = &entity;
                 for parent in scene_graph.get_parent_iter(&entity) {
-                    if let Some(..) = transform_storage.get(*parent) {
+                    if let Some(..) = world_transform_storage.get(*parent) {
                         maximal_id = parent;
                     }
                 }
@@ -599,21 +622,19 @@ impl<'a> System<'a> for UpdateWorldTransform {
         for dirty_root in dirty_roots {
             let mut current_world_transform = Transform2F::default();
             for parent in scene_graph.get_parent_iter(&dirty_root) {
-                if let Some(transform) = transform_storage.get(*parent) {
-                    current_world_transform = transform.world;
+                if let Some(transform) = world_transform_storage.get(*parent) {
+                    current_world_transform = transform.0;
                     break;
                 }
             }
             queue.push_back((dirty_root, current_world_transform));
             while let Some((next, current_world_transform)) = queue.pop_front() {
+                // We do not diff world transforms, since that could propogate error down the scene graph
                 let current_world_transform =
-                    if let Some(transform) = transform_storage.get_mut(next) {
-                        let transform_before_update = transform.world;
-                        transform.world = current_world_transform * transform.local;
-                        if transform.world != transform_before_update {
-                            transform.dirty = true;
-                        }
-                        transform.world
+                    if let Some(transform) = world_transform_storage.get_mut(next) {
+                        transform.0 =
+                            current_world_transform * local_transform_storage.get(next).unwrap().0;
+                        transform.0
                     } else {
                         current_world_transform
                     };
@@ -624,18 +645,30 @@ impl<'a> System<'a> for UpdateWorldTransform {
         }
     }
 }
-
-pub struct UpdateBounds;
+#[derive(Default)]
+pub struct UpdateBounds {
+    transform_reader_id: Option<ReaderId<ComponentEvent>>,
+    bounds_reader_id: Option<ReaderId<ComponentEvent>>,
+    morph_reader_id: Option<ReaderId<ComponentEvent>>,
+}
 
 impl<'a> System<'a> for UpdateBounds {
     type SystemData = (
         WriteStorage<'a, Bounds>,
-        ReadStorage<'a, Transform>,
+        ReadStorage<'a, WorldTransform>,
         ReadStorage<'a, Morph>,
         ReadStorage<'a, Display>,
         ReadStorage<'a, ViewRect>,
         Read<'a, Library>,
     );
+
+    fn setup(&mut self, world: &mut World) {
+        Self::SystemData::setup(world);
+        self.transform_reader_id =
+            Some(WriteStorage::<WorldTransform>::fetch(&world).register_reader());
+        self.bounds_reader_id = Some(WriteStorage::<Bounds>::fetch(&world).register_reader());
+        self.morph_reader_id = Some(WriteStorage::<Morph>::fetch(&world).register_reader());
+    }
 
     fn run(
         &mut self,
@@ -648,46 +681,66 @@ impl<'a> System<'a> for UpdateBounds {
             library,
         ): Self::SystemData,
     ) {
-        for (bounds, transform, morph, display, view_rect) in (
+        let mut dirty = BitSet::default();
+        transform_storage
+            .channel()
+            .read(self.transform_reader_id.as_mut().unwrap())
+            .into_iter()
+            .for_each(|event| match event {
+                ComponentEvent::Modified(id) | ComponentEvent::Inserted(id) => {
+                    dirty.add(*id);
+                }
+                _ => (),
+            });
+        bounds_storage
+            .channel()
+            .read(self.bounds_reader_id.as_mut().unwrap())
+            .into_iter()
+            .for_each(|event| match event {
+                ComponentEvent::Inserted(id) => {
+                    dirty.add(*id);
+                }
+                _ => (),
+            });
+        morph_storage
+            .channel()
+            .read(self.morph_reader_id.as_mut().unwrap())
+            .into_iter()
+            .for_each(|event| match event {
+                ComponentEvent::Modified(id) | ComponentEvent::Inserted(id) => {
+                    dirty.add(*id);
+                }
+                _ => (),
+            });
+
+        // We don't need a restrict_mut here, because all returned bounds will be updated
+        for (bounds, transform, morph, display, view_rect, _) in (
             &mut bounds_storage,
             &transform_storage,
             (&morph_storage).maybe(),
             (&display_storage).maybe(),
             (&view_rect_storage).maybe(),
+            &dirty,
         )
             .join()
         {
-            if transform.dirty {
-                bounds.bounds = match bounds.source {
-                    BoundsSource::Display => {
-                        match display {
-                            Some(Display(id, DisplayKind::Vector)) => {
-                                let shape = library.get_shape(id).unwrap();
-                                shape.compute_bounding(&transform.world, morph.unwrap_or(&Morph(0.0)).0)
-                            }
-                            Some(Display(id, DisplayKind::Raster)) => {
-                                let pattern = library.get_texture(id).unwrap();
-                                let (o, lr) = view_rect.and_then(|ViewRect(rect)| Some((rect.origin(), rect.lower_right()))).unwrap_or_else(|| (Vector2F::zero(), pattern.size().to_f32()));
-                                let o = transform.world * o;
-                                let lr = transform.world * lr;
-                                RectF::from_points(o.min(lr), o.max(lr))
-                            }
-                            None => panic!("Attmpting to compute the bounds of an entity without an attachd display")
-                        }
-                    }
-                    BoundsSource::Defined(rect) => {
-                        let o = transform.world * rect.origin();
-                        let lr = transform.world * rect.lower_right();
-                        RectF::from_points(o.min(lr), o.max(lr))
-                    }
-                };
-                bounds.dirty = true;
-            }
+            bounds.bounds = recompute_bounds(
+                &bounds.source,
+                transform.0,
+                display,
+                view_rect,
+                morph,
+                &*library,
+            );
         }
     }
 }
 
-pub struct UpdateQuadTree;
+#[derive(Default)]
+pub struct UpdateQuadTree {
+    bounds_reader_id: Option<ReaderId<ComponentEvent>>,
+    layer_reader_id: Option<ReaderId<ComponentEvent>>,
+}
 
 impl<'a> System<'a> for UpdateQuadTree {
     type SystemData = (
@@ -697,15 +750,43 @@ impl<'a> System<'a> for UpdateQuadTree {
         ReadStorage<'a, Layer>,
     );
 
+    fn setup(&mut self, world: &mut World) {
+        Self::SystemData::setup(world);
+        self.bounds_reader_id = Some(WriteStorage::<Bounds>::fetch(&world).register_reader());
+        self.layer_reader_id = Some(WriteStorage::<Layer>::fetch(&world).register_reader());
+    }
+
     fn run(&mut self, (mut quad_trees, entities, bounds_storage, layer_storage): Self::SystemData) {
-        for (entity, bounds, layers) in (&*entities, &bounds_storage, &layer_storage).join() {
-            if bounds.dirty {
-                let aabb = bounds.bounds;
-                layers
-                    .quad_trees
-                    .iter()
-                    .for_each(|tree| quad_trees.update(entity, *tree, aabb));
-            }
+        let mut dirty = BitSet::default();
+        bounds_storage
+            .channel()
+            .read(self.bounds_reader_id.as_mut().unwrap())
+            .into_iter()
+            .for_each(|event| match event {
+                ComponentEvent::Modified(id) => {
+                    dirty.add(*id);
+                }
+                _ => (),
+            });
+        layer_storage
+            .channel()
+            .read(self.layer_reader_id.as_mut().unwrap())
+            .into_iter()
+            .for_each(|event| match event {
+                ComponentEvent::Modified(id) | ComponentEvent::Inserted(id) => {
+                    dirty.add(*id);
+                }
+                _ => (),
+            });
+
+        for (entity, bounds, layers, _) in
+            (&*entities, &bounds_storage, &layer_storage, &dirty).join()
+        {
+            let aabb = bounds.bounds;
+            layers
+                .quad_trees
+                .iter()
+                .for_each(|tree| quad_trees.update(entity, *tree, aabb));
         }
     }
 }

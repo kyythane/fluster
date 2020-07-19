@@ -334,7 +334,7 @@ impl ShapeScratchPad {
                 &self.shape_prototype,
                 mem::take(&mut self.edges),
             );
-            engine.mark_dirty(&self.container_id);
+            engine.refresh_bounds(&self.container_id);
         }
     }
 }
@@ -377,7 +377,7 @@ impl VertexScratchPad {
             &self.shape_prototype,
             mem::take(&mut self.edges),
         );
-        engine.mark_dirty(&self.container_id);
+        engine.refresh_bounds(&self.container_id);
     }
 }
 
@@ -551,7 +551,7 @@ impl TemplateShapeScratchpad {
                 &self.shape_prototype,
                 self.compute_edge()?,
             );
-            engine.mark_dirty(&self.container_id)
+            engine.refresh_bounds(&self.container_id)
         }
         Ok(())
     }

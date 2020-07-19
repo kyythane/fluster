@@ -1,8 +1,10 @@
 use crate::{
     actions::{ContainerCreationDefintition, ContainerUpdateDefintition},
     ecs::{
+        common::recompute_bounds,
         components::{
-            Bounds, Display, DisplayKind, Layer, Morph, Order, Transform, Tweens, ViewRect,
+            Bounds, Display, DisplayKind, Layer, LocalTransform, Morph, Order, Tweens, ViewRect,
+            WorldTransform,
         },
         resources::{
             ContainerCreationQueue, ContainerMapping, ContainerUpdateQueue, FrameTime, Library,
@@ -43,7 +45,8 @@ impl<'a, 'b> Engine<'a, 'b> {
     pub fn new(root_container_id: ContainerId, library: Library, quad_trees: QuadTrees) -> Self {
         let mut world = World::new();
         //Register components
-        world.register::<Transform>();
+        world.register::<LocalTransform>();
+        world.register::<WorldTransform>();
         world.register::<Bounds>();
         world.register::<Morph>();
         world.register::<Order>();
@@ -54,7 +57,11 @@ impl<'a, 'b> Engine<'a, 'b> {
         world.register::<ViewRect>();
 
         // Setup resources
-        let root = world.create_entity().with(Transform::default()).build();
+        let root = world
+            .create_entity()
+            .with(LocalTransform::default())
+            .with(WorldTransform::default())
+            .build();
         world.insert(SceneGraph::new(root));
         world.insert(quad_trees);
         let mut container_mapping = ContainerMapping::default();
@@ -94,12 +101,20 @@ impl<'a, 'b> Engine<'a, 'b> {
                 &["container_creation", "container_update"],
             )
             .with(
-                UpdateWorldTransform,
+                UpdateWorldTransform::default(),
                 "update_world_transform",
                 &["apply_transform_tweens"],
             )
-            .with(UpdateBounds, "update_bounds", &["update_world_transform"])
-            .with(UpdateQuadTree, "update_quad_tree", &["update_bounds"])
+            .with(
+                UpdateBounds::default(),
+                "update_bounds",
+                &["update_world_transform", "apply_morph_tweens"],
+            )
+            .with(
+                UpdateQuadTree::default(),
+                "update_quad_tree",
+                &["update_bounds"],
+            )
             .with(
                 UpdateTweens,
                 "update_tweens",
@@ -205,25 +220,45 @@ impl<'a, 'b> Engine<'a, 'b> {
         Ok(())
     }
 
-    pub fn mark_dirty(&mut self, container_id: &ContainerId) {
+    pub fn refresh_bounds(&mut self, container_id: &ContainerId) {
         {
             let read_storage = self.world.read_resource::<ContainerMapping>();
             read_storage.get_entity(container_id).cloned()
         }
         .map(|entity| {
-            let mut transform_storage = self.world.write_storage::<Transform>();
-            transform_storage
-                .get_mut(entity)
-                .map(|transform| transform.dirty = true);
+            let updated_bounds = {
+                let bounds_storage = self.world.read_storage::<Bounds>();
+                let transform_storage = self.world.read_storage::<WorldTransform>();
+                let display_storage = self.world.read_storage::<Display>();
+                let view_rect_storage = self.world.read_storage::<ViewRect>();
+                let morph_storage = self.world.read_storage::<Morph>();
+                let library = self.world.read_resource::<Library>();
+                if let (Some(bounds), Some(transform)) =
+                    (bounds_storage.get(entity), transform_storage.get(entity))
+                {
+                    Some(recompute_bounds(
+                        &bounds.source,
+                        transform.0,
+                        display_storage.get(entity),
+                        view_rect_storage.get(entity),
+                        morph_storage.get(entity),
+                        &*library,
+                    ))
+                } else {
+                    None
+                }
+            };
             let mut bounds_storage = self.world.write_storage::<Bounds>();
-            bounds_storage
-                .get_mut(entity)
-                .map(|bounds| bounds.dirty = true);
+            if let (Some(bounds_component), Some(updated_bounds)) =
+                (bounds_storage.get_mut(entity), updated_bounds)
+            {
+                bounds_component.bounds = updated_bounds;
+            }
         });
     }
 
     pub fn spatial_query(&self, query: &QuadTreeQuery) -> Vec<SelectionHandle> {
-        let transform_storage = self.world.read_storage::<Transform>();
+        let transform_storage = self.world.read_storage::<WorldTransform>();
         let morph_storage = self.world.read_storage::<Morph>();
         let display_storage = self.world.read_storage::<Display>();
         let container_mapping = self.world.read_resource::<ContainerMapping>();
@@ -238,7 +273,7 @@ impl<'a, 'b> Engine<'a, 'b> {
             .into_iter()
             .map(|(entity, bounds)| {
                 let container_id = container_mapping.get_container(&entity).copied().unwrap();
-                let transform = transform_storage.get(entity).copied().unwrap_or_default();
+                let transform = transform_storage.get(entity).copied().unwrap_or_default().0;
                 let morph = morph_storage.get(entity).copied().unwrap_or_default().0;
                 let (shape_id, edge_list) = match display_storage.get(entity) {
                     Some(Display(shape_id, DisplayKind::Vector)) => library
@@ -252,19 +287,19 @@ impl<'a, 'b> Engine<'a, 'b> {
                     .enumerate()
                     .flat_map(|(index, edge)| match query {
                         QuadTreeQuery::Point(_, point) => edge
-                            .query_disk(point, 10.0, &transform.world)
+                            .query_disk(point, 10.0, &transform)
                             .map(|(vertex_index, distance, vertex)| {
                                 VertexHandle::new(vertex, index, vertex_index, distance)
                             })
                             .collect::<Vec<VertexHandle>>(),
                         QuadTreeQuery::Disk(_, point, radius) => edge
-                            .query_disk(point, *radius, &transform.world)
+                            .query_disk(point, *radius, &transform)
                             .map(|(vertex_index, distance, vertex)| {
                                 VertexHandle::new(vertex, index, vertex_index, distance)
                             })
                             .collect::<Vec<VertexHandle>>(),
                         QuadTreeQuery::Rect(_, rect) => edge
-                            .query_rect(rect, &transform.world)
+                            .query_rect(rect, &transform)
                             .map(|(vertex_index, vertex)| {
                                 VertexHandle::new(vertex, index, vertex_index, 0.0)
                             })
@@ -275,14 +310,7 @@ impl<'a, 'b> Engine<'a, 'b> {
                         }
                     })
                     .collect();
-                SelectionHandle::new(
-                    container_id,
-                    shape_id,
-                    transform.world,
-                    bounds,
-                    morph,
-                    handles,
-                )
+                SelectionHandle::new(container_id, shape_id, transform, bounds, morph, handles)
             })
             .collect()
     }
@@ -330,7 +358,7 @@ impl<'a, 'b> Engine<'a, 'b> {
         let library = self.get_library();
         let scene_graph = self.get_scene_graph();
         let display_storage = self.world.read_storage::<Display>();
-        let transform_storage = self.world.read_storage::<Transform>();
+        let transform_storage = self.world.read_storage::<WorldTransform>();
         let coloring_storage = self.world.read_storage::<Coloring>();
         let view_rect_storage = self.world.read_storage::<ViewRect>();
         let order_storage = self.world.read_storage::<Order>();
@@ -361,7 +389,7 @@ impl<'a, 'b> Engine<'a, 'b> {
                                 order.copied().unwrap_or_default().0,
                                 DrawableItem {
                                     library_item,
-                                    transform: transform.world,
+                                    transform: transform.0,
                                     coloring: coloring.cloned(),
                                     view_rect: view_rect.and_then(|view_rect| Some(view_rect.0)),
                                     morph: morph

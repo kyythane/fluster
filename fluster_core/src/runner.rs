@@ -260,7 +260,7 @@ mod tests {
         assert_eq!(state.root_entity_id, root_id);
         assert!((state.seconds_per_frame - 0.016).abs() < std::f32::EPSILON);
         assert_eq!(state.stage_size, Vector2F::new(800.0, 600.0));
-        assert_eq!(action_list.current_index(), 2);
+        assert_eq!(action_list.action_index(), 2);
         assert_eq!(action_list.get(), Some(&Action::EndInitialization));
         assert_eq!(display_list.len(), 1);
         let entity1 = display_list
@@ -353,7 +353,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(state.background_color, ColorU::black());
-        assert_eq!(action_list.current_index(), 4);
+        assert_eq!(action_list.action_index(), 4);
         assert_eq!(action_list.get(), Some(&Action::PresentFrame(1, 1)));
         assert_eq!(library.len(), 1);
         assert_eq!(display_list.len(), 3);

@@ -19,9 +19,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
 
+pub enum FrameAdvanceResult {
+    NextFrame(u32),
+    PresentEnd(u32),
+    NotInPresent,
+}
+
 pub struct ActionList {
     actions: Vec<Action>,
-    //TODO: move frame_index here
+    frame_index: u32,
     action_index: usize,
     labels: HashMap<String, usize>,
     load_more: Box<dyn Fn() -> Option<Vec<Action>>>,
@@ -31,21 +37,26 @@ impl ActionList {
     pub fn new(
         load_more: Box<dyn Fn() -> Option<Vec<Action>>>,
         initial_vec: Option<&Vec<Action>>,
-    ) -> ActionList {
+    ) -> Self {
         let initial_vec = match initial_vec {
             Some(vec) => vec.to_vec(),
             None => vec![],
         };
-        ActionList {
+        Self {
             actions: initial_vec,
             labels: HashMap::new(),
+            frame_index: 0,
             action_index: 0,
             load_more,
         }
     }
 
-    pub fn current_index(&self) -> usize {
+    pub fn action_index(&self) -> usize {
         self.action_index
+    }
+
+    pub fn frame_index(&self) -> u32 {
+        self.frame_index
     }
 
     pub fn jump_to_label(&mut self, label: &str) -> Result<(usize, u32), String> {
@@ -80,8 +91,7 @@ impl ActionList {
                 return Ok((new_index, 0));
             }
             search -= 1; //new_index will be Action::Label
-            let action = self.actions.get(search);
-            match action {
+            match self.actions.get(search) {
                 Some(Action::PresentFrame(start, count)) => return Ok((new_index, start + count)),
                 Some(Action::EndInitialization) => return Ok((new_index, 0)),
                 _ => (),
@@ -94,6 +104,24 @@ impl ActionList {
             Some(Action::EndInitialization) => (),
             None => (),
             _ => self.action_index -= 1,
+        }
+    }
+
+    pub fn advance_frame(&mut self, num_frames: u32) -> FrameAdvanceResult {
+        if let Some(Action::PresentFrame(start, count)) = self.actions.get(self.action_index) {
+            let max = *start + *count;
+            if self.frame_index > max {
+                FrameAdvanceResult::PresentEnd(max)
+            } else {
+                self.frame_index = (self.frame_index.max(*start) + num_frames).min(max);
+                if self.frame_index == max {
+                    FrameAdvanceResult::PresentEnd(self.frame_index)
+                } else {
+                    FrameAdvanceResult::NextFrame(self.frame_index)
+                }
+            }
+        } else {
+            FrameAdvanceResult::NotInPresent
         }
     }
 
@@ -245,12 +273,12 @@ mod tests {
     fn it_advances_actions() {
         let actions = vec![Action::PresentFrame(1, 1)];
         let mut action_list = ActionList::new(Box::new(|| None), Some(&actions));
-        assert_eq!(action_list.current_index(), 0);
+        assert_eq!(action_list.action_index(), 0);
         assert_eq!(action_list.actions.len(), 1);
         action_list.get().expect("Did not return expected action");
-        assert_eq!(action_list.current_index(), 0);
+        assert_eq!(action_list.action_index(), 0);
         action_list.advance();
-        assert_eq!(action_list.current_index(), 0); //Does not advance past the end of the list
+        assert_eq!(action_list.action_index(), 0); //Does not advance past the end of the list
         action_list.get().expect("Did not return expected action");
     }
 
@@ -267,7 +295,7 @@ mod tests {
             }),
             Some(&actions),
         );
-        assert_eq!(action_list.current_index(), 0);
+        assert_eq!(action_list.action_index(), 0);
         assert_eq!(action_list.actions.len(), 1);
         action_list.advance();
         assert_eq!(action_list.actions.len(), 4);
@@ -287,14 +315,14 @@ mod tests {
         action_list.advance();
         action_list.advance();
         action_list.advance();
-        assert_eq!(action_list.current_index(), 3);
+        assert_eq!(action_list.action_index(), 3);
         assert_eq!(action_list.labels.len(), 1);
         let result = action_list.jump_to_label("label_1").unwrap();
         assert_eq!(result, (1, 2));
-        assert_eq!(action_list.current_index(), 1);
+        assert_eq!(action_list.action_index(), 1);
         let result = action_list.jump_to_label("label_2").unwrap();
         assert_eq!(result, (4, 4));
         assert_eq!(action_list.labels.len(), 2);
-        assert_eq!(action_list.current_index(), 4);
+        assert_eq!(action_list.action_index(), 4);
     }
 }
