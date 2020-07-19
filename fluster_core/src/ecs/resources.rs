@@ -273,9 +273,10 @@ impl SceneGraph {
             for child in children.iter() {
                 self.parents.insert(*child, parent);
             }
-            self.tree
-                .entry(parent)
-                .and_modify(|existing_children| existing_children.extend(children));
+            self.tree.entry(parent).and_modify(|existing_children| {
+                existing_children.retain(|child| child != entity);
+                existing_children.extend(children);
+            });
         }
     }
 

@@ -7,7 +7,7 @@ use gl::{ReadPixels, BGRA, UNSIGNED_BYTE};
 use iced::image::Handle as ImageHandle;
 use palette::LinSrgb;
 use pathfinder_canvas::CanvasFontContext;
-use pathfinder_color::{ColorF, ColorU};
+use pathfinder_color::ColorF;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
