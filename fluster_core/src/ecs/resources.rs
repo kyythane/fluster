@@ -137,6 +137,7 @@ impl QuadTreeLayer {
     }
 }
 
+#[derive(Debug)]
 pub enum QuadTreeQuery {
     Point(QuadTreeLayer, Vector2F),
     Disk(QuadTreeLayer, Vector2F, f32),

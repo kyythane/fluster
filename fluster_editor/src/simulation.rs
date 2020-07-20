@@ -4,10 +4,11 @@ use crate::{
     tools::SelectionShape,
 };
 use fluster_core::{
+    actions::{ContainerCreationDefintition, ContainerCreationProperty},
     ecs::resources::{FrameTime, Library, QuadTreeLayerOptions, QuadTreeQuery, QuadTrees},
     engine::{Engine, SelectionHandle},
     types::{
-        basic::{ContainerId, LibraryId},
+        basic::{ContainerId, LibraryId, ScaleRotationTranslation},
         shapes::{Edge, Shape},
     },
 };
@@ -46,6 +47,16 @@ impl<'a, 'b> StageState<'a, 'b> {
         };
         // Need to init the draw_handle container before we init scene data so we don't compute_bounds doesn't throw because it can't find a library item
         new_self.update_draw_handle(vec![]);
+        new_self
+            .engine
+            .create_container(&ContainerCreationDefintition::new(
+                root_container_id,
+                handle_container_id,
+                vec![
+                    ContainerCreationProperty::Transform(ScaleRotationTranslation::default()),
+                    ContainerCreationProperty::Display(handle_library_id),
+                ],
+            ));
         // NOTE: currently making edit collision 3x the stage size to allow for overdraw.
         new_self.engine.get_quad_trees_mut().create_quad_tree(
             EDIT_LAYER,

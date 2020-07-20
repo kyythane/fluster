@@ -1,7 +1,7 @@
 use crate::messages::{EditMessage, Template, ToolMessage};
 use crate::tools::{ToolOption, ToolOptionHandle};
 use fluster_core::{
-    actions::{ContainerCreationDefintition, ContainerCreationProperty},
+    actions::{BoundsKindDefinition, ContainerCreationDefintition, ContainerCreationProperty},
     ecs::resources::{Library, QuadTreeLayer},
     engine::{Engine, SelectionHandle},
     types::{
@@ -280,6 +280,7 @@ impl ShapeScratchPad {
             vec![
                 ContainerCreationProperty::Transform(ScaleRotationTranslation::default()),
                 ContainerCreationProperty::Display(item_id),
+                ContainerCreationProperty::Bounds(BoundsKindDefinition::Display),
                 ContainerCreationProperty::Layer(EDIT_LAYER),
             ],
         ));
@@ -430,6 +431,7 @@ impl TemplateShapeScratchpad {
             vec![
                 ContainerCreationProperty::Transform(ScaleRotationTranslation::default()),
                 ContainerCreationProperty::Display(new_self.item_id),
+                ContainerCreationProperty::Bounds(BoundsKindDefinition::Display),
                 ContainerCreationProperty::Layer(EDIT_LAYER),
             ],
         ));
