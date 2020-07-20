@@ -1,68 +1,64 @@
-#![deny(clippy::all)]
-use crate::messages::{EditMessage, SelectionHandle, VertexHandle};
+use crate::messages::EditMessage;
 use crate::{
-    rendering::RenderData,
     scratch_pad::{ScratchPad, EDIT_LAYER},
     tools::SelectionShape,
 };
-use fluster_core::rendering::{adjust_depth, PaintData};
 use fluster_core::{
-    runner::{QuadTreeLayerOptions, SceneData},
+    actions::{ContainerCreationDefintition, ContainerCreationProperty},
+    ecs::resources::{FrameTime, Library, QuadTreeLayerOptions, QuadTreeQuery, QuadTrees},
+    engine::{Engine, SelectionHandle},
     types::{
-        model::{DisplayLibraryItem, Entity, Part},
+        basic::{ContainerId, LibraryId, ScaleRotationTranslation},
         shapes::{Edge, Shape},
     },
 };
-use pathfinder_color::ColorU;
+use palette::{LinSrgb, LinSrgba};
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use std::mem;
-use uuid::Uuid;
+use std::collections::HashSet;
+use std::{mem, time::Duration};
 
-pub struct StageState {
-    background_color: ColorU,
-    root_entity_id: Uuid,
-    handle_container_id: Uuid,
-    library: HashMap<Uuid, DisplayLibraryItem>,
-    display_list: HashMap<Uuid, Entity>,
+pub struct StageState<'a, 'b> {
+    background_color: LinSrgb,
+    root_container_id: ContainerId,
+    handle_ids: (ContainerId, LibraryId),
     size: Vector2I,
     scale: f32,
     scratch_pad: ScratchPad,
-    scene_data: SceneData,
+    engine: Engine<'a, 'b>,
 }
 
-impl StageState {
-    pub fn new(stage_size: Vector2I, background_color: ColorU) -> Self {
-        let root_entity_id = Uuid::new_v4();
-        let mut root_entity = Entity::create_root(root_entity_id);
-        let handle_container_id = Uuid::new_v4();
-        // use handle_container_id for both part and item id since it is unique.
-        // Note: this part should not have a collision layer, so it isn't included in mouse picking!
-        root_entity.add_part(
-            &handle_container_id,
-            Part::new_vector(handle_container_id, Transform2F::default(), None),
-        );
-
-        let mut display_list = HashMap::new();
-        display_list.insert(root_entity_id, root_entity);
+impl<'a, 'b> StageState<'a, 'b> {
+    pub fn new(stage_size: Vector2I, background_color: LinSrgb) -> Self {
+        let root_container_id = ContainerId::new();
+        let handle_container_id = ContainerId::new();
+        let handle_library_id = LibraryId::new();
+        let engine = Engine::new(root_container_id, Library::default(), QuadTrees::default());
         let mut new_self = Self {
             background_color,
-            root_entity_id,
-            handle_container_id,
-            library: HashMap::new(),
-            display_list,
+            root_container_id,
+            handle_ids: (handle_container_id, handle_library_id),
             size: stage_size,
             scale: 1.0,
             scratch_pad: ScratchPad::default(),
-            scene_data: SceneData::new(),
+            engine,
         };
         // Need to init the draw_handle container before we init scene data so we don't compute_bounds doesn't throw because it can't find a library item
         new_self.update_draw_handle(vec![]);
+        new_self
+            .engine
+            .create_container(&ContainerCreationDefintition::new(
+                root_container_id,
+                handle_container_id,
+                vec![
+                    ContainerCreationProperty::Transform(ScaleRotationTranslation::default()),
+                    ContainerCreationProperty::Display(handle_library_id),
+                ],
+            ));
         // NOTE: currently making edit collision 3x the stage size to allow for overdraw.
-        new_self.scene_data.add_layer(
+        new_self.engine.get_quad_trees_mut().create_quad_tree(
             EDIT_LAYER,
             RectF::new(stage_size.to_f32() * -1.0, stage_size.to_f32() * 3.0),
             QuadTreeLayerOptions::new(12.0),
@@ -72,60 +68,60 @@ impl StageState {
         return new_self;
     }
 
-    pub fn root(&self) -> &Uuid {
-        &self.root_entity_id
+    pub fn background_color(&self) -> LinSrgb {
+        self.background_color
+    }
+
+    pub fn engine(&self) -> &Engine<'a, 'b> {
+        &self.engine
+    }
+
+    pub fn root(&self) -> &ContainerId {
+        &self.root_container_id
     }
 
     pub fn draw_handles(&mut self, handles: Vec<SelectionHandle>) -> bool {
         let mut edges = vec![];
         for handle in handles {
-            for vertex_handle in handle.vertex_handles() {
+            for vertex_handle in handle.handles() {
                 edges.extend(
                     Edge::new_ellipse(
                         Vector2F::splat(5.0),
-                        Transform2F::from_translation(*vertex_handle.position()),
+                        Transform2F::from_translation(vertex_handle.position()),
                     )
                     .into_iter(),
                 );
             }
         }
-        let redraw_needed = edges.len() > 0 || {
-            if let Some(DisplayLibraryItem::Vector(path)) =
-                self.library.get(&self.handle_container_id)
-            {
-                path.len() > 0
-            } else {
-                false
-            }
-        };
+        let redraw_needed = edges.len() > 0
+            || self
+                .engine
+                .get_library()
+                .get_shape(&self.handle_ids.1)
+                .map(|shape| shape.edge_list(0.0).len() > 0)
+                .unwrap_or_default();
         self.update_draw_handle(edges);
         redraw_needed
     }
 
     fn update_draw_handle(&mut self, edges: Vec<Edge>) {
-        self.library.insert(
-            self.handle_container_id,
-            DisplayLibraryItem::Vector(Shape::Path {
-                color: ColorU::new(192, 255, 0, 255),
+        self.engine.get_library_mut().add_shape(
+            self.handle_ids.1,
+            Shape::Path {
+                color: LinSrgba::new(0.3, 0.8, 0.7, 1.0),
                 edges,
                 stroke_style: StrokeStyle {
                     line_width: 2.0,
                     line_cap: LineCap::default(),
                     line_join: LineJoin::default(),
                 },
-            }),
+            },
         );
     }
 
     pub fn apply_edit(&mut self, edit_message: &EditMessage) -> bool {
         // TODO: return a proper message type!
-        match self.scratch_pad.apply_edit(
-            edit_message,
-            &mut self.library,
-            &mut self.display_list,
-            &mut self.scene_data,
-            &self.root_entity_id,
-        ) {
+        match self.scratch_pad.apply_edit(edit_message, &mut self.engine) {
             Ok(res) => {
                 if res {
                     self.update_scene();
@@ -142,11 +138,12 @@ impl StageState {
     }
 
     pub fn update_scene(&mut self) {
-        self.scene_data
-            .recompute(&self.root_entity_id, &mut self.display_list, &self.library)
+        self.engine.update(FrameTime {
+            delta_frame: 1,
+            delta_time: Duration::from_secs_f64(1.0 / 60.0),
+        })
     }
 
-    #[inline]
     pub fn scale(&self) -> f32 {
         self.scale
     }
@@ -161,129 +158,14 @@ impl StageState {
 
     pub fn query_selection(&self, selection_shape: &SelectionShape) -> Vec<SelectionHandle> {
         match selection_shape {
-            // Broadphase, collect all the parts with bounding boxes that overlap our query
             SelectionShape::None => vec![],
             SelectionShape::Point(point) => self
-                .scene_data
-                .quad_tree(&EDIT_LAYER)
-                .unwrap()
-                .0
-                .query_point(point),
+                .engine
+                .spatial_query(&QuadTreeQuery::Point(EDIT_LAYER, *point)),
             SelectionShape::Area(rect) => self
-                .scene_data
-                .quad_tree(&EDIT_LAYER)
-                .unwrap()
-                .0
-                .query_rect(rect),
+                .engine
+                .spatial_query(&QuadTreeQuery::Rect(EDIT_LAYER, *rect)),
         }
-        .into_iter()
-        .fold(
-            // Since we query by part AABB, we need to collect them under the owning entity
-            HashMap::new(),
-            |mut map: HashMap<Uuid, Vec<Uuid>>, ((e_id, p_id), _)| {
-                map.entry(e_id).or_default().push(p_id);
-                map
-            },
-        )
-        .into_iter()
-        .flat_map(|(e_id, p_ids)| {
-            let entity = self.display_list.get(&e_id).unwrap();
-            let world_space_transform = self
-                .scene_data
-                .world_space_transforms()
-                .get(entity.id())
-                .unwrap();
-            p_ids.into_iter().map(move |p_id| {
-                let part = entity.get_part(&p_id).unwrap();
-                let vertex_handles = self.collect_vertex_handles(
-                    selection_shape,
-                    entity,
-                    world_space_transform,
-                    part,
-                );
-                SelectionHandle::new(e_id, *part.item_id(), vertex_handles)
-            })
-        })
-        .collect::<Vec<SelectionHandle>>()
-    }
-
-    // Narrow phase, Find all vertexes that overlap our query
-    fn collect_vertex_handles(
-        &self,
-        selection_shape: &SelectionShape,
-        entity: &Entity,
-        // Passing this in is kinda gross, but we don't want to refetch this multiple times per entity for a large selection
-        world_space_transform: &Transform2F,
-        part: &Part,
-    ) -> Vec<VertexHandle> {
-        let item_id = part.item_id();
-        match self.library.get(item_id).unwrap() {
-            DisplayLibraryItem::Vector(shape) => {
-                let edges = shape
-                    .edge_list(entity.morph_index())
-                    .into_iter()
-                    .enumerate();
-                match selection_shape {
-                    SelectionShape::None => vec![],
-                    SelectionShape::Point(point) => edges
-                        .flat_map(|(index, edge)| {
-                            // TODO: configure handle radius (pixels)
-                            edge.query_disk(point, 10.0, world_space_transform).map(
-                                move |(vertex_index, distance, vertex)| {
-                                    VertexHandle::new(
-                                        *item_id,
-                                        index,
-                                        vertex_index,
-                                        vertex,
-                                        distance,
-                                    )
-                                },
-                            )
-                        })
-                        .collect::<Vec<VertexHandle>>(),
-                    SelectionShape::Area(rect) => edges
-                        .flat_map(|(index, edge)| {
-                            edge.query_rect(rect, world_space_transform).map(
-                                move |(vertex_index, vertex)| {
-                                    // Box selection has a separation of 0, since everything is inherently "inside" the specified area rather than near a point
-                                    VertexHandle::new(*item_id, index, vertex_index, vertex, 0.0)
-                                },
-                            )
-                        })
-                        .collect::<Vec<VertexHandle>>(),
-                }
-            }
-            DisplayLibraryItem::Raster(..) => todo!(),
-        }
-    }
-
-    //TODO: how does root interact with layers? Should I support more than one root?
-    pub fn compute_render_data(&self, timeline: &TimelineState) -> RenderData {
-        let mut nodes = VecDeque::new();
-        let mut depth_list = BTreeMap::new();
-        nodes.push_back(&self.root_entity_id);
-        while let Some(entity_id) = nodes.pop_front() {
-            if !timeline.can_show_entity(entity_id) {
-                continue;
-            }
-            match self.display_list.get(entity_id) {
-                Some(entity) => {
-                    for child_id in entity.children() {
-                        nodes.push_back(child_id);
-                    }
-                    let depth = adjust_depth(entity.depth(), &depth_list);
-                    depth_list.insert(depth, entity);
-                }
-                None => continue,
-            }
-        }
-
-        RenderData::new(
-            PaintData::new(depth_list),
-            &self.scene_data,
-            self.background_color,
-            &self.library,
-        )
     }
 }
 
@@ -293,14 +175,14 @@ pub struct TimelineState {
 }
 
 impl TimelineState {
-    pub fn new(root_id: &Uuid) -> Self {
+    pub fn new(root_id: &ContainerId) -> Self {
         let layer = LayerState::new(root_id);
         return Self {
             layers: vec![layer],
         };
     }
 
-    pub fn can_show_entity(&self, id: &Uuid) -> bool {
+    pub fn can_show_entity(&self, id: &ContainerId) -> bool {
         self.layers.iter().any(|layer| layer.can_show_entity(id))
     }
 
@@ -326,7 +208,7 @@ pub struct LayerState {
 }
 
 impl LayerState {
-    pub fn new(root_id: &Uuid) -> Self {
+    pub fn new(root_id: &ContainerId) -> Self {
         let frame_state = FrameState::from_entity(*root_id);
         Self {
             frames: vec![(frame_state, (0, 1))],
@@ -335,14 +217,14 @@ impl LayerState {
         }
     }
 
-    pub fn can_show_entity(&self, id: &Uuid) -> bool {
+    pub fn can_show_entity(&self, id: &ContainerId) -> bool {
         if !self.visible {
             return false;
         }
         self.contains_entity(id)
     }
 
-    pub fn contains_entity(&self, id: &Uuid) -> bool {
+    pub fn contains_entity(&self, id: &ContainerId) -> bool {
         if let Some((frame, ..)) = self.frames.get(self.current_frame_index) {
             return frame.contains_entity(id);
         }
@@ -366,25 +248,25 @@ impl LayerState {
 
 #[derive(Debug, Clone)]
 pub enum FrameState {
-    Key { entities: HashSet<Uuid> },
+    Key { entities: HashSet<ContainerId> },
     Empty,
 }
 
 impl FrameState {
-    pub fn from_entity(entity: Uuid) -> Self {
+    pub fn from_entity(entity: ContainerId) -> Self {
         let mut entities = HashSet::new();
         entities.insert(entity);
         Self::Key { entities }
     }
 
-    pub fn contains_entity(&self, id: &Uuid) -> bool {
+    pub fn contains_entity(&self, id: &ContainerId) -> bool {
         match self {
             Self::Key { entities } => entities.contains(id),
             Self::Empty => false,
         }
     }
 
-    pub fn add_entity(&mut self, id: &Uuid) {
+    pub fn add_entity(&mut self, id: &ContainerId) {
         match self {
             Self::Key { entities } => {
                 entities.insert(*id);
@@ -393,12 +275,12 @@ impl FrameState {
                 let mut entities = HashSet::new();
                 entities.insert(*id);
                 let new_frame = Self::Key { entities };
-                mem::replace(self, new_frame);
+                *self = new_frame;
             }
         }
     }
 
-    pub fn remove_entity(&mut self, id: &Uuid) {
+    pub fn remove_entity(&mut self, id: &ContainerId) {
         if let Self::Key { entities } = self {
             entities.remove(id);
             if entities.is_empty() {

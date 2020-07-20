@@ -1,50 +1,26 @@
-#![deny(clippy::all)]
-use fluster_core::rendering::{paint, PaintData, Renderer as FlusterRenderer};
-use fluster_core::{runner::SceneData, types::model::DisplayLibraryItem};
+use fluster_core::{
+    engine::Engine,
+    rendering::{lin_srgb_to_coloru, paint, Renderer as FlusterRenderer},
+};
 use fluster_graphics::FlusterRendererImpl;
 use gl::{ReadPixels, BGRA, UNSIGNED_BYTE};
 use iced::image::Handle as ImageHandle;
+use palette::LinSrgb;
 use pathfinder_canvas::CanvasFontContext;
-use pathfinder_color::{ColorF, ColorU};
+use pathfinder_color::ColorF;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use sdl2::video::{GLContext, GLProfile, Window};
-use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
 use std::ffi::c_void;
-use uuid::Uuid;
 
 /*
  *   Note: This is kinda a hack until there is a cleaner way to use pathfinder and iced together.
  */
-
-#[derive(Debug)]
-pub struct RenderData<'a, 'b> {
-    paint_data: PaintData<'a>,
-    scene_data: &'b SceneData,
-    background_color: ColorU,
-    library: &'b HashMap<Uuid, DisplayLibraryItem>,
-}
-
-impl<'a, 'b> RenderData<'a, 'b> {
-    pub fn new(
-        paint_data: PaintData<'a>,
-        scene_data: &'b SceneData,
-        background_color: ColorU,
-        library: &'b HashMap<Uuid, DisplayLibraryItem>,
-    ) -> Self {
-        Self {
-            paint_data,
-            background_color,
-            library,
-            scene_data,
-        }
-    }
-}
 
 pub struct StageRenderer {
     renderer: FlusterRendererImpl<GLDevice>,
@@ -100,15 +76,15 @@ impl StageRenderer {
         })
     }
 
-    pub fn draw_frame(&mut self, render_data: RenderData) -> Result<ImageHandle, Box<dyn Error>> {
+    pub fn draw_frame(
+        &mut self,
+        background_color: LinSrgb,
+        engine: &Engine,
+    ) -> Result<ImageHandle, Box<dyn Error>> {
         self.renderer.start_frame(self.stage_size.to_f32());
-        self.renderer.set_background(render_data.background_color);
-        paint(
-            &mut self.renderer,
-            render_data.library,
-            render_data.paint_data,
-            render_data.scene_data,
-        );
+        self.renderer
+            .set_background(lin_srgb_to_coloru(background_color));
+        paint(&mut self.renderer, engine);
         self.renderer.end_frame();
         let pixels = unsafe {
             let buffer_size = self.stage_size.x() * self.stage_size.y() * 4;

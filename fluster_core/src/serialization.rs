@@ -1,5 +1,3 @@
-#![deny(clippy::all)]
-
 use super::actions::Action;
 use bincode::Error as BinError;
 use bincode::ErrorKind as BinErrorKind;
@@ -175,7 +173,7 @@ pub fn deserialize_action(bytes: &[u8], _version: u8) -> Result<Action, BinError
     bincode::deserialize(bytes)
 }
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod tests {
     use super::*;
     use crate::actions::{EntityDefinition, PartDefinition};
@@ -289,4 +287,4 @@ mod tests {
             }
         }
     }
-}
+}*/

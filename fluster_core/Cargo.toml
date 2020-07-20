@@ -16,9 +16,22 @@ pathfinder_simd = { git = "https://github.com/servo/pathfinder.git" }
 serde = "1.0"
 serde_bytes = "0.11"
 streaming-iterator = "0.1"
-uuid = { version = "0.8", features = ["serde"] }
+uuid = { version = "0.8", features = ["serde", "v4"] }
 reduce = "0.1"
+specs = { version = "0.16", features = ["specs-derive", "shred-derive"] }
+palette = { git = "https://github.com/Ogeon/palette.git", features = ["serializing"] }
 
 [dev-dependencies]
 iobuffer = "0.2.0"
-mockall = "0.6"
+mockall = "0.7"
+
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false
+features = [
+    "prepush-hook",
+    "run-for-all",
+    "run-cargo-test",
+    "run-cargo-clippy",
+    "run-cargo-fmt",
+]

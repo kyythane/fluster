@@ -18,8 +18,8 @@ pathfinder_gpu = { git = "https://github.com/servo/pathfinder.git" }
 pathfinder_gl = { git = "https://github.com/servo/pathfinder.git" }
 pathfinder_renderer = { git = "https://github.com/servo/pathfinder.git" }
 pathfinder_resources = { git = "https://github.com/servo/pathfinder.git" }
-uuid = { version = "0.8", features = ["v4"] }
-iced = { version = "0.1", features = ["image"] }
-iced_native = "0.2"
-iced_wgpu = "0.2"
-palette="0.5"
+palette = { git = "https://github.com/Ogeon/palette.git" }
+iced = { git = "https://github.com/hecrj/iced.git", features = ["image"] }
+iced_native = { git = "https://github.com/hecrj/iced.git" }
+iced_graphics = { git = "https://github.com/hecrj/iced.git" }
+iced_winit = { git = "https://github.com/hecrj/iced.git" }

@@ -1,6 +1,3 @@
-#![deny(missing_docs)]
-#![deny(clippy::all)]
-
 use crate::util::{distance_from_abb, ray_aabb_intersect};
 use fmt::Debug;
 use pathfinder_geometry::{rect::RectF, vector::Vector2F};

@@ -1,4 +1,3 @@
-#![deny(clippy::all)]
 use pathfinder_color::ColorU;
 use pathfinder_content::pattern::{Image, Pattern};
 use pathfinder_geometry::transform2d::Transform2F;
@@ -7,15 +6,7 @@ use pathfinder_simd::default::F32x2;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::{ByteBuf, Bytes};
 use std::sync::Arc;
-
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "ColorU")]
-pub struct ColorUDef {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
-}
+use uuid::Uuid;
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ScaleRotationTranslation {
@@ -95,7 +86,7 @@ pub struct Bitmap {
 }
 
 impl Bitmap {
-    pub fn release_contents(&mut self) -> Pattern {
+    pub fn pattern(&mut self) -> Pattern {
         let image = Image::new(Vector2I::new(self.size_x, self.size_y), self.colors.clone());
         Pattern::from_image(image)
     }
@@ -116,4 +107,54 @@ where
 {
     let bytes = pathfinder_color::color_slice_to_u8_slice(&a_c);
     Bytes::serialize(&Bytes::new(&bytes), serializer)
+}
+
+#[derive(Debug, Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct ContainerId(Uuid);
+
+impl ContainerId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    pub fn from_uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+}
+
+impl Into<Uuid> for ContainerId {
+    fn into(self) -> Uuid {
+        self.0
+    }
+}
+
+impl From<Uuid> for ContainerId {
+    fn from(uuid: Uuid) -> Self {
+        Self::from_uuid(uuid)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct LibraryId(Uuid);
+
+impl LibraryId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    pub fn from_uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+}
+
+impl Into<Uuid> for LibraryId {
+    fn into(self) -> Uuid {
+        self.0
+    }
+}
+
+impl From<Uuid> for LibraryId {
+    fn from(uuid: Uuid) -> Self {
+        Self::from_uuid(uuid)
+    }
 }

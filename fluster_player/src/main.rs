@@ -1,72 +1,75 @@
+#![deny(clippy::all)]
 use fluster_core::actions::{
-    Action, ActionList, EntityDefinition, EntityUpdateDefinition, EntityUpdatePayload,
-    PartDefinition, PartUpdateDefinition, PartUpdatePayload,
+    Action, ActionList, ContainerCreationDefintition, ContainerCreationProperty,
+    ContainerUpdateDefintition, ContainerUpdateProperty,
 };
 use fluster_core::runner;
 use fluster_core::tween::Easing;
 use fluster_core::types::{
-    basic::ScaleRotationTranslation,
-    shapes::{AugmentedShape, Coloring, Edge, MorphEdge, Shape},
+    basic::{ContainerId, LibraryId, ScaleRotationTranslation},
+    coloring::{ColorSpace, Coloring},
+    shapes::{AugmentedShape, Edge, MorphEdge, Shape},
 };
 use fluster_graphics::FlusterRendererImpl;
+use glutin::{
+    dpi::PhysicalSize,
+    event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
+    ContextBuilder, GlProfile, GlRequest,
+};
+use palette::{LinSrgba, Srgb, Srgba};
 use pathfinder_canvas::CanvasFontContext;
-use pathfinder_color::{ColorF, ColorU};
+use pathfinder_color::ColorF;
 use pathfinder_content::stroke::{LineCap, LineJoin, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions, RendererMode};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_resources::embedded::EmbeddedResourceLoader;
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
-use sdl2::video::GLProfile;
-use std::f32::consts::PI;
-use uuid::Uuid;
+use runner::{FrameResult, Runner};
+use std::{f32::consts::PI, time::Duration};
 
 fn build_action_list() -> ActionList {
-    let shape_id = Uuid::new_v4();
-    let shape2_id = Uuid::new_v4();
-    let shape3_id = Uuid::new_v4();
-    let shape4_id = Uuid::new_v4();
-    let shape5_id = Uuid::new_v4();
-    let root_id = Uuid::new_v4();
-    let entity_id = Uuid::new_v4();
-    let entity2_id = Uuid::new_v4();
+    let shape_id = LibraryId::new();
+    let shape2_id = LibraryId::new();
+    let shape3_id = LibraryId::new();
+    let shape4_id = LibraryId::new();
+    let shape5_id = LibraryId::new();
+    let root_id = ContainerId::new();
+    let entity_id = ContainerId::new();
+    let entity2_id = ContainerId::new();
     let actions = vec![
         Action::SetBackground {
-            color: ColorU::new(254, 200, 216, 255),
+            color: Srgb::<f32>::from_format(Srgb::<u8>::new(254, 200, 216)).into_linear(),
         },
         Action::CreateRoot(root_id),
         Action::EndInitialization,
         Action::DefineShape {
             id: shape_id,
             shape: Shape::Fill {
-                edges: vec![
-                    Edge::Line(Vector2F::new(-15.0, -15.0)),
-                    Edge::Line(Vector2F::new(15.0, -15.0)),
-                    Edge::Line(Vector2F::new(15.0, 15.0)),
-                    Edge::Line(Vector2F::new(-15.0, 15.0)),
-                ],
-                color: ColorU::new(149, 125, 173, 255),
+                edges: Edge::new_rect(
+                    Vector2F::splat(30.0),
+                    Transform2F::from_translation(Vector2F::splat(-15.0)),
+                ),
+                color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
+                    .into_linear(),
             },
         },
         Action::DefineShape {
             id: shape2_id,
             shape: Shape::Path {
-                edges: vec![
-                    Edge::Line(Vector2F::new(-15.0, -15.0)),
-                    Edge::Line(Vector2F::new(15.0, -15.0)),
-                    Edge::Line(Vector2F::new(15.0, 15.0)),
-                    Edge::Line(Vector2F::new(-15.0, 15.0)),
-                    Edge::Close,
-                ],
+                edges: Edge::new_rect(
+                    Vector2F::splat(30.0),
+                    Transform2F::from_translation(Vector2F::splat(-15.0)),
+                ),
                 stroke_style: StrokeStyle {
                     line_width: 3.0,
                     line_cap: LineCap::Square,
                     line_join: LineJoin::Bevel,
                 },
-                color: ColorU::black(),
+                color: LinSrgba::new(0.0, 0.0, 0.0, 1.0),
             },
         },
         Action::DefineShape {
@@ -75,13 +78,12 @@ fn build_action_list() -> ActionList {
                 shapes: vec![
                     AugmentedShape {
                         shape: Shape::Fill {
-                            edges: vec![
-                                Edge::Line(Vector2F::new(-15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, 15.0)),
-                                Edge::Line(Vector2F::new(-15.0, 15.0)),
-                            ],
-                            color: ColorU::new(149, 125, 173, 255),
+                            edges: Edge::new_rect(
+                                Vector2F::splat(30.0),
+                                Transform2F::from_translation(Vector2F::splat(-15.0)),
+                            ),
+                            color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
+                                .into_linear(),
                         },
                         transform: Transform2F::from_scale_rotation_translation(
                             Vector2F::splat(1.0),
@@ -91,13 +93,13 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            edges: vec![
-                                Edge::Line(Vector2F::new(-15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, 15.0)),
-                                Edge::Line(Vector2F::new(-15.0, 15.0)),
-                            ],
-                            color: ColorU::new(149, 125, 173, 255),
+                            edges: Edge::new_polygon(
+                                5,
+                                30.0,
+                                Transform2F::from_translation(Vector2F::splat(-15.0)),
+                            ),
+                            color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
+                                .into_linear(),
                         },
                         transform: Transform2F::from_scale_rotation_translation(
                             Vector2F::splat(1.0),
@@ -107,13 +109,13 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            edges: vec![
-                                Edge::Line(Vector2F::new(-15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, 15.0)),
-                                Edge::Line(Vector2F::new(-15.0, 15.0)),
-                            ],
-                            color: ColorU::new(149, 125, 173, 255),
+                            edges: Edge::new_superellipse(
+                                Vector2F::splat(30.0),
+                                4.0,
+                                Transform2F::from_translation(Vector2F::splat(-15.0)),
+                            ),
+                            color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
+                                .into_linear(),
                         },
                         transform: Transform2F::from_scale_rotation_translation(
                             Vector2F::splat(1.0),
@@ -123,13 +125,12 @@ fn build_action_list() -> ActionList {
                     },
                     AugmentedShape {
                         shape: Shape::Fill {
-                            edges: vec![
-                                Edge::Line(Vector2F::new(-15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, -15.0)),
-                                Edge::Line(Vector2F::new(15.0, 15.0)),
-                                Edge::Line(Vector2F::new(-15.0, 15.0)),
-                            ],
-                            color: ColorU::new(149, 125, 173, 255),
+                            edges: Edge::new_ellipse(
+                                Vector2F::splat(15.0),
+                                Transform2F::from_translation(Vector2F::splat(-15.0)),
+                            ),
+                            color: Srgba::<f32>::from_format(Srgba::<u8>::new(149, 125, 173, 255))
+                                .into_linear(),
                         },
                         transform: Transform2F::from_scale_rotation_translation(
                             Vector2F::splat(1.0),
@@ -167,7 +168,7 @@ fn build_action_list() -> ActionList {
                     line_cap: LineCap::Square,
                     line_join: LineJoin::Bevel,
                 },
-                color: ColorU::black(),
+                color: LinSrgba::new(0.0, 0.0, 0.0, 1.0),
             },
         },
         Action::DefineShape {
@@ -185,134 +186,145 @@ fn build_action_list() -> ActionList {
                     line_cap: LineCap::Square,
                     line_join: LineJoin::Bevel,
                 },
-                color: ColorU::white(),
+                color: LinSrgba::new(1.0, 1.0, 1.0, 1.0),
             },
         },
-        Action::AddEntity(EntityDefinition {
-            id: entity_id,
-            name: String::from("first"),
-            transform: Transform2F::from_scale_rotation_translation(
-                Vector2F::splat(0.5),
-                0.0,
-                Vector2F::new(400.0, 400.0),
-            ),
-            depth: 2,
-            parts: vec![
-                PartDefinition::new(
-                    shape2_id,
-                    shape2_id,
-                    ScaleRotationTranslation::new(Vector2F::splat(2.0), 0.0, Vector2F::splat(0.0)),
-                    vec![],
-                ),
-                PartDefinition::new(
-                    shape_id,
-                    shape_id,
-                    ScaleRotationTranslation::new(Vector2F::splat(2.0), 0.0, Vector2F::splat(0.0)),
-                    vec![],
-                ),
-                PartDefinition::new(
-                    shape5_id,
-                    shape5_id,
-                    ScaleRotationTranslation::new(
-                        Vector2F::splat(2.0),
-                        0.0,
-                        Vector2F::new(300.0, 300.0),
-                    ),
-                    vec![],
-                ),
-                PartDefinition::new(
-                    shape4_id,
-                    shape4_id,
-                    ScaleRotationTranslation::new(
-                        Vector2F::splat(2.0),
-                        0.0,
-                        Vector2F::new(0.0, 0.0),
-                    ),
-                    vec![],
-                ),
+        Action::CreateContainer(ContainerCreationDefintition::new(
+            root_id,
+            entity_id,
+            vec![
+                ContainerCreationProperty::Transform(ScaleRotationTranslation::new(
+                    Vector2F::splat(0.5),
+                    0.0,
+                    Vector2F::new(400.0, 400.0),
+                )),
+                ContainerCreationProperty::Order(2),
             ],
-            parent: None,
-            morph_index: 0.0,
-        }),
-        Action::AddEntity(EntityDefinition {
-            id: entity2_id,
-            name: String::from("second"),
-            transform: Transform2F::default(),
-            depth: 3,
-            parts: vec![PartDefinition::new(
-                shape3_id,
-                shape3_id,
-                ScaleRotationTranslation::default(),
-                vec![],
-            )],
-            parent: Some(entity_id),
-            morph_index: 0.0,
-        }),
-        Action::PresentFrame(0, 1),
-        Action::UpdateEntity(EntityUpdateDefinition::new(
+        )),
+        Action::CreateContainer(ContainerCreationDefintition::new(
+            entity_id,
+            ContainerId::from_uuid(shape_id.into()),
+            vec![
+                ContainerCreationProperty::Transform(ScaleRotationTranslation::new(
+                    Vector2F::splat(2.0),
+                    0.0,
+                    Vector2F::splat(0.0),
+                )),
+                ContainerCreationProperty::Display(shape_id),
+            ],
+        )),
+        Action::CreateContainer(ContainerCreationDefintition::new(
+            entity_id,
+            ContainerId::from_uuid(shape2_id.into()),
+            vec![
+                ContainerCreationProperty::Transform(ScaleRotationTranslation::new(
+                    Vector2F::splat(2.0),
+                    0.0,
+                    Vector2F::splat(0.0),
+                )),
+                ContainerCreationProperty::Display(shape2_id),
+            ],
+        )),
+        Action::CreateContainer(ContainerCreationDefintition::new(
+            root_id,
+            ContainerId::from_uuid(shape4_id.into()),
+            vec![
+                ContainerCreationProperty::Transform(ScaleRotationTranslation::new(
+                    Vector2F::splat(2.0),
+                    0.0,
+                    Vector2F::new(50.0, 100.0),
+                )),
+                ContainerCreationProperty::Display(shape4_id),
+            ],
+        )),
+        Action::CreateContainer(ContainerCreationDefintition::new(
+            entity_id,
+            ContainerId::from_uuid(shape5_id.into()),
+            vec![
+                ContainerCreationProperty::Transform(ScaleRotationTranslation::new(
+                    Vector2F::splat(2.0),
+                    0.0,
+                    Vector2F::new(100.0, 100.0),
+                )),
+                ContainerCreationProperty::Display(shape5_id),
+                ContainerCreationProperty::MorphIndex(0.0),
+            ],
+        )),
+        Action::CreateContainer(ContainerCreationDefintition::new(
+            entity_id,
             entity2_id,
-            480,
-            vec![],
-            vec![EntityUpdatePayload::from_transform(
-                &Transform2F::from_scale_rotation_translation(
-                    Vector2F::splat(1.0),
-                    PI,
-                    Vector2F::new(200.0, 0.0),
-                ),
+            vec![
+                ContainerCreationProperty::Transform(ScaleRotationTranslation::default()),
+                ContainerCreationProperty::Order(1),
+                ContainerCreationProperty::Display(shape3_id),
+            ],
+        )),
+        Action::PresentFrame(0, 1),
+        Action::UpdateContainer(ContainerUpdateDefintition::new(
+            entity2_id,
+            vec![ContainerUpdateProperty::Transform(
+                ScaleRotationTranslation::new(Vector2F::splat(1.0), PI, Vector2F::new(200.0, 0.0)),
                 Easing::BounceOut,
+                480,
             )],
         )),
-        Action::UpdateEntity(EntityUpdateDefinition::new(
-            entity_id,
-            360,
-            vec![],
-            vec![EntityUpdatePayload::from_morph_index(
+        Action::UpdateContainer(ContainerUpdateDefintition::new(
+            ContainerId::from_uuid(shape5_id.into()),
+            vec![ContainerUpdateProperty::MorphIndex(
                 1.0,
-                Easing::BounceOut,
+                Easing::ElasticInOut,
+                360,
             )],
         )),
         Action::PresentFrame(1, 240),
-        Action::UpdateEntity(EntityUpdateDefinition::new(
+        Action::UpdateContainer(ContainerUpdateDefintition::new(
             entity2_id,
-            300,
-            vec![PartUpdateDefinition::new(
-                shape3_id,
-                Easing::CubicInOut,
-                PartUpdatePayload::from_coloring(Coloring::Colorings(vec![
-                    Coloring::Color(ColorU::new(210, 145, 188, 255)),
-                    Coloring::Color(ColorU::new(224, 187, 228, 255)),
-                    Coloring::Color(ColorU::new(210, 145, 188, 255)),
-                    Coloring::Color(ColorU::new(255, 223, 211, 255)),
-                ])),
+            vec![ContainerUpdateProperty::Coloring(
+                Coloring::Colorings(vec![
+                    Coloring::Color(
+                        Srgba::<f32>::from_format(Srgba::<u8>::new(210, 145, 188, 255))
+                            .into_linear(),
+                    ),
+                    Coloring::Color(
+                        Srgba::<f32>::from_format(Srgba::<u8>::new(224, 187, 228, 255))
+                            .into_linear(),
+                    ),
+                    Coloring::Color(
+                        Srgba::<f32>::from_format(Srgba::<u8>::new(210, 145, 188, 255))
+                            .into_linear(),
+                    ),
+                    Coloring::Color(
+                        Srgba::<f32>::from_format(Srgba::<u8>::new(255, 223, 211, 255))
+                            .into_linear(),
+                    ),
+                ]),
+                ColorSpace::Linear,
+                Easing::SinusoidalInOut,
+                500,
             )],
-            vec![],
         )),
         Action::PresentFrame(240, 600),
-        Action::Quit,
     ];
     ActionList::new(Box::new(|| None), Some(&actions))
 }
 
 fn main() {
-    let sdl_context = sdl2::init().unwrap();
-    let video = sdl_context.video().unwrap();
-    let gl_attributes = video.gl_attr();
-    gl_attributes.set_context_profile(GLProfile::Core);
-    gl_attributes.set_context_version(3, 3);
+    let event_loop = EventLoop::new();
     let window_size = Vector2I::new(800, 600);
-    let window = video
-        .window(
-            "Fluster demo",
-            window_size.x() as u32,
-            window_size.y() as u32,
-        )
-        .opengl()
-        .build()
+    let physical_window_size = PhysicalSize::new(window_size.x() as f64, window_size.y() as f64);
+
+    let window_builder = WindowBuilder::new()
+        .with_title("Fluster Player")
+        .with_inner_size(physical_window_size);
+
+    let gl_context = ContextBuilder::new()
+        .with_gl(GlRequest::Latest)
+        .with_gl_profile(GlProfile::Core)
+        .build_windowed(window_builder, &event_loop)
         .unwrap();
 
-    let gl_context = window.gl_create_context().unwrap();
-    gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
-    window.gl_make_current(&gl_context).unwrap();
+    let gl_context = unsafe { gl_context.make_current().unwrap() };
+    gl::load_with(|name| gl_context.get_proc_address(name) as *const _);
 
     let device = GLDevice::new(GLVersion::GL3, 0);
     let mode = RendererMode::default_for_device(&device);
@@ -325,40 +337,50 @@ fn main() {
 
     let font_context = CanvasFontContext::from_system_source();
 
+    // TODO: Is there benefit using swap_buffers_with_damage here? Investigate and possibly add it to display data generated from Engine
     let mut fluster_renderer = FlusterRendererImpl::new(
         font_context,
         renderer,
-        Box::new(move || window.gl_swap_window()),
+        Box::new(move || gl_context.swap_buffers().unwrap()),
     );
-
-    let mut event_pump = sdl_context.event_pump().unwrap();
-    let mut end_of_frame_callback = move |state: runner::State| {
-        let mut state = state;
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => {
-                    state.set_running(false);
-                }
-                _ => {}
-            }
-        }
-        state
-    };
-
     let mut action_list = build_action_list();
-
-    match runner::play(
-        &mut fluster_renderer,
+    let mut runner = Runner::initialize(
         &mut action_list,
-        &mut end_of_frame_callback,
-        1.0 / 60.0,
+        Duration::from_secs_f64(1.0 / 60.0),
         window_size.to_f32(),
-    ) {
-        Err(message) => println!("{}", message),
-        _ => {}
-    }
+    )
+    .unwrap();
+    event_loop.run(move |event, _, control_flow| {
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            }
+            | Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                virtual_keycode: Some(VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => {
+                *control_flow = ControlFlow::Exit;
+            }
+            _ => {
+                *control_flow = match runner.next_frame(&mut fluster_renderer, &mut action_list) {
+                    Ok(FrameResult::Wait(until)) => ControlFlow::WaitUntil(until),
+                    Ok(FrameResult::Continue) => ControlFlow::Poll,
+                    Ok(FrameResult::Quit) => ControlFlow::Exit,
+                    Err(error) => {
+                        println!("{}", error);
+                        ControlFlow::Exit
+                    }
+                };
+            }
+        };
+    });
 }

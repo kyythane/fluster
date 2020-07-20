@@ -1,28 +1,31 @@
-#![deny(clippy::all)]
 use crate::messages::AppMessage;
 use crate::rendering::StageRenderer;
 use crate::simulation::{StageState, TimelineState};
 use crate::tools::{EditDisplayState, EditState, Tool};
 
 use iced::{
-    button::State as ButtonState, executor, image::Handle as ImageHandle, Align, Application,
-    Button, Column, Command, Container, Element, Image, Length, Row, Size,
+    button::State as ButtonState, executor, image::Handle as ImageHandle, mouse, Align,
+    Application, Button, Column, Command, Container, Element, Image, Length, Row, Size,
 };
-use iced_native::{layout, Clipboard, Event, Hasher, Layout, MouseCursor, Point, Widget};
-use iced_wgpu::{Defaults, Primitive, Renderer};
-use pathfinder_color::ColorU;
+use iced_graphics::{Backend, Defaults, Primitive, Renderer};
+use iced_native::{layout, Clipboard, Event, Hasher, Layout, Point, Widget};
+use palette::LinSrgb;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use std::{convert::TryInto, hash::Hash, mem};
-pub struct Stage<'a> {
+use std::{convert::TryInto, hash::Hash};
+pub struct Stage<'a, 'b, 'c> {
     width: u16,
     height: u16,
     frame: ImageHandle,
     edit_state: &'a EditState,
-    stage_state: &'a StageState,
+    stage_state: &'a StageState<'b, 'c>,
 }
 
-impl<'a> Stage<'a> {
-    pub fn new(frame: ImageHandle, stage_state: &'a StageState, edit_state: &'a EditState) -> Self {
+impl<'a, 'b, 'c> Stage<'a, 'b, 'c> {
+    pub fn new(
+        frame: ImageHandle,
+        stage_state: &'a StageState<'b, 'c>,
+        edit_state: &'a EditState,
+    ) -> Self {
         Self {
             width: stage_state.width().try_into().unwrap(),
             height: stage_state.height().try_into().unwrap(),
@@ -33,7 +36,10 @@ impl<'a> Stage<'a> {
     }
 }
 
-impl<'a> Widget<AppMessage, Renderer> for Stage<'a> {
+impl<'a, 'b, 'c, B> Widget<AppMessage, Renderer<B>> for Stage<'a, 'b, 'c>
+where
+    B: Backend,
+{
     fn width(&self) -> Length {
         Length::Units(self.width)
     }
@@ -42,7 +48,7 @@ impl<'a> Widget<AppMessage, Renderer> for Stage<'a> {
         Length::Units(self.height)
     }
 
-    fn layout(&self, _renderer: &Renderer, _limits: &layout::Limits) -> layout::Node {
+    fn layout(&self, _renderer: &Renderer<B>, _limits: &layout::Limits) -> layout::Node {
         layout::Node::new(Size::new(f32::from(self.width), f32::from(self.height)))
     }
 
@@ -54,15 +60,15 @@ impl<'a> Widget<AppMessage, Renderer> for Stage<'a> {
 
     fn draw(
         &self,
-        _renderer: &mut Renderer,
+        _renderer: &mut Renderer<B>,
         _defaults: &Defaults,
         layout: Layout<'_>,
         cursor_position: Point,
-    ) -> (Primitive, MouseCursor) {
+    ) -> (Primitive, mouse::Interaction) {
         let cursor = if layout.bounds().contains(cursor_position) {
             self.edit_state.mouse_cursor()
         } else {
-            MouseCursor::OutOfBounds
+            mouse::Interaction::Idle
         };
         (
             Primitive::Image {
@@ -79,7 +85,7 @@ impl<'a> Widget<AppMessage, Renderer> for Stage<'a> {
         layout: Layout<'_>,
         cursor_position: Point,
         messages: &mut Vec<AppMessage>,
-        _renderer: &Renderer,
+        _renderer: &Renderer<B>,
         _clipboard: Option<&dyn Clipboard>,
     ) {
         let in_bounds = layout.bounds().contains(cursor_position);
@@ -114,7 +120,7 @@ impl<'a> Widget<AppMessage, Renderer> for Stage<'a> {
     }
 }
 
-impl<'a> Into<Element<'a, AppMessage>> for Stage<'a> {
+impl<'a, 'b, 'c> Into<Element<'a, AppMessage>> for Stage<'a, 'b, 'c> {
     fn into(self) -> Element<'a, AppMessage> {
         Element::new(self)
     }
@@ -133,11 +139,11 @@ pub struct ToolPaneState {
 
 pub struct AppFlags {
     stage_size: Vector2I,
-    background_color: ColorU,
+    background_color: LinSrgb,
 }
 
 impl AppFlags {
-    pub fn new(stage_size: Vector2I, background_color: ColorU) -> Self {
+    pub fn new(stage_size: Vector2I, background_color: LinSrgb) -> Self {
         Self {
             stage_size,
             background_color,
@@ -147,12 +153,12 @@ impl AppFlags {
 
 impl Default for AppFlags {
     fn default() -> Self {
-        Self::new(Vector2I::new(800, 600), ColorU::white())
+        Self::new(Vector2I::new(800, 600), LinSrgb::new(1.0, 1.0, 1.0))
     }
 }
 
-pub struct App {
-    stage_state: StageState,
+pub struct App<'a, 'b> {
+    stage_state: StageState<'a, 'b>,
     stage_renderer: StageRenderer,
     edit_state: EditState,
     edit_display_state: EditDisplayState,
@@ -161,11 +167,13 @@ pub struct App {
     tool_pane_state: ToolPaneState,
 }
 
-impl App {
+impl<'a, 'b> App<'a, 'b> {
     fn refresh_stage(&mut self) {
-        let render_data = self.stage_state.compute_render_data(&self.timeline_state);
-        let frame_handle = self.stage_renderer.draw_frame(render_data).unwrap();
-        mem::replace(&mut self.frame_handle, frame_handle);
+        let frame_handle = self.stage_renderer.draw_frame(
+            self.stage_state.background_color(),
+            self.stage_state.engine(),
+        );
+        self.frame_handle = frame_handle.unwrap();
     }
 
     fn tool_pane(tool_pane_state: &mut ToolPaneState) -> Column<AppMessage> {
@@ -220,7 +228,7 @@ impl App {
     }
 }
 
-impl Application for App {
+impl<'a, 'b> Application for App<'a, 'b> {
     type Executor = executor::Default;
     type Message = AppMessage;
     type Flags = AppFlags;
@@ -231,7 +239,7 @@ impl Application for App {
         let mut stage_renderer = StageRenderer::new(flags.stage_size).unwrap();
         let timeline_state = TimelineState::new(stage_state.root());
         let frame_handle = stage_renderer
-            .draw_frame(stage_state.compute_render_data(&timeline_state))
+            .draw_frame(stage_state.background_color(), stage_state.engine())
             .unwrap();
         (
             Self {
