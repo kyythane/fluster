@@ -4,11 +4,11 @@ use crate::{
     tools::SelectionShape,
 };
 use fluster_core::{
-    actions::{ContainerCreationDefintition, ContainerCreationProperty},
     ecs::resources::{FrameTime, Library, QuadTreeLayerOptions, QuadTreeQuery, QuadTrees},
     engine::{Engine, SelectionHandle},
+    factories::new_display_container,
     types::{
-        basic::{ContainerId, LibraryId, ScaleRotationTranslation},
+        basic::{ContainerId, LibraryId},
         shapes::{Edge, Shape},
     },
 };
@@ -33,9 +33,20 @@ pub struct StageState<'a, 'b> {
 impl<'a, 'b> StageState<'a, 'b> {
     pub fn new(stage_size: Vector2I, background_color: LinSrgb) -> Self {
         let root_container_id = ContainerId::new();
-        let handle_container_id = ContainerId::new();
+        let mut quad_trees = QuadTrees::default();
+        quad_trees.create_quad_tree(
+            EDIT_LAYER,
+            RectF::new(stage_size.to_f32() * -1.0, stage_size.to_f32() * 3.0),
+            QuadTreeLayerOptions::new(12.0),
+        );
+        let mut engine = Engine::new(root_container_id, Library::default(), quad_trees);
         let handle_library_id = LibraryId::new();
-        let engine = Engine::new(root_container_id, Library::default(), QuadTrees::default());
+        let handle_container_id = new_display_container(
+            &mut engine,
+            root_container_id,
+            Transform2F::default(),
+            handle_library_id,
+        );
         let mut new_self = Self {
             background_color,
             root_container_id,
@@ -47,22 +58,8 @@ impl<'a, 'b> StageState<'a, 'b> {
         };
         // Need to init the draw_handle container before we init scene data so we don't compute_bounds doesn't throw because it can't find a library item
         new_self.update_draw_handle(vec![]);
-        new_self
-            .engine
-            .create_container(&ContainerCreationDefintition::new(
-                root_container_id,
-                handle_container_id,
-                vec![
-                    ContainerCreationProperty::Transform(ScaleRotationTranslation::default()),
-                    ContainerCreationProperty::Display(handle_library_id),
-                ],
-            ));
         // NOTE: currently making edit collision 3x the stage size to allow for overdraw.
-        new_self.engine.get_quad_trees_mut().create_quad_tree(
-            EDIT_LAYER,
-            RectF::new(stage_size.to_f32() * -1.0, stage_size.to_f32() * 3.0),
-            QuadTreeLayerOptions::new(12.0),
-        );
+
         // Need to init scene. Since StageState already knows how to set that up, just call into it
         new_self.update_scene();
         return new_self;

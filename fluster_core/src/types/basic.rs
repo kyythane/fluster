@@ -26,7 +26,7 @@ impl ScaleRotationTranslation {
         }
     }
 
-    pub fn from_transform(transform: &Transform2F) -> ScaleRotationTranslation {
+    pub fn from_transform(transform: Transform2F) -> ScaleRotationTranslation {
         let theta = transform.rotation();
         let cos_theta = theta.cos();
         ScaleRotationTranslation {
@@ -71,7 +71,7 @@ pub fn transform_ser<S>(t: &Transform2F, serializer: S) -> Result<S::Ok, S::Erro
 where
     S: Serializer,
 {
-    ScaleRotationTranslation::serialize(&ScaleRotationTranslation::from_transform(t), serializer)
+    ScaleRotationTranslation::serialize(&ScaleRotationTranslation::from_transform(*t), serializer)
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]

@@ -207,7 +207,7 @@ impl<'a> System<'a> for ContainerUpdate {
                         ContainerUpdateProperty::Transform(srt, easing, duration_frames) => {
                             if let Some(start) = data.local_transform_storage.get(entity) {
                                 let tween = PropertyTween::new_transform(
-                                    ScaleRotationTranslation::from_transform(&start.0),
+                                    ScaleRotationTranslation::from_transform(start.0),
                                     *srt,
                                     TweenDuration::new_frame(*duration_frames),
                                     *easing,

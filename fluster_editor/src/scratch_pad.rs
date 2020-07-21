@@ -1,11 +1,11 @@
 use crate::messages::{EditMessage, Template, ToolMessage};
 use crate::tools::{ToolOption, ToolOptionHandle};
 use fluster_core::{
-    actions::{BoundsKindDefinition, ContainerCreationDefintition, ContainerCreationProperty},
     ecs::resources::{Library, QuadTreeLayer},
     engine::{Engine, SelectionHandle},
+    factories::new_display_container_with_collision,
     types::{
-        basic::{ContainerId, LibraryId, ScaleRotationTranslation},
+        basic::{ContainerId, LibraryId},
         shapes::{Edge, Shape},
     },
 };
@@ -262,8 +262,15 @@ impl ShapeScratchPad {
             ToolOption::ClosedPath(close_path_opt) => close_path = *close_path_opt,
             _ => (),
         });
+
         let item_id = LibraryId::new();
-        let container_id = ContainerId::new();
+        let container_id = new_display_container_with_collision(
+            engine,
+            *engine.root_container_id(),
+            Transform2F::default(),
+            item_id,
+            vec![EDIT_LAYER],
+        );
         let new_self = Self {
             container_id,
             item_id,
@@ -274,16 +281,6 @@ impl ShapeScratchPad {
             selected_point: (0, 0), // TODO: merge commited_edges and selected_point concept
         };
         new_self.update_library(&mut *engine.get_library_mut());
-        engine.create_container(&ContainerCreationDefintition::new(
-            *engine.root_container_id(),
-            container_id,
-            vec![
-                ContainerCreationProperty::Transform(ScaleRotationTranslation::default()),
-                ContainerCreationProperty::Display(item_id),
-                ContainerCreationProperty::Bounds(BoundsKindDefinition::Display),
-                ContainerCreationProperty::Layer(EDIT_LAYER),
-            ],
-        ));
         new_self
     }
 
@@ -410,9 +407,17 @@ impl TemplateShapeScratchpad {
             ToolOptionHandle::UseSuperEllipseApproximation,
             ToolOption::UseSuperEllipseApproximation(use_super_ellipse_approximation),
         );
+        let item_id = LibraryId::new();
+        let container_id = new_display_container_with_collision(
+            engine,
+            *engine.root_container_id(),
+            Transform2F::default(),
+            item_id,
+            vec![EDIT_LAYER],
+        );
         let new_self = Self {
-            container_id: ContainerId::new(),
-            item_id: LibraryId::new(),
+            container_id,
+            item_id,
             shape_prototype: create_shape_prototype(options),
             start_position,
             end_position: start_position,
@@ -425,16 +430,6 @@ impl TemplateShapeScratchpad {
             &new_self.shape_prototype,
             vec![],
         );
-        engine.create_container(&ContainerCreationDefintition::new(
-            *engine.root_container_id(),
-            new_self.container_id,
-            vec![
-                ContainerCreationProperty::Transform(ScaleRotationTranslation::default()),
-                ContainerCreationProperty::Display(new_self.item_id),
-                ContainerCreationProperty::Bounds(BoundsKindDefinition::Display),
-                ContainerCreationProperty::Layer(EDIT_LAYER),
-            ],
-        ));
         new_self
     }
 
